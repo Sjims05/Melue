@@ -16,8 +16,10 @@
  */
 
 import { appDataDir, join } from '@tauri-apps/api/path'
- import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { SmbSource } from './sources/SmbSource'
+import { readFile } from '@tauri-apps/plugin-fs'
+import { parseBuffer } from 'music-metadata'
 import {
   initialize,
   setSource,
@@ -26,6 +28,16 @@ import {
   previous,
   setShuffle,
   setRepeatMode,
+  setLibrary,
+  addToQueue,
+  removeFromQueue,
+  getQueue,
+  restoreLastQueue,
+  setOptions,
+  setControls,
+  onControlPressed,
+  setTrackedLists,
+  onTrackedListChanged,
   play,
   getState,
   addStateListener,
@@ -57,6 +69,26 @@ async function ensureConnected() {
   await source.connect({ host: SMB_HOST, user: SMB_USER, pass: SMB_PASS, share: SMB_SHARE })
   connected = true
   logMsg('SMB: connected')
+}
+
+// ---- Song names from the files' own tags ---------------------------
+type TrackInfo = { title: string; artist?: string; album?: string }
+const trackInfoCache = new Map<string, TrackInfo>()
+
+// Title, artist(s) and album from the file's tags; `fallbackTitle` when it has none.
+async function readTrackInfo(path: string, fallbackTitle: string): Promise<TrackInfo> {
+  const cached = trackInfoCache.get(path)
+  if (cached) return cached
+  let info: TrackInfo = { title: fallbackTitle }
+  try {
+    const { common } = await parseBuffer(await readFile(path), { mimeType: 'audio/mpeg' }, { skipCovers: true })
+    const artists = common.artists?.length ? common.artists.join(', ') : common.artist
+    info = { title: common.title || fallbackTitle, artist: artists || undefined, album: common.album || undefined }
+  } catch (e) {
+    logMsg(`Tags: couldn't read ${path}: ${e}`)
+  }
+  trackInfoCache.set(path, info)
+  return info
 }
 
 // =====================================================================
@@ -135,12 +167,7 @@ async function playLocalFile() {
     })
 
     await initialize()
-    await setSource({
-      src: localCopyPath,
-      id: 1,
-      title: 'Spike Test Track',
-      artist: 'Spike Test',
-    })
+    await setSource({ src: localCopyPath, id: 1, ...(await readTrackInfo(localCopyPath, 'Downloaded track')) })
     await play()
     const state = await getState()
     logMsg(`Play called, state = ${JSON.stringify(state)}`)
@@ -216,8 +243,10 @@ async function startQueue() {
     await initialize()
     await setQueue({
       // ids start at 1: the plugin ignores ids <= 0 for progress checkpoints
-      items: testQueue.map((path, i) => ({ src: path, id: i + 1, title: `Track ${i + 1}`, artist: 'Spike Test' })),
+      items: await testTracks(),
       startIndex: 0,
+      // Plays the "All songs" folder, so it counts towards recently played playlists.
+      sourceId: 'songs',
     })
     await play()
     logMsg('Queue started. Now lock the screen and wait, or use the notification prev/next buttons.')
@@ -267,6 +296,165 @@ async function cycleRepeatMode() {
     logMsg(`Repeat FAILED: ${e}`)
   }
 }
+
+// =====================================================================
+// SECTION 4b: Android Auto library (carSupport in tauri.conf.json)
+// Sent once, then saved natively: Auto can browse and play it with the app closed.
+// =====================================================================
+// The section 4 downloads; their files stay in appData between launches.
+async function testTracks() {
+  const paths = await Promise.all([0, 1, 2, 3].map(async (i) => join(await appDataDir(), `spike-queue-${i}.mp3`)))
+  return Promise.all(paths.map(async (src, i) => ({ src, id: i + 1, ...(await readTrackInfo(src, `Track ${i + 1}`)) })))
+}
+
+// The playable folders of the test library, by id.
+const folderTitles: Record<string, string> = { songs: 'All songs', 'pl-test': 'Test playlist' }
+
+// "Recently played playlists", kept by the plugin itself: it records which playable folder a queue
+// was started from (picked in Android Auto, or setQueue's sourceId), also with the app closed.
+async function setUpRecentPlaylists() {
+  await setTrackedLists([{ id: 'recentPlaylists', track: 'folder', limit: 5 }])
+  // Changes from while the app was closed arrive first. The real app would save them in its database.
+  await onTrackedListChanged(({ listId, ids }) => {
+    const names = ids.map((id) => folderTitles[String(id)] ?? String(id))
+    logMsg(`Tracked list "${listId}": ${names.join(', ') || '(empty)'}`)
+  })
+}
+
+async function sendTestLibrary() {
+  try {
+    // Headers by first letter in Android Auto's lists.
+    const items = (await testTracks()).map((t) => ({ ...t, group: t.title.charAt(0).toUpperCase() }))
+    await setLibrary({
+      items,
+      emptyMessage: 'Open phoenix to sync your music',
+      root: [
+        // Fills itself from the tracked list; nothing to rebuild when it changes.
+        { id: 'recent', title: 'Recently played', style: 'list', trackedList: 'recentPlaylists' },
+        { id: 'songs', title: 'All songs', playable: true, style: 'list', children: [1, 2, 3, 4] },
+        {
+          id: 'playlists',
+          title: 'Playlists',
+          style: 'list',
+          children: [{ id: 'pl-test', title: 'Test playlist', subtitle: '3rd and 1st downloaded song', playable: true, children: [3, 1] }],
+        },
+      ],
+    })
+    logMsg('Library sent to Android Auto: Recently played + All songs (4) + Playlists > Test playlist (2)')
+  } catch (e) {
+    logMsg(`setLibrary FAILED: ${e}`)
+  }
+}
+
+// =====================================================================
+// SECTION 4c: queue editing + resuming the last queue
+// =====================================================================
+async function logQueue() {
+  try {
+    const { items, currentIndex, playOrder } = await getQueue()
+    const upNext = playOrder.map((i) => `${items[i].title}${i === currentIndex ? ' (playing)' : ''}`)
+    logMsg(`Queue in play order: ${upNext.join(' → ') || '(empty)'}`)
+  } catch (e) {
+    logMsg(`getQueue FAILED: ${e}`)
+  }
+}
+
+async function playTrack1Next() {
+  try {
+    await addToQueue([(await testTracks())[0]], { playNext: true })
+    await logQueue()
+  } catch (e) {
+    logMsg(`addToQueue FAILED: ${e}`)
+  }
+}
+
+async function addTrack4ToEnd() {
+  try {
+    await addToQueue([(await testTracks())[3]])
+    await logQueue()
+  } catch (e) {
+    logMsg(`addToQueue FAILED: ${e}`)
+  }
+}
+
+async function removeUpNext() {
+  try {
+    const { currentIndex, playOrder } = await getQueue()
+    const upNext = playOrder[playOrder.indexOf(currentIndex) + 1]
+    if (upNext === undefined) {
+      logMsg('Queue: nothing up next')
+      return
+    }
+    await removeFromQueue(upNext)
+    await logQueue()
+  } catch (e) {
+    logMsg(`removeFromQueue FAILED: ${e}`)
+  }
+}
+
+// =====================================================================
+// SECTION 4d: options + car buttons
+// =====================================================================
+// The plugin has no getter for options, so the test page remembers what it last set.
+function savedFlag(key: string, fallback: boolean) {
+  const saved = localStorage.getItem(key)
+  return saved === null ? fallback : saved === 'true'
+}
+// Same defaults as the plugin.
+const resumeOn = ref(savedFlag('resumeLastQueue', true))
+const repeatAddedOn = ref(savedFlag('repeatAddedTracks', false))
+
+async function toggleResume() {
+  resumeOn.value = !resumeOn.value
+  localStorage.setItem('resumeLastQueue', String(resumeOn.value))
+  await setOptions({ resumeLastQueue: resumeOn.value })
+  logMsg(`Auto-resume: ${resumeOn.value ? 'on' : 'off'}`)
+}
+
+async function toggleRepeatAdded() {
+  repeatAddedOn.value = !repeatAddedOn.value
+  localStorage.setItem('repeatAddedTracks', String(repeatAddedOn.value))
+  await setOptions({ repeatAddedTracks: repeatAddedOn.value })
+  logMsg(`Repeat added tracks: ${repeatAddedOn.value ? 'on' : 'off'}`)
+}
+
+async function setUpCarButtons() {
+  await setControls({
+    buttons: [
+      { action: 'seekBack', seconds: 15 },
+      { action: 'seekForward', seconds: 30 },
+      { action: 'shuffle' },
+      { action: 'repeat' },
+      { action: 'speed', rates: [1, 1.5, 2] },
+      { action: 'custom', id: 'like', label: 'Like', icon: 'heart', toggle: true },
+    ],
+  })
+  // Presses made in the car while the app was closed arrive here first, then live ones.
+  await onControlPressed((press) => {
+    const time = new Date(press.pressedAtMs).toLocaleTimeString()
+    logMsg(`Button "${press.buttonId}" on track id ${press.itemId}: ${press.active === null ? 'pressed' : press.active ? 'on' : 'off'} (at ${time})`)
+  })
+}
+
+// Like the real app would: continue the last queue at startup (paused).
+onMounted(async () => {
+  try {
+    await listenToQueue()
+    await initialize()
+    await setOptions({ resumeLastQueue: resumeOn.value, repeatAddedTracks: repeatAddedOn.value })
+    await setUpCarButtons()
+    await setUpRecentPlaylists()
+    const state = await restoreLastQueue()
+    if (state) {
+      logMsg(`Restored last queue: track ${state.queueIndex + 1}/${state.queueLength} at ${Math.round(state.currentTime)}s, shuffle ${state.shuffle ? 'on' : 'off'}, repeat ${state.repeatMode}`)
+      await logQueue()
+    } else {
+      logMsg('No saved queue to restore')
+    }
+  } catch (e) {
+    logMsg(`Restore FAILED: ${e}`)
+  }
+})
 
 // =====================================================================
 // SECTION 5: Screen Wake Lock — request / release
@@ -373,6 +561,34 @@ async function sqliteTest() {
           @click="cycleRepeatMode"
         >
           Repeat: {{ repeatMode }}
+        </button>
+      </div>
+    </section>
+
+    <section class="space-y-2 border rounded p-3">
+      <h2 class="font-semibold">4b. Android Auto library</h2>
+      <p class="text-sm text-muted-foreground">Uses the 4 tracks from section 4 (download them once).</p>
+      <button class="border rounded px-3 py-1" @click="sendTestLibrary()">Send test library</button>
+    </section>
+
+    <section class="space-y-2 border rounded p-3">
+      <h2 class="font-semibold">4c. Queue editing</h2>
+      <p class="text-sm text-muted-foreground">The last queue is restored when the app opens.</p>
+      <div class="flex flex-wrap gap-2">
+        <button class="border rounded px-3 py-1" @click="logQueue">Show queue</button>
+        <button class="border rounded px-3 py-1" @click="playTrack1Next">Play 1st song next</button>
+        <button class="border rounded px-3 py-1" @click="addTrack4ToEnd">Add 4th song to end</button>
+        <button class="border rounded px-3 py-1" @click="removeUpNext">Remove up next</button>
+      </div>
+    </section>
+
+    <section class="space-y-2 border rounded p-3">
+      <h2 class="font-semibold">4d. Options</h2>
+      <p class="text-sm text-muted-foreground">Car buttons are set up when the app opens; presses show in the log.</p>
+      <div class="flex flex-wrap gap-2">
+        <button class="border rounded px-3 py-1" @click="toggleResume">Auto-resume: {{ resumeOn ? 'on' : 'off' }}</button>
+        <button class="border rounded px-3 py-1" @click="toggleRepeatAdded">
+          Repeat added tracks: {{ repeatAddedOn ? 'on' : 'off' }}
         </button>
       </div>
     </section>

@@ -21,6 +21,11 @@
       "csp": null
     }
   },
+  "plugins": {
+    "native-audio": {
+      "carSupport": true
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

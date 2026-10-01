@@ -33,6 +33,21 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+        <!-- NATIVE AUDIO CAR SUPPORT. AUTO-GENERATED. DO NOT REMOVE. -->
+        <service
+            xmlns:tools="http://schemas.android.com/tools"
+            android:name="app.tauri.nativeaudio.NativeAudioService"
+            android:exported="true"
+            tools:replace="android:exported">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+        <!-- NATIVE AUDIO CAR SUPPORT. AUTO-GENERATED. DO NOT REMOVE. -->
     </application>
     <!-- ANDROID FS PLUGIN. AUTO-GENERATED. DO NOT REMOVE. -->
     

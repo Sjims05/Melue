@@ -4624,8 +4624,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-native-audio"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
+ "serde",
  "tauri",
  "tauri-plugin",
 ]
