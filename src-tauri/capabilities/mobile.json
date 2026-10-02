@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Plugins that only exist in the Android / iOS app",
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": ["native-audio:default"]
+}

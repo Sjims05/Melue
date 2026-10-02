@@ -1,6 +1,6 @@
 [package]
 name = "phoenix"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -23,13 +23,18 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-persisted-scope = "2"
-tauri-plugin-android-fs = "29.0.0"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }
 smb2 = "0.11"
 tokio = { version = "1", features = ["fs", "io-util"] }
+
+# Mobile only: the desktop app doesn't use (or build) these.
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }
+
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-android-fs = "29.0.0"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

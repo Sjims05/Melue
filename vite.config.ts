@@ -1,12 +1,27 @@
 import { defineConfig } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import vue from "@vitejs/plugin-vue";
+import tsconfigPaths from "vite-tsconfig-paths";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
+// Set by `tauri dev` / `tauri build`, following the build target: android / androideabi, ios, windows,
+// darwin (macOS), linux. Missing when Vite runs on its own; the app then acts as desktop.
+const platform = process.env.TAURI_ENV_PLATFORM ?? "";
+const isAndroid = platform === "android" || platform === "androideabi";
+const isIos = platform === "ios";
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [vue()],
+  plugins: [vue(), tailwindcss(), tsconfigPaths()],
+
+  // The platform this build is for, as true / false constants (see src/platform/platform.ts). Being plain
+  // constants, Vite drops the code for the other platforms from the build.
+  define: {
+    __IS_ANDROID__: JSON.stringify(isAndroid),
+    __IS_IOS__: JSON.stringify(isIos),
+  },
 
   // tauri-plugin-native-audio-api is linked from a sibling folder, so Vite resolves its
   // imports from there (where there is no node_modules). Resolve @tauri-apps/api from

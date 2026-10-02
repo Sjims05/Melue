@@ -81,6 +81,11 @@ async fn smb_copy_file(
     let expected_size = download.size();
     let tmp_path = format!("{local_path}.tmp");
 
+    // The destination folder may not exist yet (on Windows the app data folder is only made when needed).
+    if let Some(parent) = std::path::Path::new(&local_path).parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+    }
+
     let mut local_file = File::create(&tmp_path).await.map_err(|e| e.to_string())?;
 
     let mut total_written: u64 = 0;
@@ -111,12 +116,18 @@ async fn smb_copy_file(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_native_audio::init())
+    let builder = tauri::Builder::default();
+
+    // Mobile only (see Cargo.toml); their permissions are in capabilities/mobile.json and android.json.
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_native_audio::init());
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_android_fs::init());
+
+    builder
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_android_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SmbState(Arc::new(Mutex::new(None))))
