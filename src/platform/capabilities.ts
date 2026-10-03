@@ -5,7 +5,7 @@ import { isAndroid, isMobile } from './platform'
  * instead of checking the platform themselves.
  */
 export interface Capabilities {
-  /** A player exists. The desktop player isn't built yet. */
+  /** A player exists. */
   player: boolean
   /** Playback keeps going with the app in the background or the screen off (a native media service). */
   backgroundPlayback: boolean
@@ -16,7 +16,7 @@ export interface Capabilities {
 }
 
 export const capabilities: Capabilities = {
-  player: isMobile,
+  player: true,
   backgroundPlayback: isMobile,
   carMode: isAndroid,
   removableStorage: isAndroid,

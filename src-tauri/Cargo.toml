@@ -27,15 +27,18 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 smb2 = "0.11"
-tokio = { version = "1", features = ["fs", "io-util"] }
-
-# Mobile only: the desktop app doesn't use (or build) these.
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+# Playback on every platform (its `mobile` and `desktop` features, both on by default).
 tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }
+tokio = { version = "1", features = ["fs", "io-util"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-android-fs = "29.0.0"
 
+
+# Dev builds: optimize the dependencies (the audio decoding and resampling in native-audio would
+# be too slow to play smoothly otherwise). Only Melue's own code stays unoptimized, so rebuilds stay fast.
+[profile.dev.package."*"]
+opt-level = 3
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

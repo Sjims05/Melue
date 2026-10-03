@@ -2,8 +2,9 @@ import * as audio from 'tauri-plugin-native-audio-api'
 import type { Player, PlayerQueue, PlayerTrack, RepeatMode, SetQueueOptions } from './Player'
 
 /**
- * Android / iOS: everything goes to the native-audio plugin, which plays in a native media service
- * (background playback, lock screen, notification, Android Auto).
+ * Every platform: everything goes to the native-audio plugin. On Android / iOS it plays in a native
+ * media service (background playback, lock screen, notification, Android Auto); on desktop in its
+ * Rust player.
  *
  * The plugin's other features (tracked lists, options, buttons, the car library) aren't part of Player
  * yet; for now the mobile code uses the plugin for those directly.

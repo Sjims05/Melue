@@ -58,6 +58,12 @@ export async function readTrackInfo(path: string, fallbackTitle: string): Promis
   }
 }
 
+/** The four songs section 4 downloads (they stay in appData between launches), as queue items. */
+export async function testTracks() {
+  const paths = await Promise.all([0, 1, 2, 3].map(async (i) => join(await appDataDir(), `spike-queue-${i}.mp3`)))
+  return Promise.all(paths.map(async (src, i) => ({ src, id: i + 1, ...(await readTrackInfo(src, `Track ${i + 1}`)) })))
+}
+
 // =====================================================================
 // SECTION 1: SMB — connect, list, download one file
 // =====================================================================

@@ -3,7 +3,7 @@
  * and gets the right version of each service, without checking the platform itself.
  *
  * The platform is fixed at build time, so the unused side of each choice below (and what it imports)
- * is left out of the build: the desktop app doesn't contain the native-audio plugin.
+ * is left out of the build: the desktop app doesn't contain the Android storage picker, for example.
  */
 import { isAndroid, isMobile } from './platform'
 import type { Player } from './player/Player'
@@ -20,8 +20,11 @@ export type * from './player/Player'
 export type { MusicStorage } from './storage/MusicStorage'
 export type * from './trackedLists/TrackedLists'
 
-/** The player for this platform, or null where there isn't one yet (desktop: the desktop player comes later). */
-export const player: Player | null = isMobile ? new NativePlayer() : null
+/**
+ * The player: the native-audio plugin on every platform (Media3 on Android, AVPlayer on iOS, its
+ * Rust player on desktop). Typed as nullable so a platform without one can be added later.
+ */
+export const player: Player | null = new NativePlayer()
 
 /** Picking and reaching the music folder on this platform. */
 export const storage: MusicStorage = isAndroid ? new AndroidStorage() : new DesktopStorage()

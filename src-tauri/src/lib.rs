@@ -118,13 +118,12 @@ async fn smb_copy_file(
 pub fn run() {
     let builder = tauri::Builder::default();
 
-    // Mobile only (see Cargo.toml); their permissions are in capabilities/mobile.json and android.json.
-    #[cfg(mobile)]
-    let builder = builder.plugin(tauri_plugin_native_audio::init());
+    // Android only (see Cargo.toml); its permissions are in capabilities/android.json.
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_android_fs::init());
 
     builder
+        .plugin(tauri_plugin_native_audio::init())
         .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
