@@ -1,6 +1,6 @@
 /**
  * The player the app talks to, whatever plays the audio underneath:
- * the native-audio plugin on Android / iOS (NativePlayer), and later a desktop player.
+ * the native-audio plugin on every platform (NativePlayer).
  *
  * The queue lives in the player itself, so it keeps going while the UI is suspended.
  * Shapes match the native-audio plugin, so NativePlayer can pass calls straight through.
@@ -34,6 +34,8 @@ export interface PlayerState {
   shuffle: boolean
   repeatMode: RepeatMode
   error?: string
+  /** The player's own volume, 0 to 1, on top of the system volume. */
+  volume: number
 }
 
 export interface PlayerQueue {
@@ -43,6 +45,21 @@ export interface PlayerQueue {
   currentIndex: number
   /** Indexes into `items` in the order they play (differs from `items` while shuffled). */
   playOrder: number[]
+}
+
+export interface OutputDevice {
+  id: string
+  name: string
+  isDefault: boolean
+}
+
+export interface OutputDevices {
+  /** Empty where the system picks the output itself (Android). */
+  devices: OutputDevice[]
+  /** The chosen device's id, or null to follow the system default. */
+  selected: string | null
+  /** The device playing now. */
+  active: string | null
 }
 
 export interface SetQueueOptions {
@@ -79,4 +96,10 @@ export interface Player {
   moveInQueue(from: number, to: number): Promise<PlayerState>
   /** Loads the queue that was playing last time (paused). Null when there is none. */
   restoreLastQueue(): Promise<PlayerState | null>
+
+  /** 0 to 1. */
+  setVolume(volume: number): Promise<PlayerState>
+  getOutputDevices(): Promise<OutputDevices>
+  /** A device id from getOutputDevices, or null for the system default. Not saved by the player. */
+  setOutputDevice(id: string | null): Promise<OutputDevices>
 }

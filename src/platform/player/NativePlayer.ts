@@ -30,4 +30,8 @@ export class NativePlayer implements Player {
   removeFromQueue = (index: number) => audio.removeFromQueue(index)
   moveInQueue = (from: number, to: number) => audio.moveInQueue(from, to)
   restoreLastQueue = () => audio.restoreLastQueue()
+
+  setVolume = (volume: number) => audio.setVolume(volume)
+  getOutputDevices = () => audio.getOutputDevices()
+  setOutputDevice = (id: string | null) => audio.setOutputDevice(id)
 }
