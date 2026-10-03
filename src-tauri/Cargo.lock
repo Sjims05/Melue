@@ -2473,6 +2473,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "melue"
+version = "0.2.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "smb2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-android-fs",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-native-audio",
+ "tauri-plugin-opener",
+ "tauri-plugin-persisted-scope",
+ "tauri-plugin-sql",
+ "tokio",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3014,25 +3033,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
 dependencies = [
  "siphasher",
-]
-
-[[package]]
-name = "phoenix"
-version = "0.2.0"
-dependencies = [
- "serde",
- "serde_json",
- "smb2",
- "tauri",
- "tauri-build",
- "tauri-plugin-android-fs",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-native-audio",
- "tauri-plugin-opener",
- "tauri-plugin-persisted-scope",
- "tauri-plugin-sql",
- "tokio",
 ]
 
 [[package]]
@@ -4624,7 +4624,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-native-audio"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "serde",
  "tauri",

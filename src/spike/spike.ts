@@ -42,19 +42,20 @@ export type TrackInfo = { title: string; artist?: string; album?: string }
 const trackInfoCache = new Map<string, TrackInfo>()
 
 // Title, artist(s) and album from the file's tags; `fallbackTitle` when it has none.
+// Only successful reads are remembered: a file that isn't downloaded yet is read again next time.
 export async function readTrackInfo(path: string, fallbackTitle: string): Promise<TrackInfo> {
   const cached = trackInfoCache.get(path)
   if (cached) return cached
-  let info: TrackInfo = { title: fallbackTitle }
   try {
     const { common } = await parseBuffer(await readFile(path), { mimeType: 'audio/mpeg' }, { skipCovers: true })
     const artists = common.artists?.length ? common.artists.join(', ') : common.artist
-    info = { title: common.title || fallbackTitle, artist: artists || undefined, album: common.album || undefined }
+    const info = { title: common.title || fallbackTitle, artist: artists || undefined, album: common.album || undefined }
+    trackInfoCache.set(path, info)
+    return info
   } catch (e) {
     logMsg(`Tags: couldn't read ${path}: ${e}`)
+    return { title: fallbackTitle }
   }
-  trackInfoCache.set(path, info)
-  return info
 }
 
 // =====================================================================

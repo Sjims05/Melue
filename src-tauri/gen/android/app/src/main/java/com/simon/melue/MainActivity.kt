@@ -1,4 +1,4 @@
-package com.simon.phoenix
+package com.simon.melue
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

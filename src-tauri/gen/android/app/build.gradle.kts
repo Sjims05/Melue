@@ -20,10 +20,10 @@ android {
         checkReleaseBuilds = false
     }
     compileSdk = 37
-    namespace = "com.simon.phoenix"
+    namespace = "com.simon.melue"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.simon.phoenix"
+        applicationId = "com.simon.melue"
         minSdk = 26
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

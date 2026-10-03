@@ -12,10 +12,8 @@ import {
   setOptions,
   setControls,
   onControlPressed,
-  setTrackedLists,
-  onTrackedListChanged,
 } from 'tauri-plugin-native-audio-api'
-import { player as platformPlayer, type PlayerState, type RepeatMode } from '@/platform'
+import { player as platformPlayer, trackedLists, type PlayerState, type RepeatMode } from '@/platform'
 import SpikePage from './SpikePage.vue'
 import { SMB_MUSIC_PATH, ensureConnected, localCopyPath, logMsg, readTrackInfo, source } from './spike'
 
@@ -180,10 +178,12 @@ const folderTitles: Record<string, string> = { songs: 'All songs', 'pl-test': 'T
 // "Recently played playlists", kept by the plugin itself: it records which playable folder a queue
 // was started from (picked in Android Auto, or setQueue's sourceId), also with the app closed.
 async function setUpRecentPlaylists() {
-  await setTrackedLists([{ id: 'recentPlaylists', track: 'folder', limit: 5 }])
+  // The mobile build always has tracked lists.
+  const lists = trackedLists!
+  await lists.configure([{ id: 'recentPlaylists', track: 'folder', limit: 5 }])
   // Changes from while the app was closed arrive first. The real app would save them in its database.
-  await onTrackedListChanged(({ listId, ids }) => {
-    const names = ids.map((id) => folderTitles[String(id)] ?? String(id))
+  await lists.onChange(({ listId, entries }) => {
+    const names = entries.map(({ id }) => folderTitles[String(id)] ?? String(id))
     logMsg(`Tracked list "${listId}": ${names.join(', ') || '(empty)'}`)
   })
 }
@@ -194,7 +194,7 @@ async function sendTestLibrary() {
     const items = (await testTracks()).map((t) => ({ ...t, group: t.title.charAt(0).toUpperCase() }))
     await setLibrary({
       items,
-      emptyMessage: 'Open phoenix to sync your music',
+      emptyMessage: 'Open Melue to sync your music',
       root: [
         // Fills itself from the tracked list; nothing to rebuild when it changes.
         { id: 'recent', title: 'Recently played', style: 'list', trackedList: 'recentPlaylists' },

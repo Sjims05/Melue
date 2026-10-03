@@ -25,3 +25,7 @@ dist-ssr
 
 # Local secrets
 .env
+
+# Android signing key (keep a backup outside the project; its passwords are in
+# src-tauri/gen/android/keystore.properties, which is ignored too)
+*.jks
