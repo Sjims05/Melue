@@ -26,6 +26,8 @@ pub enum ChangeReason {
     Playlists,
     /// A song was liked or unliked.
     Likes,
+    /// Whether sync is available changed (a share set up or removed, see sync.rs).
+    Sync,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -47,6 +49,11 @@ impl LibraryChange {
         ids.sort_unstable();
         ids.dedup();
         Self { reason, tracks: Vec::new(), sources: ids.into_iter().map(|id| format!("playlist:{id}")).collect() }
+    }
+
+    /// Sync became available or not.
+    pub fn sync() -> Self {
+        Self { reason: ChangeReason::Sync, tracks: Vec::new(), sources: Vec::new() }
     }
 
     /// A song liked or unliked.

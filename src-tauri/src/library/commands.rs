@@ -112,8 +112,19 @@ pub fn library_music_access(app: AppHandle, request: bool) -> Result<MusicAccess
 }
 
 #[tauri::command(async)]
-pub fn library_set_setting(library: State<'_, Library>, key: String, value: String) -> Result<()> {
-    library.set_setting(&key, &value)
+pub fn library_set_setting(app: AppHandle, library: State<'_, Library>, key: String, value: String) -> Result<()> {
+    let sync_before = library.sync_available()?;
+    library.set_setting(&key, &value)?;
+    if library.sync_available()? != sync_before {
+        changes::emit(&app, LibraryChange::sync());
+    }
+    Ok(())
+}
+
+/// Whether sync is available: a share is set up (the UI shows sync buttons only then).
+#[tauri::command(async)]
+pub fn library_sync_available(library: State<'_, Library>) -> Result<bool> {
+    library.sync_available()
 }
 
 // ---- songs

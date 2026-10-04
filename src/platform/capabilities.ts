@@ -2,7 +2,8 @@ import { isAndroid, isMobile } from './platform'
 
 /**
  * What this platform can do, so shared code and the UI can hide what doesn't apply
- * instead of checking the platform themselves.
+ * instead of checking the platform themselves. These never change while the app runs; whether sync is
+ * available (a share is set up) can, so it's in '@/library/sync' instead.
  */
 export interface Capabilities {
   /**

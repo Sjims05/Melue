@@ -27,6 +27,8 @@ import {
   type Track,
 } from '@/library'
 import { playSource, setLiked } from '@/library/playback'
+import { sync } from '@/library/sync'
+import { SHARE_TEST_VALUE } from './spike'
 import { isAndroid, storage } from '@/platform'
 
 defineProps<{ title: string }>()
@@ -150,6 +152,14 @@ const toggleLike = (song: Track) =>
   run('Like', async () => {
     await setLiked(song.id, !song.liked)
     logMsg(`${song.liked ? 'Unliked' : 'Liked'} ${song.title}`)
+  })
+
+// Sync: whether a share is set up (Phase 2). The test switch stands in for the share setup until then.
+const toggleTestShare = () =>
+  run('Test share', async () => {
+    const wasAvailable = sync.available
+    await library.setSetting('sync_share', wasAvailable ? '' : SHARE_TEST_VALUE)
+    logMsg(`Test share: ${wasAvailable ? 'removed' : 'set up'} (sync buttons would ${wasAvailable ? 'hide' : 'show'})`)
   })
 
 const queueFollow = ref<QueueFollow | null>(null)
@@ -331,21 +341,12 @@ async function libraryStatus() {
 
     <section class="space-y-2 border rounded p-3">
       <h2 class="font-semibold">6. Library</h2>
+      <h3 class="text-sm font-medium">Folders and scanning</h3>
       <div class="flex flex-wrap gap-2">
         <button class="border rounded px-3 py-1" @click="libraryStatus">Library status</button>
         <button class="border rounded px-3 py-1" @click="run('Folders', refreshFolders)">Show folders</button>
         <button class="border rounded px-3 py-1" @click="addFolder">Add folder</button>
         <button class="border rounded px-3 py-1" @click="scanNow">Scan now</button>
-        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('all'))">Show songs</button>
-        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('recent'))">Recently played</button>
-        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('most'))">Most played</button>
-        <button class="border rounded px-3 py-1" @click="play('songs')">Play all songs</button>
-        <button class="border rounded px-3 py-1" @click="play('liked')">Play liked</button>
-        <button class="border rounded px-3 py-1" @click="toggleQueueFollow">
-          Queue follows library: {{ queueFollow?.enabled === false ? 'off' : 'on' }}
-        </button>
-        <button class="border rounded px-3 py-1" @click="run('Albums', showAlbums)">Show albums</button>
-        <button class="border rounded px-3 py-1" @click="run('Artists', showArtists)">Show artists</button>
         <template v-if="isAndroid">
           <button class="border rounded px-3 py-1" @click="useAllMusic">Use all music on this phone</button>
           <button class="border rounded px-3 py-1" @click="musicPermission">Music permission</button>
@@ -353,6 +354,27 @@ async function libraryStatus() {
             Covers next to songs: {{ folderCovers?.enabled ? 'on' : 'off' }}
           </button>
         </template>
+      </div>
+      <h3 class="text-sm font-medium">Browsing</h3>
+      <div class="flex flex-wrap gap-2">
+        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('all'))">Songs</button>
+        <button class="border rounded px-3 py-1" @click="run('Albums', showAlbums)">Albums</button>
+        <button class="border rounded px-3 py-1" @click="run('Artists', showArtists)">Artists</button>
+        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('recent'))">Recently played</button>
+        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('most'))">Most played</button>
+      </div>
+      <h3 class="text-sm font-medium">Playing</h3>
+      <div class="flex flex-wrap gap-2">
+        <button class="border rounded px-3 py-1" @click="play('songs')">Play all songs</button>
+        <button class="border rounded px-3 py-1" @click="play('liked')">Play liked</button>
+        <button class="border rounded px-3 py-1" @click="toggleQueueFollow">
+          Queue follows library: {{ queueFollow?.enabled === false ? 'off' : 'on' }}
+        </button>
+      </div>
+      <h3 class="text-sm font-medium">Sync</h3>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-sm">Sync available: {{ sync.available ? 'yes (a share is set up)' : 'no (no share set up)' }}</span>
+        <button class="border rounded px-3 py-1" @click="toggleTestShare">{{ sync.available ? 'Remove' : 'Set up' }} test share</button>
       </div>
       <ul class="text-sm space-y-1">
         <li v-for="folder in folders" :key="folder.id" class="flex flex-wrap items-center gap-2">

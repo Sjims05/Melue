@@ -144,3 +144,9 @@ document.addEventListener('visibilitychange', async () => {
     await requestWakeLock()
   }
 })
+
+/**
+ * The spike's stand-in for a share (the sync_share setting) until Phase 2's share setup: makes sync
+ * available, so sync buttons can be tried. Phase 2 replaces it with the real share.
+ */
+export const SHARE_TEST_VALUE = 'spike-test-share'

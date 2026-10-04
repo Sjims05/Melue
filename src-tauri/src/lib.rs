@@ -159,6 +159,7 @@ pub fn run() {
             library::library_status,
             library::library_setting,
             library::library_set_setting,
+            library::library_sync_available,
             library::library_folders,
             library::library_add_folder,
             library::library_remove_folder,

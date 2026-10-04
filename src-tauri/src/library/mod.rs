@@ -31,6 +31,7 @@ pub mod scanner;
 #[cfg(test)]
 mod schema_tests;
 pub mod tags;
+pub mod sync;
 pub mod tracks;
 #[cfg(test)]
 mod tags_tests;

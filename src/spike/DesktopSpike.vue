@@ -6,7 +6,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { getItemProgress, setOptions, setSkipInterval } from 'tauri-plugin-native-audio-api'
-import { onPlaybackCounted } from '@/library/playback'
+import { onPlaybackCounted, RECENT_LISTS } from '@/library/playback'
 import { player, trackedLists, type OutputDevices } from '@/platform'
 import PlaybackSpike from './PlaybackSpike.vue'
 import SkipRulesOptions from './SkipRulesOptions.vue'
@@ -105,9 +105,9 @@ async function toggleRepeatAdded() {
 
 async function setUpSavedData() {
   const lists = trackedLists
-  // Section 4's "Start queue" plays the "songs" folder; songs count after 30 s.
+  // The app's list of lists played (see playback.ts), plus a test list of songs (they count after 30 s).
   await lists.configure([
-    { id: 'recentPlaylists', track: 'folder', limit: 5 },
+    { id: RECENT_LISTS, track: 'folder', limit: 20 },
     { id: 'recentSongs', track: 'item', limit: 10, countAfterSeconds: 30 },
   ])
   // Changes and events from earlier runs arrive first, then live ones.
@@ -123,7 +123,7 @@ async function setUpSavedData() {
 }
 
 async function showLists() {
-  for (const id of ['recentPlaylists', 'recentSongs']) {
+  for (const id of [RECENT_LISTS, 'recentSongs']) {
     const entries = await trackedLists.get(id)
     logMsg(`${id}: ${entries.map((e) => `${folderTitles[String(e.id)] ?? `track ${e.id}`} (${new Date(e.playedAtMs).toLocaleTimeString()})`).join(', ') || '(empty)'}`)
   }

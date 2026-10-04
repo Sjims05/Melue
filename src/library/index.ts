@@ -76,7 +76,8 @@ export type ScanEvent =
  * removed, switched on or off, or renamed).
  */
 export interface LibraryChange {
-  reason: 'scan' | 'folders' | 'playlists' | 'likes'
+  /** 'sync': whether sync is available changed (see sync.ts). */
+  reason: 'scan' | 'folders' | 'playlists' | 'likes' | 'sync'
   /** Songs added, changed (tags, cover, file), gone (missing, removed, hidden with their folder) or back. */
   tracks: number[]
   /** The playable lists whose songs changed: 'songs' (all songs), 'album:<id>', 'artist:<id>', 'playlist:<id>', 'liked'. */
