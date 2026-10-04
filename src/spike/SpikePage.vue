@@ -19,6 +19,8 @@ import {
   type Artist,
   type FolderCovers,
   type MusicFolder,
+  type Playlist,
+  type PlaylistEntry,
   type ScanSummary,
   type Track,
 } from '@/library'
@@ -30,6 +32,10 @@ const folders = ref<MusicFolder[]>([])
 const songs = ref<Track[] | null>(null)
 const albums = ref<Album[] | null>(null)
 const artists = ref<Artist[] | null>(null)
+const playlists = ref<Playlist[] | null>(null)
+const openPlaylist = ref<Playlist | null>(null)
+const entries = ref<PlaylistEntry[]>([])
+const playlistName = ref('')
 const folderCovers = ref<FolderCovers | null>(null)
 
 const describe = (s: ScanSummary) =>
@@ -46,6 +52,8 @@ onMounted(async () => {
     if (songs.value) showSongs().catch(() => {})
     if (albums.value) showAlbums().catch(() => {})
     if (artists.value) showArtists().catch(() => {})
+    if (playlists.value) showPlaylists().catch(() => {})
+    if (openPlaylist.value) refreshPlaylist().catch(() => {})
   })
   stopScanLog = await library.onScan((event) => {
     if (event.phase === 'folder') {
@@ -132,6 +140,64 @@ async function showArtists() {
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+// ---- playlists (the change event refreshes what's shown)
+
+async function showPlaylists() {
+  playlists.value = await library.playlists()
+}
+
+async function refreshPlaylist() {
+  const open = openPlaylist.value
+  if (!open) return
+  openPlaylist.value = await library.playlist(open.id).catch(() => null)
+  entries.value = openPlaylist.value ? await library.playlistEntries(open.id) : []
+}
+
+const createPlaylist = () =>
+  run('Create playlist', async () => {
+    const created = await library.createPlaylist(playlistName.value)
+    playlistName.value = ''
+    logMsg(`Playlist made: ${created.name}`)
+    await showPlaylists()
+  })
+
+const openList = (playlist: Playlist) =>
+  run('Open playlist', async () => {
+    openPlaylist.value = playlist
+    await refreshPlaylist()
+  })
+
+const renamePlaylist = (playlist: Playlist) =>
+  run('Rename playlist', async () => {
+    const renamed = await library.renamePlaylist(playlist.id, playlistName.value)
+    playlistName.value = ''
+    logMsg(`Playlist renamed: ${playlist.name} → ${renamed.name}`)
+  })
+
+const deletePlaylist = (playlist: Playlist) =>
+  run('Delete playlist', async () => {
+    await library.deletePlaylist(playlist.id)
+    if (openPlaylist.value?.id === playlist.id) openPlaylist.value = null
+    logMsg(`Playlist deleted: ${playlist.name}`)
+  })
+
+const addSong = (song: Track) =>
+  run('Add to playlist', async () => {
+    if (!openPlaylist.value) return
+    await library.addToPlaylist(openPlaylist.value.id, [song.id])
+    logMsg(`Added ${song.title} to ${openPlaylist.value.name}`)
+  })
+
+const moveEntry = (entry: PlaylistEntry, by: number) =>
+  run('Move in playlist', async () => {
+    if (openPlaylist.value) await library.moveInPlaylist(openPlaylist.value.id, entry.id, Math.max(0, entry.position + by))
+  })
+
+const removeEntry = (entry: PlaylistEntry) =>
+  run('Remove from playlist', async () => {
+    if (openPlaylist.value) await library.removeFromPlaylist(openPlaylist.value.id, [entry.id])
+  })
 
 const toggleFolderCovers = () =>
   run('Covers next to songs', async () => {
@@ -226,6 +292,9 @@ async function libraryStatus() {
       <div v-if="songs" class="space-y-1">
         <div class="text-xs text-muted-foreground">The first {{ songs.length }} songs by title</div>
         <div v-for="song in songs" :key="song.id" class="flex items-center gap-2 text-sm">
+          <button v-if="openPlaylist" class="border rounded px-2 text-xs shrink-0" :title="`Add to ${openPlaylist.name}`" @click="addSong(song)">
+            +
+          </button>
           <img v-if="song.cover" :src="coverUrl(song.cover)" class="w-10 h-10 rounded object-cover shrink-0" alt="" />
           <div v-else class="w-10 h-10 rounded bg-muted shrink-0" />
           <div class="min-w-0">
@@ -253,6 +322,41 @@ async function libraryStatus() {
               {{ album.artist ?? 'Various artists' }}{{ album.year ? ` · ${album.year}` : '' }} ·
               {{ plural(album.tracks, 'song') }}
             </div>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-2 border-t pt-2">
+        <div class="flex flex-wrap gap-2">
+          <input v-model="playlistName" class="border rounded px-2 py-1 text-sm" placeholder="Playlist name" />
+          <button class="border rounded px-3 py-1" @click="createPlaylist">Create playlist</button>
+          <button class="border rounded px-3 py-1" @click="run('Playlists', showPlaylists)">Show playlists</button>
+        </div>
+        <div v-for="playlist in playlists ?? []" :key="playlist.id" class="flex flex-wrap items-center gap-2 text-sm">
+          <div class="grid grid-cols-2 w-10 h-10 rounded overflow-hidden bg-muted shrink-0">
+            <img v-for="cover in playlist.covers" :key="cover" :src="coverUrl(cover)" class="w-5 h-5 object-cover" alt="" />
+          </div>
+          <span>{{ playlist.name }}</span>
+          <span class="text-xs text-muted-foreground">
+            {{ plural(playlist.entries, 'song') }}{{ playlist.available < playlist.entries ? ` (${playlist.available} available)` : '' }}
+            · {{ duration(playlist.durationMs) }}{{ playlist.kind === 'linked' ? ' · linked' : '' }}
+          </span>
+          <button class="border rounded px-2 text-xs" @click="openList(playlist)">Open</button>
+          <button class="border rounded px-2 text-xs" @click="renamePlaylist(playlist)">Rename to the name above</button>
+          <button class="border rounded px-2 text-xs" @click="deletePlaylist(playlist)">Delete</button>
+        </div>
+        <div v-if="openPlaylist" class="space-y-1 border rounded p-2">
+          <div class="text-sm font-medium">
+            {{ openPlaylist.name }}
+            <span class="text-xs text-muted-foreground">(open "Show songs" and use + to add songs)</span>
+          </div>
+          <div v-for="entry in entries" :key="entry.id" class="flex items-center gap-2 text-sm" :class="{ 'opacity-40': !entry.track.available }">
+            <span class="text-xs text-muted-foreground w-5 text-right">{{ entry.position + 1 }}</span>
+            <span class="truncate">{{ entry.track.title }}</span>
+            <span class="text-xs text-muted-foreground truncate">{{ entry.track.artist }}</span>
+            <span v-if="!entry.track.available" class="text-xs">(unavailable)</span>
+            <button class="border rounded px-2 text-xs" @click="moveEntry(entry, -1)">↑</button>
+            <button class="border rounded px-2 text-xs" @click="moveEntry(entry, 1)">↓</button>
+            <button class="border rounded px-2 text-xs" @click="removeEntry(entry)">✕</button>
           </div>
         </div>
       </div>

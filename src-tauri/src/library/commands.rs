@@ -5,7 +5,8 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use super::scan::ScanSummary;
-use super::changes::{tracking, ChangeReason};
+use super::changes::{self, tracking, ChangeReason, LibraryChange};
+use super::playlists::{Playlist, PlaylistEntry};
 use super::{android, scanner, Album, Artist, Folder, FolderKind, Library, Result, Track};
 
 #[derive(Serialize)]
@@ -158,4 +159,74 @@ pub fn library_set_folder_covers(app: AppHandle, library: State<'_, Library>, en
     library.set_setting(android::FOLDER_COVERS_SETTING, if enabled { "1" } else { "0" })?;
     scanner::scan_soon(&app);
     library_folder_covers(app, library)
+}
+
+// ---- playlists (each change is told to the UI as a library change)
+
+/// Every playlist, by name.
+#[tauri::command(async)]
+pub fn library_playlists(library: State<'_, Library>) -> Result<Vec<Playlist>> {
+    library.playlists()
+}
+
+#[tauri::command(async)]
+pub fn library_playlist(library: State<'_, Library>, id: i64) -> Result<Playlist> {
+    library.playlist(id)
+}
+
+/// A playlist's songs in order (unavailable ones too: shown greyed).
+#[tauri::command(async)]
+pub fn library_playlist_entries(library: State<'_, Library>, id: i64) -> Result<Vec<PlaylistEntry>> {
+    library.playlist_entries(id)
+}
+
+#[tauri::command(async)]
+pub fn library_create_playlist(app: AppHandle, library: State<'_, Library>, name: String) -> Result<Playlist> {
+    let playlist = library.create_playlist(&name)?;
+    changes::emit(&app, LibraryChange::playlist(playlist.id, Vec::new()));
+    Ok(playlist)
+}
+
+#[tauri::command(async)]
+pub fn library_rename_playlist(app: AppHandle, library: State<'_, Library>, id: i64, name: String) -> Result<Playlist> {
+    let playlist = library.rename_playlist(id, &name)?;
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    Ok(playlist)
+}
+
+#[tauri::command(async)]
+pub fn library_delete_playlist(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<()> {
+    let tracks = library.playlist_entries(id)?.into_iter().map(|e| e.track.id).collect();
+    library.delete_playlist(id)?;
+    changes::emit(&app, LibraryChange::playlist(id, tracks));
+    Ok(())
+}
+
+/// Adds songs at `position` (the end when left out); returns the new entries' ids.
+#[tauri::command(async)]
+pub fn library_add_to_playlist(
+    app: AppHandle,
+    library: State<'_, Library>,
+    id: i64,
+    tracks: Vec<i64>,
+    position: Option<usize>,
+) -> Result<Vec<i64>> {
+    let added = library.add_to_playlist(id, &tracks, position)?;
+    changes::emit(&app, LibraryChange::playlist(id, tracks));
+    Ok(added)
+}
+
+/// Removes entries (by entry id: one copy of a song that's in twice).
+#[tauri::command(async)]
+pub fn library_remove_from_playlist(app: AppHandle, library: State<'_, Library>, id: i64, entries: Vec<i64>) -> Result<()> {
+    let removed = library.remove_from_playlist(id, &entries)?;
+    changes::emit(&app, LibraryChange::playlist(id, removed));
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn library_move_in_playlist(app: AppHandle, library: State<'_, Library>, id: i64, entry: i64, position: usize) -> Result<()> {
+    let track = library.move_in_playlist(id, entry, position)?;
+    changes::emit(&app, LibraryChange::playlist(id, vec![track]));
+    Ok(())
 }

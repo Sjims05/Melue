@@ -12,12 +12,15 @@ pub mod grouping;
 #[cfg(test)]
 mod grouping_tests;
 mod migrations;
+pub mod playlists;
+#[cfg(test)]
+mod playlists_tests;
 pub mod scan;
 pub mod scanner;
 #[cfg(test)]
 mod schema_tests;
 pub mod tags;
-mod tracks;
+pub mod tracks;
 #[cfg(test)]
 mod tags_tests;
 #[cfg(test)]

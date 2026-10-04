@@ -1,6 +1,6 @@
 //! Reading songs back out of the library (the UI's lists build on this).
 
-use rusqlite::params;
+use rusqlite::{params, Row};
 use serde::Serialize;
 
 use super::{err, Library, Result};
@@ -30,45 +30,52 @@ pub struct Track {
     pub tags_read: bool,
     /// Why its tags couldn't be read.
     pub tags_error: Option<String>,
+    /// Whether it can be played: its file is there and its folder switched on. Lists of songs only have
+    /// those; playlists keep the others too (shown greyed, they come back with their file).
+    pub available: bool,
+}
+
+/// A song's columns, for [`track_row`]: `t` is the track, `f` its folder, `c` its cover.
+pub(crate) const TRACK_COLUMNS: &str = "t.id, t.folder_id, t.title, t.artist_credit, t.tag_album, t.tag_album_artist, t.track_no,
+    t.disc_no, t.year, t.genre, t.duration_ms, t.format, t.bitrate_kbps, t.sample_rate, c.file, t.tags_read_at IS NOT NULL,
+    t.tags_error, t.missing_since IS NULL AND f.enabled";
+
+/// A song from a row selected with [`TRACK_COLUMNS`] first.
+pub(crate) fn track_row(r: &Row) -> rusqlite::Result<Track> {
+    Ok(Track {
+        id: r.get(0)?,
+        folder_id: r.get(1)?,
+        title: r.get(2)?,
+        artist: r.get(3)?,
+        album: r.get(4)?,
+        album_artist: r.get(5)?,
+        track_no: r.get(6)?,
+        disc_no: r.get(7)?,
+        year: r.get(8)?,
+        genre: r.get(9)?,
+        duration_ms: r.get(10)?,
+        format: r.get(11)?,
+        bitrate_kbps: r.get(12)?,
+        sample_rate: r.get(13)?,
+        cover: r.get(14)?,
+        tags_read: r.get(15)?,
+        tags_error: r.get(16)?,
+        available: r.get(17)?,
+    })
 }
 
 impl Library {
     /// Songs that are there (not missing), by title.
     pub fn tracks(&self, offset: u32, limit: u32) -> Result<Vec<Track>> {
         let conn = self.conn();
-        let mut stmt = conn
-            .prepare(
-                "SELECT t.id, t.folder_id, t.title, t.artist_credit, t.tag_album, t.tag_album_artist, t.track_no, t.disc_no,
-                        t.year, t.genre, t.duration_ms, t.format, t.bitrate_kbps, t.sample_rate, c.file,
-                        t.tags_read_at IS NOT NULL, t.tags_error
-                 FROM tracks t JOIN folders f ON f.id = t.folder_id LEFT JOIN covers c ON c.id = t.cover_id
-                 WHERE t.missing_since IS NULL AND f.enabled
-                 ORDER BY t.sort_title, t.id LIMIT ?1 OFFSET ?2",
-            )
-            .map_err(err)?;
-        let tracks = stmt
-            .query_map(params![limit, offset], |r| {
-                Ok(Track {
-                    id: r.get(0)?,
-                    folder_id: r.get(1)?,
-                    title: r.get(2)?,
-                    artist: r.get(3)?,
-                    album: r.get(4)?,
-                    album_artist: r.get(5)?,
-                    track_no: r.get(6)?,
-                    disc_no: r.get(7)?,
-                    year: r.get(8)?,
-                    genre: r.get(9)?,
-                    duration_ms: r.get(10)?,
-                    format: r.get(11)?,
-                    bitrate_kbps: r.get(12)?,
-                    sample_rate: r.get(13)?,
-                    cover: r.get(14)?,
-                    tags_read: r.get(15)?,
-                    tags_error: r.get(16)?,
-                })
-            })
-            .map_err(err)?;
+        let sql = format!(
+            "SELECT {TRACK_COLUMNS}
+             FROM tracks t JOIN folders f ON f.id = t.folder_id LEFT JOIN covers c ON c.id = t.cover_id
+             WHERE t.missing_since IS NULL AND f.enabled
+             ORDER BY t.sort_title, t.id LIMIT ?1 OFFSET ?2"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(err)?;
+        let tracks = stmt.query_map(params![limit, offset], track_row).map_err(err)?;
         tracks.collect::<rusqlite::Result<_>>().map_err(err)
     }
 }

@@ -76,11 +76,37 @@ export type ScanEvent =
  * removed, switched on or off, or renamed).
  */
 export interface LibraryChange {
-  reason: 'scan' | 'folders'
+  reason: 'scan' | 'folders' | 'playlists'
   /** Songs added, changed (tags, cover, file), gone (missing, removed, hidden with their folder) or back. */
   tracks: number[]
-  /** The playable lists whose songs changed: 'songs' (all songs), 'album:<id>', 'artist:<id>'. */
+  /** The playable lists whose songs changed: 'songs' (all songs), 'album:<id>', 'artist:<id>', 'playlist:<id>'. */
   sources: string[]
+}
+
+/** A playlist made in Melue ('app'), or a playlist file linked into the library ('linked', coming next). */
+export interface Playlist {
+  id: number
+  name: string
+  kind: 'app' | 'linked'
+  /** Its entries, available or not. */
+  entries: number
+  /** Entries that can be played. */
+  available: number
+  /** How long its available songs play. */
+  durationMs: number
+  /** The first (up to 4) different covers of its songs, for its picture (coverUrl). */
+  covers: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** A song in a playlist. The same song can be in a playlist twice: each entry has its own id. */
+export interface PlaylistEntry {
+  id: number
+  position: number
+  addedAt: number
+  /** Unavailable songs (missing files, folder switched off) stay, shown greyed. */
+  track: Track
 }
 
 /** A song, with its tags as the file has them. */
@@ -107,6 +133,8 @@ export interface Track {
   tagsRead: boolean
   /** Why its tags couldn't be read. */
   tagsError: string | null
+  /** Whether it can be played (its file is there, its folder switched on). False only in playlists. */
+  available: boolean
 }
 
 /** An album: songs with the same album title and album artist (see the grouping rules in grouping.rs). */
@@ -180,6 +208,21 @@ export const library = {
     listen<LibraryChange>('library-changed', (e) => listener(e.payload)),
   /** Android: whether Melue may read the music on the phone, asking first with `request`. */
   musicAccess: (request = false) => invoke<MusicAccess>('library_music_access', { request }),
+
+  playlists: () => invoke<Playlist[]>('library_playlists'),
+  playlist: (id: number) => invoke<Playlist>('library_playlist', { id }),
+  playlistEntries: (id: number) => invoke<PlaylistEntry[]>('library_playlist_entries', { id }),
+  createPlaylist: (name: string) => invoke<Playlist>('library_create_playlist', { name }),
+  renamePlaylist: (id: number, name: string) => invoke<Playlist>('library_rename_playlist', { id, name }),
+  /** Deletes a playlist (its songs stay in the library). */
+  deletePlaylist: (id: number) => invoke<void>('library_delete_playlist', { id }),
+  /** Adds songs at `position` (from 0; the end when left out). Resolves with the new entries' ids. */
+  addToPlaylist: (id: number, tracks: number[], position?: number) =>
+    invoke<number[]>('library_add_to_playlist', { id, tracks, position }),
+  /** Removes entries (by entry id: one copy of a song that's in twice). */
+  removeFromPlaylist: (id: number, entries: number[]) => invoke<void>('library_remove_from_playlist', { id, entries }),
+  moveInPlaylist: (id: number, entry: number, position: number) =>
+    invoke<void>('library_move_in_playlist', { id, entry, position }),
 
   /** Songs that are there, by title. */
   tracks: (offset = 0, limit = 100) => invoke<Track[]>('library_tracks', { offset, limit }),
