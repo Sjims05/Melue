@@ -1,3 +1,5 @@
+mod library;
+
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use smb2::SmbClient;
@@ -124,13 +126,22 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_native_audio::init())
-        .plugin(tauri_plugin_sql::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SmbState(Arc::new(Mutex::new(None))))
-        .invoke_handler(tauri::generate_handler![smb_connect, smb_list_dir, smb_copy_file])
+        .setup(|app| {
+            use tauri::Manager;
+            // The music library, in the app's data folder.
+            let library = library::Library::open(&app.path().app_data_dir()?.join("library.db"))?;
+            app.manage(library);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![smb_connect, smb_list_dir, smb_copy_file, library::library_status,
+            library::library_setting,
+            library::library_set_setting
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

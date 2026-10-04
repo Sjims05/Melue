@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * The frame of a spike test page: the sections every platform has (SMB, storage, wake lock,
- * SQLite, the log), with the platform's own sections in the slot between them.
+ * the library, the log), with the platform's own sections in the slot between them.
  */
 import {
   log,
@@ -10,10 +10,20 @@ import {
   requestWakeLock,
   smbDownloadOneFile,
   smbListFiles,
-  sqliteTest,
+  logMsg,
 } from './spike'
+import { library } from '@/library'
 
 defineProps<{ title: string }>()
+
+async function libraryStatus() {
+  try {
+    const status = await library.status()
+    logMsg(`Library: open, schema version ${status.schemaVersion}`)
+  } catch (e) {
+    logMsg(`Library FAILED: ${e}`)
+  }
+}
 </script>
 
 <template>
@@ -44,8 +54,8 @@ defineProps<{ title: string }>()
     </section>
 
     <section class="space-y-2 border rounded p-3">
-      <h2 class="font-semibold">6. SQLite write/read</h2>
-      <button class="border rounded px-3 py-1" @click="sqliteTest">Run SQLite test</button>
+      <h2 class="font-semibold">6. Library</h2>
+      <button class="border rounded px-3 py-1" @click="libraryStatus">Library status</button>
     </section>
 
     <section class="space-y-2 border rounded p-3">

@@ -163,19 +163,3 @@ document.addEventListener('visibilitychange', async () => {
     await requestWakeLock()
   }
 })
-
-// =====================================================================
-// SECTION 6: SQLite write/read
-// =====================================================================
-export async function sqliteTest() {
-  try {
-    const Database = (await import('@tauri-apps/plugin-sql')).default
-    const db = await Database.load('sqlite:spike-test.db')
-    await db.execute('CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY, name TEXT)')
-    await db.execute('INSERT INTO test (name) VALUES ($1)', ['hello from spike'])
-    const rows = await db.select<{ id: number; name: string }[]>('SELECT * FROM test')
-    logMsg(`SQLite: rows = ${JSON.stringify(rows)}`)
-  } catch (e) {
-    logMsg(`SQLite FAILED: ${e}`)
-  }
-}
