@@ -34,6 +34,10 @@ export interface PlayerState {
   shuffle: boolean
   repeatMode: RepeatMode
   error?: string
+  /** When a running sleep timer pauses playback (epoch ms), or null. */
+  sleepTimerEndsAtMs: number | null
+  /** A sleep timer that pauses at the end of the current track. */
+  sleepTimerEndOfTrack: boolean
   /** The player's own volume, 0 to 1, on top of the system volume. */
   volume: number
 }
@@ -123,6 +127,13 @@ export interface Player {
   moveInQueue(from: number, to: number): Promise<PlayerState>
   /** Loads the queue that was playing last time (paused). Null when there is none. */
   restoreLastQueue(): Promise<PlayerState | null>
+
+  /**
+   * Pauses after `minutes`, fading out over the last `fadeOutSeconds` (default 10), or at the end
+   * of the current track. Replaces a running timer.
+   */
+  setSleepTimer(timer: { minutes: number; fadeOutSeconds?: number } | { endOfTrack: true }): Promise<PlayerState>
+  cancelSleepTimer(): Promise<PlayerState>
 
   /** 0 to 1. */
   setVolume(volume: number): Promise<PlayerState>

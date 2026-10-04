@@ -37,6 +37,9 @@ export class NativePlayer implements Player {
   moveInQueue = (from: number, to: number) => audio.moveInQueue(from, to)
   restoreLastQueue = () => audio.restoreLastQueue()
 
+  setSleepTimer = (timer: Parameters<Player['setSleepTimer']>[0]) => audio.setSleepTimer(timer)
+  cancelSleepTimer = () => audio.cancelSleepTimer()
+
   setVolume = (volume: number) => audio.setVolume(volume)
   getOutputDevices = () => audio.getOutputDevices()
   setOutputDevice = (id: string | null) => audio.setOutputDevice(id)

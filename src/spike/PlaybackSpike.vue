@@ -4,7 +4,7 @@
  * native-audio plugin's native player, desktop through its Rust player. Goes through the platform Player.
  */
 import { appDataDir, join } from '@tauri-apps/api/path'
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { player as platformPlayer, type PlayerState, type RepeatMode, type UpdateQueueOptions } from '@/platform'
 import { SMB_MUSIC_PATH, ensureConnected, localCopyPath, logMsg, readTrackInfo, source, testTracks } from './spike'
 
@@ -64,6 +64,18 @@ let queueListening = false
 let lastQueueIndex = -1
 const playing = ref(false)
 const position = ref('')
+// The sleep timer as the state reports it: the time it pauses, or the end of the track.
+const sleepEndsAt = ref<number | null>(null)
+const sleepEndOfTrack = ref(false)
+const now = ref(Date.now())
+const clock = setInterval(() => (now.value = Date.now()), 1000)
+onUnmounted(() => clearInterval(clock))
+const sleepText = () =>
+  sleepEndOfTrack.value
+    ? 'pauses at the end of this song'
+    : sleepEndsAt.value
+      ? `pauses in ${Math.max(0, Math.round((sleepEndsAt.value - now.value) / 1000))} s`
+      : 'off'
 
 async function listenToQueue() {
   if (queueListening) return
@@ -74,6 +86,8 @@ async function listenToQueue() {
     playing.value = state.isPlaying
     const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
     position.value = state.queueIndex >= 0 ? `${time(state.currentTime)} / ${time(state.duration)}` : ''
+    sleepEndsAt.value = state.sleepTimerEndsAtMs
+    sleepEndOfTrack.value = state.sleepTimerEndOfTrack
     if (state.queueIndex !== lastQueueIndex) {
       lastQueueIndex = state.queueIndex
       if (state.queueIndex >= 0) {
@@ -115,6 +129,10 @@ async function run(label: string, action: () => Promise<unknown>) {
 const queuePrevious = () => run('Previous', async () => (await player()).previous())
 const queueNext = () => run('Next', async () => (await player()).next())
 const togglePlay = () => run('Play / pause', async () => (playing.value ? (await player()).pause() : (await player()).play()))
+const sleepInOneMinute = () => run('Sleep timer', async () => (await player()).setSleepTimer({ minutes: 1, fadeOutSeconds: 10 }))
+const sleepAtEndOfSong = () => run('Sleep timer', async () => (await player()).setSleepTimer({ endOfTrack: true }))
+const cancelSleep = () => run('Sleep timer', async () => (await player()).cancelSleepTimer())
+
 const forward30 = () =>
   run('Seek', async () => {
     const p = await player()
@@ -277,6 +295,12 @@ onMounted(async () => {
       <button class="border rounded px-3 py-1" @click="queueNext">Next</button>
       <button class="border rounded px-3 py-1" @click="forward30">+30 s</button>
       <span class="text-sm font-mono">{{ position }}</span>
+    </div>
+    <div class="flex flex-wrap gap-2 items-center">
+      <button class="border rounded px-3 py-1" @click="sleepInOneMinute">Sleep in 1 min</button>
+      <button class="border rounded px-3 py-1" @click="sleepAtEndOfSong">Sleep at end of song</button>
+      <button class="border rounded px-3 py-1" @click="cancelSleep">Cancel sleep</button>
+      <span class="text-sm">Sleep timer: {{ sleepText() }}</span>
     </div>
     <div class="flex gap-2">
       <button
