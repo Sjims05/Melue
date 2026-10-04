@@ -2,21 +2,29 @@ package com.simon.melue.android
 
 import android.Manifest
 import android.app.Activity
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
+import android.webkit.WebView
 import app.tauri.PermissionState
 import app.tauri.annotation.Command
 import app.tauri.annotation.Permission
 import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
+import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 
 /**
  * Melue's own Android code: the permission to read the music on the phone, and Android's music index
  * (MediaStore), which knows every song on the phone and its SD cards. Called from Melue's Rust code.
+ *
+ * Events (to Rust listeners): "musicChanged" when the music index changes (songs added, removed, edited
+ * while Melue runs), "resumed" when the app comes back to the foreground.
  */
 @TauriPlugin(
     permissions = [
@@ -53,6 +61,18 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         musicPermission(invoke)
     }
 
+    /**
+     * Which entries are music: those Android marked as music, and those it hasn't looked at yet (IS_MUSIC
+     * still null, e.g. right after a copy) unless they're in Android's folders for ringtones,
+     * notifications, alarms and recordings.
+     */
+    @Suppress("DEPRECATION") // DATA: the file's path, still filled in.
+    private val musicSelection =
+        "${MediaStore.Audio.Media.IS_MUSIC} != 0 OR (${MediaStore.Audio.Media.IS_MUSIC} IS NULL" +
+            " AND ${MediaStore.Audio.Media.DATA} NOT LIKE ? AND ${MediaStore.Audio.Media.DATA} NOT LIKE ?" +
+            " AND ${MediaStore.Audio.Media.DATA} NOT LIKE ? AND ${MediaStore.Audio.Media.DATA} NOT LIKE ?)"
+    private val musicSelectionArgs = arrayOf("%/Ringtones/%", "%/Notifications/%", "%/Alarms/%", "%/Recordings/%")
+
     /** Every song in the music index: on the phone and on SD cards (all external volumes). */
     private fun audioCollection(): Uri =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -60,6 +80,64 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         } else {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         }
+
+    private var observer: ContentObserver? = null
+
+    override fun load(webView: WebView) {
+        super.load(webView)
+        // Android notifies about every song separately while copying: Rust waits for it to calm down.
+        val watcher = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                trigger("musicChanged", JSObject())
+            }
+        }
+        activity.contentResolver.registerContentObserver(audioCollection(), true, watcher)
+        observer = watcher
+    }
+
+    override fun onResume() {
+        super.onResume()
+        trigger("resumed", JSObject())
+    }
+
+    override fun onDestroy() {
+        observer?.let { activity.contentResolver.unregisterContentObserver(it) }
+        observer = null
+        super.onDestroy()
+    }
+
+    /**
+     * Every song in the music index: its file path (readable with the permission), name, size and modified
+     * time (ms). Music only, not ringtones or recordings.
+     */
+    @Command
+    fun listMusic(invoke: Invoke) {
+        if (musicState() != PermissionState.GRANTED) {
+            invoke.reject("Melue isn't allowed to read the music on this phone")
+            return
+        }
+        val files = JSArray()
+        @Suppress("DEPRECATION") // DATA: still the file's path, and readable with READ_MEDIA_AUDIO.
+        val columns = arrayOf(
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.DATE_MODIFIED,
+        )
+        activity.contentResolver.query(audioCollection(), columns, musicSelection, musicSelectionArgs, null)?.use { c ->
+            while (c.moveToNext()) {
+                val path = c.getString(0) ?: continue
+                files.put(
+                    JSObject()
+                        .put("path", path)
+                        .put("name", c.getString(1) ?: path.substringAfterLast('/'))
+                        .put("size", c.getLong(2))
+                        .put("modifiedAt", c.getLong(3) * 1000),
+                )
+            }
+        }
+        invoke.resolve(JSObject().put("files", files))
+    }
 
     /** How many songs the music index has (music only, not ringtones or recordings). */
     @Command
@@ -71,8 +149,8 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         val count = activity.contentResolver.query(
             audioCollection(),
             arrayOf(MediaStore.Audio.Media._ID),
-            "${MediaStore.Audio.Media.IS_MUSIC} != 0",
-            null,
+            musicSelection,
+            musicSelectionArgs,
             null,
         )?.use { it.count } ?: 0
         invoke.resolve(JSObject().put("count", count))

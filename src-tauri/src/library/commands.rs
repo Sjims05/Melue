@@ -4,7 +4,8 @@
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
-use super::{android, Folder, FolderKind, Library, Result};
+use super::scan::ScanSummary;
+use super::{android, scanner, Folder, FolderKind, Library, Result};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,6 +78,13 @@ pub fn library_set_folder_enabled(library: State<'_, Library>, id: i64, enabled:
 #[tauri::command(async)]
 pub fn library_rename_folder(library: State<'_, Library>, id: i64, name: String) -> Result<Folder> {
     library.rename_folder(id, &name)
+}
+
+/// Scans every switched-on folder (the refresh button) and returns what changed; null when a scan was
+/// already running (it goes once more instead). Progress also comes as `library-scan` events.
+#[tauri::command(async)]
+pub fn library_scan(app: AppHandle) -> Result<Option<ScanSummary>> {
+    scanner::scan_all(&app)
 }
 
 #[derive(Serialize)]

@@ -5,6 +5,8 @@ mod android;
 mod commands;
 mod folders;
 mod migrations;
+pub mod scan;
+pub mod scanner;
 #[cfg(test)]
 mod schema_tests;
 #[cfg(test)]

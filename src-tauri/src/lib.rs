@@ -137,6 +137,9 @@ pub fn run() {
             // The music library, in the app's data folder.
             let library = library::Library::open(&app.path().app_data_dir()?.join("library.db"))?;
             app.manage(library);
+            // Scanning: once now (start-up, in the background), and after changes on Android.
+            app.manage(library::scanner::Scanner::default());
+            library::scanner::start(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -152,6 +155,7 @@ pub fn run() {
             library::library_set_folder_enabled,
             library::library_rename_folder,
             library::library_music_access,
+            library::library_scan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

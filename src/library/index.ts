@@ -3,6 +3,7 @@
  * and tags. The UI uses these instead of calling the commands itself.
  */
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 export interface LibraryStatus {
   /** The database's schema version (it upgrades itself when the app updates). */
@@ -43,6 +44,25 @@ export interface MusicAccess {
   songs: number | null
 }
 
+/** What a scan changed. */
+export interface ScanSummary {
+  added: number
+  changed: number
+  /** Files that are gone (their songs are kept, hidden, until they're back). */
+  missing: number
+  /** Missing before, back now. */
+  returned: number
+  /** Found under another name or folder (they kept their likes, playlists and history). */
+  moved: number
+  unchanged: number
+}
+
+/** A scan's progress: it started, one folder is done (or couldn't be read), it finished. */
+export type ScanEvent =
+  | { phase: 'started' }
+  | { phase: 'folder'; folderId: number; name: string; summary: ScanSummary | null; error: string | null }
+  | { phase: 'finished'; summary: ScanSummary; changed: boolean }
+
 export const library = {
   status: () => invoke<LibraryStatus>('library_status'),
   /** An app setting saved with the library, or null when it was never set. */
@@ -61,6 +81,13 @@ export const library = {
   setFolderEnabled: (id: number, enabled: boolean) => invoke<MusicFolder>('library_set_folder_enabled', { id, enabled }),
   /** An empty name goes back to the folder's own name. */
   renameFolder: (id: number, name: string) => invoke<MusicFolder>('library_rename_folder', { id, name }),
+  /**
+   * Scans every switched-on folder (a refresh button) and resolves with what changed, or null when a scan
+   * was already running (it goes once more). Melue also scans at start-up and, on Android, after changes.
+   */
+  scan: () => invoke<ScanSummary | null>('library_scan'),
+  /** Calls `listener` with every scan's progress. Resolves to a function that stops listening. */
+  onScan: (listener: (event: ScanEvent) => void) => listen<ScanEvent>('library-scan', (e) => listener(e.payload)),
   /** Android: whether Melue may read the music on the phone, asking first with `request`. */
   musicAccess: (request = false) => invoke<MusicAccess>('library_music_access', { request }),
 }

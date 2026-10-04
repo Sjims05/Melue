@@ -2713,7 +2713,7 @@ dependencies = [
 
 [[package]]
 name = "melue"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "lofty",
  "rusqlite",
@@ -4945,6 +4945,7 @@ name = "tauri-plugin-melue-android"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "tauri",
  "tauri-plugin",
 ]

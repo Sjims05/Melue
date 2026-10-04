@@ -11,13 +11,38 @@ import {
   smbListFiles,
   logMsg,
 } from './spike'
-import { ref } from 'vue'
-import { library, type MusicFolder } from '@/library'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { library, type MusicFolder, type ScanSummary } from '@/library'
 import { isAndroid, storage } from '@/platform'
 
 defineProps<{ title: string }>()
 
 const folders = ref<MusicFolder[]>([])
+
+const describe = (s: ScanSummary) =>
+  `${s.added} added, ${s.changed} changed, ${s.missing} missing, ${s.returned} back, ${s.moved} moved, ${s.unchanged} unchanged`
+
+// Scans run at start-up and (Android) after changes too: log them all.
+let stopScanLog: (() => void) | null = null
+onMounted(async () => {
+  stopScanLog = await library.onScan((event) => {
+    if (event.phase === 'folder') {
+      logMsg(event.error ? `Scan: ${event.name} skipped: ${event.error}` : `Scan: ${event.name}: ${describe(event.summary!)}`)
+    } else if (event.phase === 'finished') {
+      logMsg(`Scan finished${event.changed ? '' : ' (nothing changed)'}`)
+      refreshFolders().catch(() => {})
+    }
+  })
+  refreshFolders().catch(() => {})
+})
+onUnmounted(() => stopScanLog?.())
+
+const scanNow = () =>
+  run('Scan', async () => {
+    const started = performance.now()
+    const summary = await library.scan()
+    logMsg(summary ? `Scan took ${Math.round(performance.now() - started)} ms` : 'Scan: one was running, it goes once more')
+  })
 
 async function refreshFolders() {
   folders.value = await library.folders()
@@ -106,6 +131,7 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="libraryStatus">Library status</button>
         <button class="border rounded px-3 py-1" @click="run('Folders', refreshFolders)">Show folders</button>
         <button class="border rounded px-3 py-1" @click="addFolder">Add folder</button>
+        <button class="border rounded px-3 py-1" @click="scanNow">Scan now</button>
         <template v-if="isAndroid">
           <button class="border rounded px-3 py-1" @click="useAllMusic">Use all music on this phone</button>
           <button class="border rounded px-3 py-1" @click="musicPermission">Music permission</button>

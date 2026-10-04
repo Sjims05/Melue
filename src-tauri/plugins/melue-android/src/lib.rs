@@ -32,16 +32,29 @@ pub enum PermissionState {
     PromptWithRationale,
 }
 
+/// A song in Android's music index.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicFile {
+    /// The file's path (readable with the music permission).
+    pub path: String,
+    pub name: String,
+    pub size: i64,
+    /// Milliseconds since 1970.
+    pub modified_at: i64,
+}
+
 #[cfg(target_os = "android")]
 pub use android::{MelueAndroid, MelueAndroidExt};
 
 #[cfg(target_os = "android")]
 mod android {
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
+    use tauri::ipc::Channel;
     use tauri::plugin::PluginHandle;
     use tauri::{Manager, Runtime};
 
-    use super::PermissionState;
+    use super::{MusicFile, PermissionState};
 
     pub struct MelueAndroid<R: Runtime>(pub(crate) PluginHandle<R>);
 
@@ -53,6 +66,17 @@ mod android {
     #[derive(Deserialize)]
     struct Count {
         count: u64,
+    }
+
+    #[derive(Deserialize)]
+    struct Files {
+        files: Vec<MusicFile>,
+    }
+
+    #[derive(Serialize)]
+    struct Listen {
+        event: String,
+        handler: Channel<serde_json::Value>,
     }
 
     impl<R: Runtime> MelueAndroid<R> {
@@ -68,6 +92,23 @@ mod android {
         /// How many songs Android's music index has.
         pub fn count_music(&self) -> Result<u64, String> {
             self.0.run_mobile_plugin::<Count>("countMusic", ()).map(|c| c.count).map_err(|e| e.to_string())
+        }
+
+        /// Every song in Android's music index.
+        pub fn list_music(&self) -> Result<Vec<MusicFile>, String> {
+            self.0.run_mobile_plugin::<Files>("listMusic", ()).map(|f| f.files).map_err(|e| e.to_string())
+        }
+
+        /// Calls `handler` for each of the plugin's `event`s ("musicChanged", "resumed").
+        pub fn listen(&self, event: &str, handler: impl Fn() + Send + Sync + 'static) -> Result<(), String> {
+            let channel = Channel::new(move |_| {
+                handler();
+                Ok(())
+            });
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("registerListener", Listen { event: event.into(), handler: channel })
+                .map(|_| ())
+                .map_err(|e| e.to_string())
         }
     }
 
