@@ -5,7 +5,7 @@
  */
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { onMounted, ref } from 'vue'
-import { player as platformPlayer, type PlayerState, type RepeatMode } from '@/platform'
+import { player as platformPlayer, type PlayerState, type RepeatMode, type UpdateQueueOptions } from '@/platform'
 import { SMB_MUSIC_PATH, ensureConnected, localCopyPath, logMsg, readTrackInfo, source, testTracks } from './spike'
 
 // Every build has a player now.
@@ -153,8 +153,11 @@ async function cycleRepeatMode() {
 async function logQueue() {
   try {
     const { items, currentIndex, playOrder } = await (await player()).getQueue()
-    const upNext = playOrder.map((i) => `${items[i].title}${i === currentIndex ? ' (playing)' : ''}`)
-    logMsg(`Queue in play order: ${upNext.join(' → ') || '(empty)'}`)
+    const name = (i: number) => `${items[i].title}${i === currentIndex ? ' (playing)' : ''}`
+    const inPlayOrder = playOrder.map(name).join(' → ') || '(empty)'
+    const inList = items.map((_, i) => name(i)).join(', ')
+    // Shuffled, the two differ: the list is the playlist's order, the play order what plays when.
+    logMsg(inList === playOrder.map(name).join(', ') ? `Queue: ${inPlayOrder}` : `Queue list: ${inList} | play order: ${inPlayOrder}`)
   } catch (e) {
     logMsg(`getQueue FAILED: ${e}`)
   }
@@ -175,6 +178,45 @@ async function addTrack4ToEnd() {
     await logQueue()
   } catch (e) {
     logMsg(`addToQueue FAILED: ${e}`)
+  }
+}
+
+// As if a sync changed the "All songs" playlist. It alternates: the 2nd song removed and the 4th
+// moved to the front, then the 2nd song back (as a new song, at the end of the playlist).
+let playlistChanged = false
+const updateChoices = {
+  removedCurrent: ['finish', 'skip'],
+  removedItems: ['remove', 'keep'],
+  newItems: ['inPlace', 'end', 'next'],
+  order: ['playlist', 'queue'],
+} as const
+const updateOptions = ref<Required<Omit<UpdateQueueOptions, 'sourceId'>>>({
+  removedCurrent: 'finish',
+  removedItems: 'remove',
+  newItems: 'inPlace',
+  order: 'playlist',
+})
+
+function cycleUpdateOption(key: keyof typeof updateChoices) {
+  const choices = updateChoices[key] as readonly string[]
+  const next = choices[(choices.indexOf(updateOptions.value[key]) + 1) % choices.length]
+  updateOptions.value = { ...updateOptions.value, [key]: next }
+}
+
+async function simulatePlaylistChange() {
+  try {
+    const [first, second, third, fourth] = await testTracks()
+    const items = playlistChanged ? [fourth, first, third, second] : [fourth, first, third]
+    const { added, removed } = await (await player()).updateQueue(items, { sourceId: 'songs', ...updateOptions.value })
+    logMsg(
+      playlistChanged
+        ? `Playlist changed: "${second.title}" added back (${added} added, ${removed} removed)`
+        : `Playlist changed: "${second.title}" removed, "${fourth.title}" moved to the front (${added} added, ${removed} removed)`,
+    )
+    playlistChanged = !playlistChanged
+    await logQueue()
+  } catch (e) {
+    logMsg(`updateQueue FAILED: ${e}`)
   }
 }
 
@@ -262,6 +304,28 @@ onMounted(async () => {
       <button class="border rounded px-3 py-1" @click="playTrack1Next">Play 1st song next</button>
       <button class="border rounded px-3 py-1" @click="addTrack4ToEnd">Add 4th song to end</button>
       <button class="border rounded px-3 py-1" @click="removeUpNext">Remove up next</button>
+      <button class="border rounded px-3 py-1" @click="simulatePlaylistChange">Simulate playlist change</button>
+      <!-- Options that another setting makes irrelevant are greyed out (still clickable, to set them up front). -->
+      <button
+        class="border rounded px-3 py-1"
+        :class="{ 'opacity-40': updateOptions.removedItems === 'keep' }"
+        :title="updateOptions.removedItems === 'keep' ? 'No effect: removed songs are kept, the playing one too' : ''"
+        @click="cycleUpdateOption('removedCurrent')"
+      >
+        Removed playing song: {{ updateOptions.removedCurrent }}
+      </button>
+      <button class="border rounded px-3 py-1" @click="cycleUpdateOption('removedItems')">
+        Removed songs: {{ updateOptions.removedItems }}
+      </button>
+      <button class="border rounded px-3 py-1" @click="cycleUpdateOption('newItems')">New songs: {{ updateOptions.newItems }}</button>
+      <button
+        class="border rounded px-3 py-1"
+        :class="{ 'opacity-40': shuffleOn }"
+        :title="shuffleOn ? 'No effect on what plays while shuffled: the play order is kept (only the list order changes)' : ''"
+        @click="cycleUpdateOption('order')"
+      >
+        Order: {{ updateOptions.order }}
+      </button>
     </div>
   </section>
 </template>

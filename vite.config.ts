@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import tailwindcss from "@tailwindcss/vite";
 import vue from "@vitejs/plugin-vue";
-import tsconfigPaths from "vite-tsconfig-paths";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
@@ -14,7 +13,7 @@ const isIos = platform === "ios";
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [vue(), tailwindcss(), tsconfigPaths()],
+  plugins: [vue(), tailwindcss()],
 
   // The platform this build is for, as true / false constants (see src/platform/platform.ts). Being plain
   // constants, Vite drops the code for the other platforms from the build.
@@ -28,6 +27,8 @@ export default defineConfig(() => ({
   // this project instead, which also guarantees a single copy.
   resolve: {
     dedupe: ["@tauri-apps/api"],
+    // Import aliases (@/...) from tsconfig.json's paths.
+    tsconfigPaths: true,
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

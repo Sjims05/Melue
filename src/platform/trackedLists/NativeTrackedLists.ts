@@ -1,7 +1,7 @@
 import * as audio from 'tauri-plugin-native-audio-api'
 import type { TrackedListChange, TrackedListConfig, TrackedListEntry, TrackedLists } from './TrackedLists'
 
-/** Android / iOS: the native-audio plugin keeps the lists, also while the app isn't running. */
+/** Every platform: the native-audio plugin keeps the lists (on Android also while the app isn't running). */
 export class NativeTrackedLists implements TrackedLists {
   configure = (lists: TrackedListConfig[]) => audio.setTrackedLists(lists)
   get = (listId: string) => audio.getTrackedList(listId)

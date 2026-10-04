@@ -7,6 +7,7 @@ import { onMounted, ref } from 'vue'
 import { setLibrary, setOptions, setControls, onControlPressed } from 'tauri-plugin-native-audio-api'
 import { trackedLists } from '@/platform'
 import PlaybackSpike from './PlaybackSpike.vue'
+import SkipRulesOptions from './SkipRulesOptions.vue'
 import SpikePage from './SpikePage.vue'
 import { logMsg, testTracks } from './spike'
 
@@ -64,7 +65,13 @@ function savedFlag(key: string, fallback: boolean) {
   return saved === null ? fallback : saved === 'true'
 }
 // Same defaults as the plugin.
-const resumeOn = ref(savedFlag('resumeLastQueue', true))
+// Auto-resume: off, paused (load the last queue) or play (load and play it). Older saves were true / false.
+const resumeModes = ['paused', 'play', 'off'] as const
+type ResumeMode = (typeof resumeModes)[number]
+const savedResume = localStorage.getItem('resumeLastQueue')
+const resumeMode = ref<ResumeMode>(
+  savedResume === 'false' ? 'off' : resumeModes.includes(savedResume as ResumeMode) ? (savedResume as ResumeMode) : 'paused',
+)
 const repeatAddedOn = ref(savedFlag('repeatAddedTracks', false))
 // How long the controls stay after a pause: with no limit while Android Auto is connected (if on),
 // otherwise pausedKeepAliveMinutes. Same defaults as the plugin.
@@ -73,11 +80,11 @@ const keepAliveChoices = [30, 5, 1, 0]
 const savedMinutes = Number(localStorage.getItem('pausedKeepAliveMinutes'))
 const keepAliveMinutes = ref(keepAliveChoices.includes(savedMinutes) && localStorage.getItem('pausedKeepAliveMinutes') !== null ? savedMinutes : 30)
 
-async function toggleResume() {
-  resumeOn.value = !resumeOn.value
-  localStorage.setItem('resumeLastQueue', String(resumeOn.value))
-  await setOptions({ resumeLastQueue: resumeOn.value })
-  logMsg(`Auto-resume: ${resumeOn.value ? 'on' : 'off'}`)
+async function cycleResume() {
+  resumeMode.value = resumeModes[(resumeModes.indexOf(resumeMode.value) + 1) % resumeModes.length]
+  localStorage.setItem('resumeLastQueue', resumeMode.value)
+  await setOptions({ resumeLastQueue: resumeMode.value })
+  logMsg(`Auto-resume: ${resumeMode.value}`)
 }
 
 async function toggleRepeatAdded() {
@@ -122,7 +129,7 @@ async function setUpCarButtons() {
 onMounted(async () => {
   try {
     await setOptions({
-      resumeLastQueue: resumeOn.value,
+      resumeLastQueue: resumeMode.value,
       repeatAddedTracks: repeatAddedOn.value,
       keepAliveWhileCarConnected: carKeepAliveOn.value,
       pausedKeepAliveMinutes: keepAliveMinutes.value,
@@ -149,7 +156,7 @@ onMounted(async () => {
       <h2 class="font-semibold">4d. Options</h2>
       <p class="text-sm text-muted-foreground">Car buttons are set up when the app opens; presses show in the log.</p>
       <div class="flex flex-wrap gap-2">
-        <button class="border rounded px-3 py-1" @click="toggleResume">Auto-resume: {{ resumeOn ? 'on' : 'off' }}</button>
+        <button class="border rounded px-3 py-1" @click="cycleResume">Auto-resume: {{ resumeMode }}</button>
         <button class="border rounded px-3 py-1" @click="toggleRepeatAdded">
           Repeat added tracks: {{ repeatAddedOn ? 'on' : 'off' }}
         </button>
@@ -159,6 +166,7 @@ onMounted(async () => {
         <button class="border rounded px-3 py-1" @click="cycleKeepAliveMinutes">
           After pause: {{ keepAliveMinutes }} min
         </button>
+        <SkipRulesOptions />
       </div>
     </section>
   </SpikePage>

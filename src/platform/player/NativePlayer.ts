@@ -1,5 +1,5 @@
 import * as audio from 'tauri-plugin-native-audio-api'
-import type { Player, PlayerQueue, PlayerTrack, RepeatMode, SetQueueOptions } from './Player'
+import type { Player, PlayerQueue, PlayerTrack, RepeatMode, SetQueueOptions, UpdateQueueOptions } from './Player'
 
 /**
  * Every platform: everything goes to the native-audio plugin. On Android / iOS it plays in a native
@@ -12,7 +12,12 @@ import type { Player, PlayerQueue, PlayerTrack, RepeatMode, SetQueueOptions } fr
 export class NativePlayer implements Player {
   initialize = () => audio.initialize()
   getState = () => audio.getState()
-  onState = (listener: Parameters<Player['onState']>[0]) => audio.addStateListener(listener)
+  onState = async (listener: Parameters<Player['onState']>[0]) => {
+    const stop = await audio.addStateListener(listener)
+    // The plugin sends state when it changes; a paused, restored queue doesn't, so start with the current one.
+    listener(await audio.getState())
+    return stop
+  }
 
   play = () => audio.play()
   pause = () => audio.pause()
@@ -27,6 +32,7 @@ export class NativePlayer implements Player {
   getQueue = () => audio.getQueue() as Promise<PlayerQueue>
   skipTo = (index: number) => audio.skipTo(index)
   addToQueue = (items: PlayerTrack[], options?: { playNext?: boolean }) => audio.addToQueue(items, options)
+  updateQueue = (items: PlayerTrack[], options?: UpdateQueueOptions) => audio.updateQueue(items, options)
   removeFromQueue = (index: number) => audio.removeFromQueue(index)
   moveInQueue = (from: number, to: number) => audio.moveInQueue(from, to)
   restoreLastQueue = () => audio.restoreLastQueue()

@@ -5,7 +5,7 @@
  * The platform is fixed at build time, so the unused side of each choice below (and what it imports)
  * is left out of the build: the desktop app doesn't contain the Android storage picker, for example.
  */
-import { isAndroid, isMobile } from './platform'
+import { isAndroid } from './platform'
 import type { Player } from './player/Player'
 import { NativePlayer } from './player/NativePlayer'
 import { NativeTrackedLists } from './trackedLists/NativeTrackedLists'
@@ -29,5 +29,8 @@ export const player: Player | null = new NativePlayer()
 /** Picking and reaching the music folder on this platform. */
 export const storage: MusicStorage = isAndroid ? new AndroidStorage() : new DesktopStorage()
 
-/** Lists kept as things play (recently played, ...), or null where there isn't a version yet (desktop: comes with the desktop player). */
-export const trackedLists: TrackedLists | null = isMobile ? new NativeTrackedLists() : null
+/**
+ * Lists kept as things play (recently played, ...): by the native-audio plugin on every platform.
+ * Typed as nullable so a platform without them can be added later.
+ */
+export const trackedLists: TrackedLists | null = new NativeTrackedLists()

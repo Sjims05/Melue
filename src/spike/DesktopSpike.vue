@@ -5,9 +5,10 @@
  * Android Auto and car sections don't apply.
  */
 import { onMounted, ref } from 'vue'
-import { setOptions, setSkipInterval } from 'tauri-plugin-native-audio-api'
-import { player, type OutputDevices } from '@/platform'
+import { getItemProgress, onPlaybackEvent, setOptions, setSkipInterval } from 'tauri-plugin-native-audio-api'
+import { player, trackedLists, type OutputDevices } from '@/platform'
 import PlaybackSpike from './PlaybackSpike.vue'
+import SkipRulesOptions from './SkipRulesOptions.vue'
 import SpikePage from './SpikePage.vue'
 import { logMsg } from './spike'
 
@@ -70,7 +71,80 @@ async function cycleSkipInterval() {
   logMsg(`Media keys previous / next: ${skipSeconds.value ? `seek ${skipSeconds.value} s` : 'tracks'}`)
 }
 
+// =====================================================================
+// SECTION 4f: saved data (tracked lists, playback events, progress)
+// Like on Android: kept by the plugin and saved between runs.
+// =====================================================================
+const folderTitles: Record<string, string> = { songs: 'All songs' }
+// The plugin has no getter for options, so the test page remembers what it last set.
+const progressOn = ref(localStorage.getItem('trackProgress') === 'true')
+// Same defaults as the plugin.
+const repeatAddedOn = ref(localStorage.getItem('repeatAddedTracks') === 'true')
+// Auto-resume: off, paused (load the last queue) or play (load and play it). Older saves were true / false.
+const resumeModes = ['paused', 'play', 'off'] as const
+type ResumeMode = (typeof resumeModes)[number]
+const savedResume = localStorage.getItem('resumeLastQueue')
+const resumeMode = ref<ResumeMode>(
+  savedResume === 'false' ? 'off' : resumeModes.includes(savedResume as ResumeMode) ? (savedResume as ResumeMode) : 'paused',
+)
+
+async function cycleResume() {
+  resumeMode.value = resumeModes[(resumeModes.indexOf(resumeMode.value) + 1) % resumeModes.length]
+  localStorage.setItem('resumeLastQueue', resumeMode.value)
+  await setOptions({ resumeLastQueue: resumeMode.value })
+  logMsg(`Auto-resume: ${resumeMode.value}`)
+}
+
+async function toggleRepeatAdded() {
+  repeatAddedOn.value = !repeatAddedOn.value
+  localStorage.setItem('repeatAddedTracks', String(repeatAddedOn.value))
+  await setOptions({ repeatAddedTracks: repeatAddedOn.value })
+  logMsg(`Repeat added tracks: ${repeatAddedOn.value ? 'on' : 'off'}`)
+}
+
+async function setUpSavedData() {
+  const lists = trackedLists!
+  // Section 4's "Start queue" plays the "songs" folder; songs count after 30 s.
+  await lists.configure([
+    { id: 'recentPlaylists', track: 'folder', limit: 5 },
+    { id: 'recentSongs', track: 'item', limit: 10, countAfterSeconds: 30 },
+  ])
+  // Changes and events from earlier runs arrive first, then live ones.
+  await lists.onChange(({ listId, entries }) => {
+    const names = entries.map(({ id }) => folderTitles[String(id)] ?? `track ${id}`)
+    logMsg(`Tracked list "${listId}": ${names.join(', ') || '(empty)'}`)
+  })
+  await onPlaybackEvent((event) => {
+    logMsg(`Playback event: ${event.type} track ${event.itemId} at ${Math.round(event.positionMs / 1000)} s (${new Date(event.atMs).toLocaleTimeString()})`)
+  })
+  await setOptions({ trackProgress: progressOn.value, repeatAddedTracks: repeatAddedOn.value, resumeLastQueue: resumeMode.value })
+}
+
+async function showLists() {
+  for (const id of ['recentPlaylists', 'recentSongs']) {
+    const entries = await trackedLists!.get(id)
+    logMsg(`${id}: ${entries.map((e) => `${folderTitles[String(e.id)] ?? `track ${e.id}`} (${new Date(e.playedAtMs).toLocaleTimeString()})`).join(', ') || '(empty)'}`)
+  }
+}
+
+async function toggleProgress() {
+  progressOn.value = !progressOn.value
+  localStorage.setItem('trackProgress', String(progressOn.value))
+  await setOptions({ trackProgress: progressOn.value })
+  logMsg(`Track progress: ${progressOn.value ? 'on' : 'off'}`)
+}
+
+async function showProgress() {
+  const entries = await getItemProgress()
+  logMsg(`Progress: ${entries.map((e) => `track ${e.itemId} ${Math.round(e.progress * 100)}% (${Math.round(e.positionMs / 1000)} s)`).join(', ') || '(none)'}`)
+}
+
 onMounted(async () => {
+  try {
+    await setUpSavedData()
+  } catch (e) {
+    logMsg(`Saved data setup FAILED: ${e}`)
+  }
   try {
     volume.value = (await player!.getState()).volume ?? 1
   } catch {
@@ -117,6 +191,21 @@ onMounted(async () => {
         <button class="border rounded px-3 py-1" @click="cycleSkipInterval">
           Media keys prev/next: {{ skipSeconds ? `seek ${skipSeconds} s` : 'tracks' }}
         </button>
+      </div>
+    </section>
+
+    <section class="space-y-2 border rounded p-3">
+      <h2 class="font-semibold">4f. Saved data</h2>
+      <p class="text-sm text-muted-foreground">
+        Playback events and tracked list changes show in the log. The queue, volume, output device and options come back after a restart.
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <button class="border rounded px-3 py-1" @click="showLists">Show recently played</button>
+        <button class="border rounded px-3 py-1" @click="cycleResume">Auto-resume: {{ resumeMode }}</button>
+        <SkipRulesOptions />
+        <button class="border rounded px-3 py-1" @click="toggleRepeatAdded">Repeat added tracks: {{ repeatAddedOn ? 'on' : 'off' }}</button>
+        <button class="border rounded px-3 py-1" @click="toggleProgress">Track progress: {{ progressOn ? 'on' : 'off' }}</button>
+        <button class="border rounded px-3 py-1" @click="showProgress">Show progress</button>
       </div>
     </section>
   </SpikePage>

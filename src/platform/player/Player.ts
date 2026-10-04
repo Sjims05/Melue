@@ -62,6 +62,27 @@ export interface OutputDevices {
   active: string | null
 }
 
+export interface UpdateQueueOptions {
+  /** The playlist / album the queue now plays; unchanged when left out. */
+  sourceId?: string
+  /** The playing track left the playlist: let it `finish` (default), or `skip` to the next now. */
+  removedCurrent?: 'finish' | 'skip'
+  /** Tracks no longer in the playlist: `remove` (default) or `keep` them in the queue. */
+  removedItems?: 'remove' | 'keep'
+  /** New tracks: at their place in the playlist (`inPlace`, default), at the `end` (shuffled there when shuffling), or `next`. */
+  newItems?: 'inPlace' | 'end' | 'next'
+  /** The list order: the `playlist`'s new order (default) or the `queue`'s current one. */
+  order?: 'playlist' | 'queue'
+}
+
+export interface UpdateQueueResult {
+  state: PlayerState
+  /** Tracks new to the playlist. */
+  added: number
+  /** Tracks no longer in the playlist. */
+  removed: number
+}
+
 export interface SetQueueOptions {
   startIndex?: number
   /** Seconds into the first track. */
@@ -74,7 +95,7 @@ export interface Player {
   /** Call once before anything else. */
   initialize(): Promise<PlayerState>
   getState(): Promise<PlayerState>
-  /** Calls `listener` on every state change. Resolves to a function that stops listening. */
+  /** Calls `listener` with the current state, then on every change. Resolves to a function that stops listening. */
   onState(listener: (state: PlayerState) => void): Promise<() => void>
 
   play(): Promise<PlayerState>
@@ -91,6 +112,12 @@ export interface Player {
   /** Index into the queue's `items`. */
   skipTo(index: number): Promise<PlayerState>
   addToQueue(items: PlayerTrack[], options?: { playNext?: boolean }): Promise<PlayerState>
+  /**
+   * The playlist the queue plays changed (e.g. after a sync): `items` is its new content, matched by
+   * id. What stays keeps its place, new tracks are added, missing ones removed (see the options);
+   * tracks added with addToQueue stay.
+   */
+  updateQueue(items: PlayerTrack[], options?: UpdateQueueOptions): Promise<UpdateQueueResult>
   /** Index into the queue's `items`. */
   removeFromQueue(index: number): Promise<PlayerState>
   moveInQueue(from: number, to: number): Promise<PlayerState>
