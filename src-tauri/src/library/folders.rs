@@ -28,7 +28,7 @@ impl FolderKind {
         }
     }
 
-    fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "path" => Some(Self::Path),
             "android_media" => Some(Self::AndroidMedia),

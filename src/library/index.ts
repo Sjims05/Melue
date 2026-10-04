@@ -2,7 +2,7 @@
  * Melue's music library, kept by the app's Rust side (src-tauri/src/library): the database, scanning
  * and tags. The UI uses these instead of calling the commands itself.
  */
-import { invoke } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 export interface LibraryStatus {
@@ -55,13 +55,58 @@ export interface ScanSummary {
   /** Found under another name or folder (they kept their likes, playlists and history). */
   moved: number
   unchanged: number
+  /** Songs whose tags were read (new or changed files). */
+  tagsRead: number
+  /** Songs whose tags couldn't be read (they keep their file names as titles, and still play). */
+  unreadable: number
 }
 
-/** A scan's progress: it started, one folder is done (or couldn't be read), it finished. */
+/**
+ * A scan's progress: it started, one folder is listed (or couldn't be read), tags are being read (the
+ * second pass, for new and changed songs), it finished.
+ */
 export type ScanEvent =
   | { phase: 'started' }
   | { phase: 'folder'; folderId: number; name: string; summary: ScanSummary | null; error: string | null }
+  | { phase: 'tags'; done: number; total: number }
   | { phase: 'finished'; summary: ScanSummary; changed: boolean }
+
+/** A song, with its tags as the file has them (the grouping into albums and artists comes later). */
+export interface Track {
+  id: number
+  folderId: number
+  /** The title tag, or the file's name. */
+  title: string
+  artist: string | null
+  album: string | null
+  albumArtist: string | null
+  trackNo: number | null
+  discNo: number | null
+  year: number | null
+  genre: string | null
+  durationMs: number | null
+  /** mp3, flac, m4a, ogg, opus, wav, ... */
+  format: string | null
+  bitrateKbps: number | null
+  sampleRate: number | null
+  /** Its cover, for coverUrl (null: none). */
+  cover: string | null
+  /** False until the scan's second pass has read its tags. */
+  tagsRead: boolean
+  /** Why its tags couldn't be read. */
+  tagsError: string | null
+}
+
+export interface FolderCovers {
+  /** Whether all music on the phone uses cover images next to the songs (cover.jpg, folder.jpg). */
+  enabled: boolean
+  /** The photos permission they need. Always 'granted' on desktop. */
+  permission: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale'
+}
+
+/** The address of a cover: small (300 px, lists and grids) or large (1000 px, the player). */
+export const coverUrl = (cover: string, size: 'small' | 'large' = 'small') =>
+  convertFileSrc(`${cover}-${size === 'small' ? 300 : 1000}.jpg`, 'cover')
 
 export const library = {
   status: () => invoke<LibraryStatus>('library_status'),
@@ -90,4 +135,11 @@ export const library = {
   onScan: (listener: (event: ScanEvent) => void) => listen<ScanEvent>('library-scan', (e) => listener(e.payload)),
   /** Android: whether Melue may read the music on the phone, asking first with `request`. */
   musicAccess: (request = false) => invoke<MusicAccess>('library_music_access', { request }),
+
+  /** Songs that are there, by title. */
+  tracks: (offset = 0, limit = 100) => invoke<Track[]>('library_tracks', { offset, limit }),
+  /** Android, all music on the phone: whether cover images next to the songs are used (off by default). */
+  folderCovers: () => invoke<FolderCovers>('library_folder_covers'),
+  /** Switching on asks for the photos permission, and is refused without it. Rescans either way. */
+  setFolderCovers: (enabled: boolean) => invoke<FolderCovers>('library_set_folder_covers', { enabled }),
 }

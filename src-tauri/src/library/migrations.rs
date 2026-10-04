@@ -12,6 +12,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/001_settings.sql"),
     include_str!("sql/002_library.sql"),
     include_str!("sql/003_track_stats.sql"),
+    include_str!("sql/004_tags.sql"),
 ];
 
 /// The newest schema version.

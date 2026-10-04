@@ -132,6 +132,13 @@ pub fn run() {
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SmbState(Arc::new(Mutex::new(None))))
+        // Covers for the UI: cover://localhost/<file>-300.jpg (src/library's coverUrl makes these).
+        .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
+            use tauri::Manager;
+            let covers = ctx.app_handle().state::<library::Library>().covers_dir().to_path_buf();
+            let path = request.uri().path().to_string();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(library::covers::serve(&covers, &path)));
+        })
         .setup(|app| {
             use tauri::Manager;
             // The music library, in the app's data folder.
@@ -156,6 +163,9 @@ pub fn run() {
             library::library_rename_folder,
             library::library_music_access,
             library::library_scan,
+            library::library_tracks,
+            library::library_folder_covers,
+            library::library_set_folder_covers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

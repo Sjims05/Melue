@@ -1,5 +1,6 @@
-//! Melue's own Android code (see android/): the permission to read the music on the phone, and Android's
-//! music index. Melue's Rust code uses it through [`MelueAndroidExt`]; there are no JavaScript commands.
+//! Melue's own Android code (see android/): the permissions to read the music (and, opt-in, photos) on
+//! the phone, and Android's music index. Melue's Rust code uses it through [`MelueAndroidExt`]; there are
+//! no JavaScript commands.
 //! Elsewhere than Android the plugin does nothing.
 
 use serde::{Deserialize, Serialize};
@@ -87,6 +88,16 @@ mod android {
         /// Asks for the permission when it isn't granted (waits for the user's answer).
         pub fn request_music_permission(&self) -> Result<PermissionState, String> {
             self.0.run_mobile_plugin::<State>("requestMusicPermission", ()).map(|s| s.state).map_err(|e| e.to_string())
+        }
+
+        /// Whether Melue may read the photos on the phone (cover images next to the songs).
+        pub fn photos_permission(&self) -> Result<PermissionState, String> {
+            self.0.run_mobile_plugin::<State>("photosPermission", ()).map(|s| s.state).map_err(|e| e.to_string())
+        }
+
+        /// Asks for the photos permission when it isn't granted (waits for the user's answer).
+        pub fn request_photos_permission(&self) -> Result<PermissionState, String> {
+            self.0.run_mobile_plugin::<State>("requestPhotosPermission", ()).map(|s| s.state).map_err(|e| e.to_string())
         }
 
         /// How many songs Android's music index has.

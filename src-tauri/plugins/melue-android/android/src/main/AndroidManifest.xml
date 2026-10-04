@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Reading the music on the phone: Android 13 and newer. -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <!-- The same on Android 12 and older. -->
+    <!-- Cover images next to the songs (folder.jpg) with all music on the phone: only asked for when the
+         user switches that on. Android 13 and newer. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Music and photos on Android 12 and older. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 </manifest>

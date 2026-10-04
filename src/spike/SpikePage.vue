@@ -12,12 +12,14 @@ import {
   logMsg,
 } from './spike'
 import { onMounted, onUnmounted, ref } from 'vue'
-import { library, type MusicFolder, type ScanSummary } from '@/library'
+import { coverUrl, library, type FolderCovers, type MusicFolder, type ScanSummary, type Track } from '@/library'
 import { isAndroid, storage } from '@/platform'
 
 defineProps<{ title: string }>()
 
 const folders = ref<MusicFolder[]>([])
+const songs = ref<Track[] | null>(null)
+const folderCovers = ref<FolderCovers | null>(null)
 
 const describe = (s: ScanSummary) =>
   `${s.added} added, ${s.changed} changed, ${s.missing} missing, ${s.returned} back, ${s.moved} moved, ${s.unchanged} unchanged`
@@ -28,12 +30,21 @@ onMounted(async () => {
   stopScanLog = await library.onScan((event) => {
     if (event.phase === 'folder') {
       logMsg(event.error ? `Scan: ${event.name} skipped: ${event.error}` : `Scan: ${event.name}: ${describe(event.summary!)}`)
+    } else if (event.phase === 'tags') {
+      // Every batch of 50 sends one: log the first, every 500th and the last.
+      if (event.done <= 50 || event.done % 500 === 0 || event.done === event.total) {
+        logMsg(`Reading tags: ${event.done} of ${event.total}`)
+      }
     } else if (event.phase === 'finished') {
-      logMsg(`Scan finished${event.changed ? '' : ' (nothing changed)'}`)
+      const s = event.summary
+      const tags = s.tagsRead + s.unreadable ? `, tags read: ${s.tagsRead}, unreadable: ${s.unreadable}` : ''
+      logMsg(`Scan finished${event.changed ? '' : ' (nothing changed)'}${tags}`)
       refreshFolders().catch(() => {})
+      if (songs.value) showSongs().catch(() => {})
     }
   })
   refreshFolders().catch(() => {})
+  if (isAndroid) folderCovers.value = await library.folderCovers().catch(() => null)
 })
 onUnmounted(() => stopScanLog?.())
 
@@ -82,6 +93,32 @@ const toggleFolder = (folder: MusicFolder) =>
     const changed = await library.setFolderEnabled(folder.id, !folder.enabled)
     logMsg(`${changed.name}: ${changed.enabled ? 'on' : 'off'}`)
   })
+
+async function showSongs() {
+  songs.value = await library.tracks(0, 50)
+}
+
+const toggleFolderCovers = () =>
+  run('Covers next to songs', async () => {
+    folderCovers.value = await library.setFolderCovers(!folderCovers.value?.enabled)
+    logMsg(`Covers next to songs: ${folderCovers.value.enabled ? 'on' : 'off'} (photos permission: ${folderCovers.value.permission})`)
+  })
+
+const duration = (ms: number | null) =>
+  ms === null ? '' : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`
+
+const details = (song: Track) =>
+  [
+    song.trackNo && `#${song.discNo ? `${song.discNo}.` : ''}${song.trackNo}`,
+    song.year,
+    song.genre,
+    duration(song.durationMs),
+    song.format,
+    song.bitrateKbps && `${song.bitrateKbps} kbps`,
+    song.sampleRate && `${song.sampleRate / 1000} kHz`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
 const removeFolder = (folder: MusicFolder) =>
   run('Remove folder', async () => {
@@ -132,9 +169,13 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="run('Folders', refreshFolders)">Show folders</button>
         <button class="border rounded px-3 py-1" @click="addFolder">Add folder</button>
         <button class="border rounded px-3 py-1" @click="scanNow">Scan now</button>
+        <button class="border rounded px-3 py-1" @click="run('Songs', showSongs)">Show songs</button>
         <template v-if="isAndroid">
           <button class="border rounded px-3 py-1" @click="useAllMusic">Use all music on this phone</button>
           <button class="border rounded px-3 py-1" @click="musicPermission">Music permission</button>
+          <button class="border rounded px-3 py-1" @click="toggleFolderCovers">
+            Covers next to songs: {{ folderCovers?.enabled ? 'on' : 'off' }}
+          </button>
         </template>
       </div>
       <ul class="text-sm space-y-1">
@@ -145,6 +186,25 @@ async function libraryStatus() {
           <button class="border rounded px-2 text-xs" @click="removeFolder(folder)">Remove</button>
         </li>
       </ul>
+      <div v-if="songs" class="space-y-1">
+        <div class="text-xs text-muted-foreground">The first {{ songs.length }} songs by title</div>
+        <div v-for="song in songs" :key="song.id" class="flex items-center gap-2 text-sm">
+          <img v-if="song.cover" :src="coverUrl(song.cover)" class="w-10 h-10 rounded object-cover shrink-0" alt="" />
+          <div v-else class="w-10 h-10 rounded bg-muted shrink-0" />
+          <div class="min-w-0">
+            <div class="truncate">{{ song.title }}</div>
+            <div class="truncate text-xs text-muted-foreground">
+              {{ [song.artist, song.album].filter(Boolean).join(' — ') }}
+              <span v-if="song.albumArtist && song.albumArtist !== song.artist">(album: {{ song.albumArtist }})</span>
+            </div>
+            <div class="truncate text-xs text-muted-foreground">
+              <template v-if="song.tagsError">Tags unreadable: {{ song.tagsError }}</template>
+              <template v-else-if="!song.tagsRead">Tags not read yet</template>
+              <template v-else>{{ details(song) }}</template>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="space-y-2 border rounded p-3">

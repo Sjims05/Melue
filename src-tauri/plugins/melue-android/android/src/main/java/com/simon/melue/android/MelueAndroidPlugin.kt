@@ -22,6 +22,7 @@ import app.tauri.plugin.Plugin
 /**
  * Melue's own Android code: the permission to read the music on the phone, and Android's music index
  * (MediaStore), which knows every song on the phone and its SD cards. Called from Melue's Rust code.
+ * Also the permission to read photos, which the opt-in covers next to the songs (folder.jpg) need.
  *
  * Events (to Rust listeners): "musicChanged" when the music index changes (songs added, removed, edited
  * while Melue runs), "resumed" when the app comes back to the foreground.
@@ -30,7 +31,8 @@ import app.tauri.plugin.Plugin
     permissions = [
         // Android 13 and newer.
         Permission(strings = [Manifest.permission.READ_MEDIA_AUDIO], alias = "audio"),
-        // Android 12 and older.
+        Permission(strings = [Manifest.permission.READ_MEDIA_IMAGES], alias = "photos"),
+        // Android 12 and older (one permission for music and photos).
         Permission(strings = [Manifest.permission.READ_EXTERNAL_STORAGE], alias = "storage"),
     ]
 )
@@ -59,6 +61,31 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     @PermissionCallback
     private fun musicPermissionResult(invoke: Invoke) {
         musicPermission(invoke)
+    }
+
+    /** The permission this Android version uses for reading photos. */
+    private fun photosAlias() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) "photos" else "storage"
+
+    private fun photosState(): PermissionState = getPermissionState(photosAlias()) ?: PermissionState.DENIED
+
+    /** Whether Melue may read the photos on the phone (for cover images next to the songs). */
+    @Command
+    fun photosPermission(invoke: Invoke) {
+        invoke.resolve(JSObject().put("state", photosState().toString()))
+    }
+
+    @Command
+    fun requestPhotosPermission(invoke: Invoke) {
+        if (photosState() == PermissionState.GRANTED) {
+            photosPermission(invoke)
+            return
+        }
+        requestPermissionForAlias(photosAlias(), invoke, "photosPermissionResult")
+    }
+
+    @PermissionCallback
+    private fun photosPermissionResult(invoke: Invoke) {
+        photosPermission(invoke)
     }
 
     /**

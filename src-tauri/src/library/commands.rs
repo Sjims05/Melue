@@ -5,7 +5,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use super::scan::ScanSummary;
-use super::{android, scanner, Folder, FolderKind, Library, Result};
+use super::{android, scanner, Folder, FolderKind, Library, Result, Track};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +67,8 @@ pub fn library_remove_folder(app: AppHandle, library: State<'_, Library>, id: i6
     if folder.kind == FolderKind::AndroidTree {
         android::release_folder_access(&app, &folder.location);
     }
+    // Tidies up the covers only its songs used.
+    scanner::scan_soon(&app);
     Ok(())
 }
 
@@ -106,4 +108,40 @@ pub fn library_music_access(app: AppHandle, request: bool) -> Result<MusicAccess
 #[tauri::command(async)]
 pub fn library_set_setting(library: State<'_, Library>, key: String, value: String) -> Result<()> {
     library.set_setting(&key, &value)
+}
+
+// ---- songs
+
+/// Songs that are there, by title (`limit` from `offset`).
+#[tauri::command(async)]
+pub fn library_tracks(library: State<'_, Library>, offset: u32, limit: u32) -> Result<Vec<Track>> {
+    library.tracks(offset, limit)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderCovers {
+    /// Whether all music on the phone uses the cover images next to the songs (cover.jpg, folder.jpg).
+    pub enabled: bool,
+    /// The photos permission they need: "granted", "denied", "prompt"... Desktop: granted.
+    pub permission: String,
+}
+
+/// Android, all music on the phone: whether cover images next to the songs are used (off unless switched on).
+#[tauri::command(async)]
+pub fn library_folder_covers(app: AppHandle, library: State<'_, Library>) -> Result<FolderCovers> {
+    let enabled = library.setting(android::FOLDER_COVERS_SETTING)?.as_deref() == Some("1");
+    Ok(FolderCovers { enabled, permission: android::photos_access(&app, false)? })
+}
+
+/// Switches cover images next to the songs on or off, then rescans. Switching on asks for the photos
+/// permission, and is refused (stays off) without it.
+#[tauri::command(async)]
+pub fn library_set_folder_covers(app: AppHandle, library: State<'_, Library>, enabled: bool) -> Result<FolderCovers> {
+    if enabled && android::photos_access(&app, true)? != "granted" {
+        return Err("Melue needs permission to read photos for the cover images next to the songs".into());
+    }
+    library.set_setting(android::FOLDER_COVERS_SETTING, if enabled { "1" } else { "0" })?;
+    scanner::scan_soon(&app);
+    library_folder_covers(app, library)
 }

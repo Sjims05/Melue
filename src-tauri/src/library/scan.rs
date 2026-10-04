@@ -4,6 +4,9 @@
 //! are gone are marked missing (their likes, playlists and history stay, and they come back if the file
 //! does); a missing file that turns up under another name (the same size and modified time) is a move,
 //! so it keeps its library entry. Unchanged files cost a comparison.
+//!
+//! This is the first, quick pass: songs show up with their file names as titles. New and changed files
+//! are marked for the second pass, which reads their tags and covers (tags.rs).
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -26,6 +29,16 @@ pub struct FoundFile {
     pub size: i64,
     /// Milliseconds since 1970.
     pub modified_at: i64,
+    /// A cover image next to the file (cover.jpg, folder.jpg, ...), for when it has none of its own.
+    pub folder_cover: Option<FolderCover>,
+}
+
+/// An image file a folder's songs take as their cover.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderCover {
+    /// In the same form as the songs' paths.
+    pub path: String,
+    pub modified_at: i64,
 }
 
 /// What a scan changed.
@@ -41,11 +54,15 @@ pub struct ScanSummary {
     /// Found under another name or folder (kept its entry).
     pub moved: u32,
     pub unchanged: u32,
+    /// Songs whose tags were read (new or changed files).
+    pub tags_read: u32,
+    /// Songs whose tags couldn't be read (they keep their file names as titles, and still play).
+    pub unreadable: u32,
 }
 
 impl ScanSummary {
     pub fn changed_anything(&self) -> bool {
-        self.added + self.changed + self.missing + self.returned + self.moved > 0
+        self.added + self.changed + self.missing + self.returned + self.moved + self.tags_read + self.unreadable > 0
     }
 
     pub fn add(&mut self, other: ScanSummary) {
@@ -55,7 +72,51 @@ impl ScanSummary {
         self.returned += other.returned;
         self.moved += other.moved;
         self.unchanged += other.unchanged;
+        self.tags_read += other.tags_read;
+        self.unreadable += other.unreadable;
     }
+}
+
+/// Image names a folder's cover goes by, best first (with one of the [`IMAGE_EXTENSIONS`]).
+const COVER_NAMES: &[&str] = &["cover", "folder", "front", "album"];
+const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+/// How good a name is for a folder's cover (lower is better), or None when it isn't one: cover.jpg,
+/// folder.jpg, front.jpg, album.jpg, then Windows Media Player's AlbumArt_{...}_Large.jpg / AlbumArtSmall.jpg.
+pub fn cover_rank(name: &str) -> Option<usize> {
+    let path = Path::new(name);
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    if !IMAGE_EXTENSIONS.contains(&extension.as_str()) {
+        return None;
+    }
+    let stem = path.file_stem()?.to_str()?.to_ascii_lowercase();
+    if let Some(rank) = COVER_NAMES.iter().position(|n| *n == stem) {
+        return Some(rank);
+    }
+    stem.starts_with("albumart").then(|| COVER_NAMES.len() + usize::from(stem.contains("small")))
+}
+
+/// The best cover among a folder's files, given as (file name, cover) pairs.
+pub fn pick_cover(files: impl IntoIterator<Item = (String, FolderCover)>) -> Option<FolderCover> {
+    files
+        .into_iter()
+        .filter_map(|(name, cover)| cover_rank(&name).map(|rank| ((rank, name), cover)))
+        .min_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, cover)| cover)
+}
+
+/// The cover image in a folder, with its absolute path (for songs listed by their absolute paths: all music
+/// on an Android phone).
+#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+pub fn find_folder_cover(dir: &Path) -> Option<FolderCover> {
+    let images = std::fs::read_dir(dir).ok()?.flatten().filter_map(|entry| {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        cover_rank(&name)?;
+        let meta = entry.metadata().ok().filter(|m| m.is_file())?;
+        let path = entry.path().to_string_lossy().into_owned();
+        Some((name, FolderCover { path, modified_at: modified_ms(&meta) }))
+    });
+    pick_cover(images)
 }
 
 pub fn is_audio(name: &str) -> bool {
@@ -80,6 +141,9 @@ pub fn list_folder(root: &Path) -> Result<Vec<FoundFile>> {
         if dir != root && entries.iter().any(|e| e.file_name() == ".nomedia") {
             continue;
         }
+        let relative = |path: &Path| path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/");
+        let mut songs = Vec::new();
+        let mut images = Vec::new();
         for entry in entries {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') {
@@ -89,12 +153,19 @@ pub fn list_folder(root: &Path) -> Result<Vec<FoundFile>> {
             // Symlinked folders are skipped (they could loop, or point into another library folder).
             if kind.is_dir() {
                 stack.push(entry.path());
-            } else if kind.is_file() && is_audio(&name) {
+            } else if kind.is_file() {
                 let Ok(meta) = entry.metadata() else { continue };
-                let relative = entry.path().strip_prefix(root).unwrap_or(&entry.path()).to_string_lossy().replace('\\', "/");
-                found.push(FoundFile { path: relative, name, size: meta.len() as i64, modified_at: modified_ms(&meta) });
+                let modified_at = modified_ms(&meta);
+                if is_audio(&name) {
+                    let path = relative(&entry.path());
+                    songs.push(FoundFile { path, name, size: meta.len() as i64, modified_at, folder_cover: None });
+                } else if cover_rank(&name).is_some() {
+                    images.push((name, FolderCover { path: relative(&entry.path()), modified_at }));
+                }
             }
         }
+        let cover = pick_cover(images);
+        found.extend(songs.into_iter().map(|song| FoundFile { folder_cover: cover.clone(), ..song }));
     }
     found.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(found)
@@ -118,11 +189,23 @@ fn format_from_name(name: &str) -> Option<String> {
     Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase())
 }
 
+/// How the library sorts by a name (the grouping rules, step 6, refine this).
+pub fn sort_key(name: &str) -> String {
+    name.to_lowercase()
+}
+
 struct Existing {
     id: i64,
     size: i64,
     modified_at: i64,
     missing: bool,
+    folder_cover: Option<FolderCover>,
+    tag_title: Option<String>,
+    tag_title_sort: Option<String>,
+}
+
+fn cover_columns(cover: &Option<FolderCover>) -> (Option<&str>, Option<i64>) {
+    (cover.as_ref().map(|c| c.path.as_str()), cover.as_ref().map(|c| c.modified_at))
 }
 
 impl Library {
@@ -136,11 +219,28 @@ impl Library {
         let mut existing: HashMap<String, Existing> = HashMap::new();
         {
             let mut stmt = tx
-                .prepare("SELECT id, path, size, modified_at, missing_since IS NOT NULL FROM tracks WHERE folder_id = ?1")
+                .prepare(
+                    "SELECT id, path, size, modified_at, missing_since IS NOT NULL, folder_cover, folder_cover_modified_at,
+                            tag_title, tag_title_sort
+                     FROM tracks WHERE folder_id = ?1",
+                )
                 .map_err(err)?;
             let rows = stmt
                 .query_map([folder_id], |r| {
-                    Ok((r.get::<_, String>(1)?, Existing { id: r.get(0)?, size: r.get(2)?, modified_at: r.get(3)?, missing: r.get(4)? }))
+                    let folder_cover = match (r.get::<_, Option<String>>(5)?, r.get::<_, Option<i64>>(6)?) {
+                        (Some(path), Some(modified_at)) => Some(FolderCover { path, modified_at }),
+                        _ => None,
+                    };
+                    let e = Existing {
+                        id: r.get(0)?,
+                        size: r.get(2)?,
+                        modified_at: r.get(3)?,
+                        missing: r.get(4)?,
+                        folder_cover,
+                        tag_title: r.get(7)?,
+                        tag_title_sort: r.get(8)?,
+                    };
+                    Ok((r.get::<_, String>(1)?, e))
                 })
                 .map_err(err)?;
             for row in rows {
@@ -155,13 +255,26 @@ impl Library {
             match existing.remove(&file.path) {
                 Some(e) => {
                     let changed = e.size != file.size || e.modified_at != file.modified_at;
-                    if changed {
+                    let cover_changed = e.folder_cover != file.folder_cover;
+                    if changed || cover_changed {
+                        // Its tags (or its folder's cover) are read again in the second pass. A changed file is
+                        // called after its name until then (its title tag may be gone).
+                        let (cover, cover_modified) = cover_columns(&file.folder_cover);
+                        let title = title_from_name(&file.name);
                         tx.execute(
-                            "UPDATE tracks SET size = ?2, modified_at = ?3, missing_since = NULL WHERE id = ?1",
-                            params![e.id, file.size, file.modified_at],
+                            "UPDATE tracks SET size = ?2, modified_at = ?3, folder_cover = ?4, folder_cover_modified_at = ?5,
+                                 title = CASE WHEN ?6 THEN ?7 ELSE title END,
+                                 sort_title = CASE WHEN ?6 THEN ?8 ELSE sort_title END,
+                                 missing_since = NULL, tags_read_at = NULL
+                             WHERE id = ?1",
+                            params![e.id, file.size, file.modified_at, cover, cover_modified, changed, title, sort_key(&title)],
                         )
                         .map_err(err)?;
-                        summary.changed += 1;
+                        if !changed && e.missing {
+                            summary.returned += 1;
+                        } else {
+                            summary.changed += 1;
+                        }
                     } else if e.missing {
                         tx.execute("UPDATE tracks SET missing_since = NULL WHERE id = ?1", [e.id]).map_err(err)?;
                         summary.returned += 1;
@@ -188,11 +301,19 @@ impl Library {
             let identity = (file.size, file.modified_at);
             let unique = new_by_identity.get(&identity) == Some(&1)
                 && gone_by_identity.get(&identity).is_some_and(|ids| ids.len() == 1);
+            let (cover, cover_modified) = cover_columns(&file.folder_cover);
             if unique {
                 let id = gone_by_identity[&identity][0];
+                let e = existing.values().find(|e| e.id == id).expect("a gone track");
+                // A song without a title tag is called after its file: the new name.
+                let title = e.tag_title.clone().unwrap_or_else(|| title_from_name(&file.name));
+                let sort_title = sort_key(e.tag_title_sort.as_deref().unwrap_or(&title));
+                let cover_changed = e.folder_cover != file.folder_cover;
                 tx.execute(
-                    "UPDATE tracks SET path = ?2, missing_since = NULL WHERE id = ?1",
-                    params![id, file.path],
+                    "UPDATE tracks SET path = ?2, title = ?3, sort_title = ?4, folder_cover = ?5, folder_cover_modified_at = ?6,
+                         missing_since = NULL, tags_read_at = CASE WHEN ?7 THEN NULL ELSE tags_read_at END
+                     WHERE id = ?1",
+                    params![id, file.path, title, sort_title, cover, cover_modified, cover_changed],
                 )
                 .map_err(err)?;
                 moved_ids.insert(id);
@@ -200,9 +321,21 @@ impl Library {
             } else {
                 let title = title_from_name(&file.name);
                 tx.execute(
-                    "INSERT INTO tracks (folder_id, path, size, modified_at, title, sort_title, format, added_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![folder_id, file.path, file.size, file.modified_at, title, title.to_lowercase(), format_from_name(&file.name), now],
+                    "INSERT INTO tracks (folder_id, path, size, modified_at, title, sort_title, format, added_at,
+                                         folder_cover, folder_cover_modified_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![
+                        folder_id,
+                        file.path,
+                        file.size,
+                        file.modified_at,
+                        title,
+                        sort_key(&title),
+                        format_from_name(&file.name),
+                        now,
+                        cover,
+                        cover_modified
+                    ],
                 )
                 .map_err(err)?;
                 summary.added += 1;

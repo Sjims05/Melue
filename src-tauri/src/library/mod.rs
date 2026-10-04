@@ -3,20 +3,26 @@
 
 mod android;
 mod commands;
+pub mod covers;
 mod folders;
 mod migrations;
 pub mod scan;
 pub mod scanner;
 #[cfg(test)]
 mod schema_tests;
+pub mod tags;
+mod tracks;
+#[cfg(test)]
+mod tags_tests;
 #[cfg(test)]
 pub mod testkit;
 
 pub use commands::*;
 pub use folders::{Folder, FolderKind};
+pub use tracks::Track;
 
 use std::fmt::Display;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension};
@@ -37,6 +43,8 @@ pub(crate) fn err(e: impl Display) -> String {
 
 pub struct Library {
     conn: Mutex<Connection>,
+    /// Where the covers are kept (covers.rs): a `covers` folder next to the database.
+    covers_dir: PathBuf,
 }
 
 impl Library {
@@ -50,7 +58,8 @@ impl Library {
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")
             .map_err(err)?;
         migrations::run(&mut conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        let covers_dir = path.parent().unwrap_or(Path::new(".")).join("covers");
+        Ok(Self { conn: Mutex::new(conn), covers_dir })
     }
 
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {

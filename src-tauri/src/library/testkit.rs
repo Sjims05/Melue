@@ -80,8 +80,12 @@ pub struct Tags {
     pub disc: Option<u32>,
     pub year: Option<u16>,
     pub genre: Option<String>,
+    pub compilation: bool,
+    pub artist_sort: Option<String>,
     /// Embed the sample cover (testdata/cover.png).
     pub cover: bool,
+    /// Embed a generated cover instead: a plain picture of this colour (see [`png`]).
+    pub cover_color: Option<[u8; 3]>,
 }
 
 impl Tags {
@@ -130,6 +134,14 @@ impl MusicFolder {
         path
     }
 
+    /// A cover image (PNG) of one colour, e.g. "Album/folder.png".
+    pub fn add_image(&self, relative: &str, color: [u8; 3], width: u32, height: u32) -> PathBuf {
+        let path = self.path(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, png(color, width, height)).unwrap();
+        path
+    }
+
     /// A text file, e.g. an .m3u playlist.
     pub fn add_text(&self, relative: &str, text: &str) -> PathBuf {
         let path = self.path(relative);
@@ -169,6 +181,14 @@ impl MusicFolder {
 /// The path of a sample file in testdata/.
 pub fn sample(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata").join(name)
+}
+
+/// A PNG picture of one colour.
+pub fn png(color: [u8; 3], width: u32, height: u32) -> Vec<u8> {
+    let image = image::RgbImage::from_pixel(width, height, image::Rgb(color));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+    bytes.into_inner()
 }
 
 /// A silent 8 kHz mono 16-bit WAV lasting `millis`.
@@ -219,8 +239,17 @@ fn write_tags(path: &Path, tags: &Tags) {
     if let Some(v) = &tags.genre {
         tag.set_genre(v.clone());
     }
-    if tags.cover {
-        let data = fs::read(sample("cover.png")).unwrap();
+    if tags.compilation {
+        tag.insert_text(ItemKey::FlagCompilation, "1".into());
+    }
+    if let Some(v) = &tags.artist_sort {
+        tag.insert_text(ItemKey::TrackArtistSortOrder, v.clone());
+    }
+    let cover = match tags.cover_color {
+        Some(color) => Some(png(color, 400, 400)),
+        None => tags.cover.then(|| fs::read(sample("cover.png")).unwrap()),
+    };
+    if let Some(data) = cover {
         tag.push_picture(Picture::unchecked(data).pic_type(PictureType::CoverFront).mime_type(MimeType::Png).build());
     }
     tag.save_to_path(path, WriteOptions::default()).unwrap();

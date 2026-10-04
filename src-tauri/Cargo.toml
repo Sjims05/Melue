@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.3.4"
+version = "0.3.5"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -28,6 +28,9 @@ tauri-plugin-fs = "2"
 # The music library: its SQLite database (compiled in, so it's the same on every platform) and tag reading.
 rusqlite = { version = "0.40", features = ["bundled"] }
 lofty = "0.25"
+# Covers: shrinking them (JPEG, PNG and WebP only), and recognising the same cover in many songs.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 smb2 = "0.11"
 # Playback on every platform (its `mobile` and `desktop` features, both on by default).
 tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }

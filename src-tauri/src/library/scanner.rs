@@ -1,7 +1,9 @@
 //! Running scans: every switched-on folder, one scan at a time, at start-up, when asked (the refresh
 //! button), and on Android when the music index changes or the app comes back to the foreground.
-//! Progress goes to the UI as `library-scan` events.
+//! A scan lists every folder first (songs show up with their file names), then reads the tags and covers
+//! of new and changed songs (tags.rs). Progress goes to the UI as `library-scan` events.
 
+use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -12,6 +14,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::scan::{self, ScanSummary};
+use super::tags::{self, TagJob};
 use super::{android, FolderKind, Library, Result};
 
 pub const SCAN_EVENT: &str = "library-scan";
@@ -27,6 +30,8 @@ pub enum ScanEvent {
     /// One folder done: what changed, or why it couldn't be scanned (its songs stay as they were).
     #[serde(rename_all = "camelCase")]
     Folder { folder_id: i64, name: String, summary: Option<ScanSummary>, error: Option<String> },
+    /// Reading tags: `done` of `total` songs.
+    Tags { done: u32, total: u32 },
     /// `changed`: whether anything in the library changed (the UI only needs to reload then).
     #[serde(rename_all = "camelCase")]
     Finished { summary: ScanSummary, changed: bool },
@@ -106,10 +111,11 @@ fn scan_folders(app: &AppHandle) -> Result<ScanSummary> {
     let library = app.state::<Library>();
     let _ = app.emit(SCAN_EVENT, ScanEvent::Started);
     let mut total = ScanSummary::default();
+    let folder_covers = library.setting(android::FOLDER_COVERS_SETTING)?.as_deref() == Some("1");
     for folder in library.folders()?.into_iter().filter(|f| f.enabled) {
         let listed = match folder.kind {
             FolderKind::Path => scan::list_folder(Path::new(&folder.location)),
-            FolderKind::AndroidMedia => android::list_music(app),
+            FolderKind::AndroidMedia => android::list_music(app, folder_covers),
             FolderKind::AndroidTree => android::list_tree(app, &folder.location),
         };
         // A folder that can't be listed (unplugged, offline, no permission) is left as it was: its songs
@@ -124,6 +130,25 @@ fn scan_folders(app: &AppHandle) -> Result<ScanSummary> {
         };
         let _ = app.emit(SCAN_EVENT, event);
     }
+
+    // The second pass: tags and covers of new and changed songs.
+    let open = |job: &TagJob, path: &str| open_file(app, job, path);
+    let mut progress = |done, total| {
+        let _ = app.emit(SCAN_EVENT, ScanEvent::Tags { done, total });
+    };
+    total.add(library.read_tags(&open, &mut progress)?);
+    if let Err(e) = library.clean_covers() {
+        eprintln!("melue: can't clean up the covers: {e}");
+    }
+
     let _ = app.emit(SCAN_EVENT, ScanEvent::Finished { summary: total, changed: total.changed_anything() });
     Ok(total)
+}
+
+/// Opens a song's file (or a folder cover) wherever its folder is.
+fn open_file(app: &AppHandle, job: &TagJob, path: &str) -> Result<File> {
+    match job.kind {
+        FolderKind::AndroidTree => android::open_tree_file(app, &job.location, path),
+        _ => tags::open_local(job, path),
+    }
 }
