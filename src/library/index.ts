@@ -71,7 +71,19 @@ export type ScanEvent =
   | { phase: 'tags'; done: number; total: number }
   | { phase: 'finished'; summary: ScanSummary; changed: boolean }
 
-/** A song, with its tags as the file has them (the grouping into albums and artists comes later). */
+/**
+ * What changed in the library: sent once per change (a scan that found something, a folder added,
+ * removed, switched on or off, or renamed).
+ */
+export interface LibraryChange {
+  reason: 'scan' | 'folders'
+  /** Songs added, changed (tags, cover, file), gone (missing, removed, hidden with their folder) or back. */
+  tracks: number[]
+  /** The playable lists whose songs changed: 'songs' (all songs), 'album:<id>', 'artist:<id>'. */
+  sources: string[]
+}
+
+/** A song, with its tags as the file has them. */
 export interface Track {
   id: number
   folderId: number
@@ -160,6 +172,12 @@ export const library = {
   scan: () => invoke<ScanSummary | null>('library_scan'),
   /** Calls `listener` with every scan's progress. Resolves to a function that stops listening. */
   onScan: (listener: (event: ScanEvent) => void) => listen<ScanEvent>('library-scan', (e) => listener(e.payload)),
+  /**
+   * Calls `listener` whenever the library changes, with what changed (refresh what shows those songs or
+   * lists). Resolves to a function that stops listening.
+   */
+  onChange: (listener: (change: LibraryChange) => void) =>
+    listen<LibraryChange>('library-changed', (e) => listener(e.payload)),
   /** Android: whether Melue may read the music on the phone, asking first with `request`. */
   musicAccess: (request = false) => invoke<MusicAccess>('library_music_access', { request }),
 

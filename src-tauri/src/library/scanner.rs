@@ -2,7 +2,7 @@
 //! button), and on Android when the music index changes or the app comes back to the foreground.
 //! A scan lists every folder first (songs show up with their file names), then reads the tags and covers
 //! of new and changed songs (tags.rs), then groups them into albums and artists (grouping.rs). Progress
-//! goes to the UI as `library-scan` events.
+//! goes to the UI as `library-scan` events, and what it changed as one `library-changed` event (changes.rs).
 
 use std::fs::File;
 use std::path::Path;
@@ -14,6 +14,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
+use super::changes::{tracking, ChangeReason};
 use super::scan::{self, ScanSummary};
 use super::tags::{self, TagJob};
 use super::{android, FolderKind, Library, Result};
@@ -109,6 +110,10 @@ pub fn scan_all(app: &AppHandle) -> Result<Option<ScanSummary>> {
 }
 
 fn scan_folders(app: &AppHandle) -> Result<ScanSummary> {
+    tracking(app, ChangeReason::Scan, false, || scan_folders_now(app))
+}
+
+fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
     let library = app.state::<Library>();
     let _ = app.emit(SCAN_EVENT, ScanEvent::Started);
     let mut total = ScanSummary::default();

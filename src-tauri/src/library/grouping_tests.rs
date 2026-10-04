@@ -325,5 +325,11 @@ fn grouping_ten_thousand_songs() {
     assert_eq!((first.albums, first.artists), (834, 305)); // 300 artists, 5 guests
     assert_eq!(again.written, 0);
     assert!(took < Duration::from_secs(10) && again_took < Duration::from_secs(5), "{took:?} / {again_took:?}");
+
+    // What every scan costs to find what changed (changes.rs): two snapshots and a comparison.
+    let start = Instant::now();
+    let before = t.library.snapshot().unwrap();
+    assert_eq!(before.changes(&t.library.snapshot().unwrap(), super::changes::ChangeReason::Scan), None);
+    println!("10000 songs: change check in {:?}", start.elapsed());
     let _ = m;
 }

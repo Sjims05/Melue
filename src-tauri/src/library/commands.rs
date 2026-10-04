@@ -5,6 +5,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use super::scan::ScanSummary;
+use super::changes::{tracking, ChangeReason};
 use super::{android, scanner, Album, Artist, Folder, FolderKind, Library, Result, Track};
 
 #[derive(Serialize)]
@@ -53,7 +54,7 @@ pub fn library_add_folder(
         FolderKind::AndroidMedia => android::ensure_music_permission(&app)?,
         FolderKind::AndroidTree => android::keep_folder_access(&app, &location)?,
     }
-    let added = library.add_folder(kind, &location, name.as_deref());
+    let added = tracking(&app, ChangeReason::Folders, true, || library.add_folder(kind, &location, name.as_deref()));
     if added.is_err() && kind == FolderKind::AndroidTree {
         android::release_folder_access(&app, &location);
     }
@@ -64,7 +65,7 @@ pub fn library_add_folder(
 #[tauri::command(async)]
 pub fn library_remove_folder(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<()> {
     let folder = library.folder(id)?.ok_or_else(|| format!("no folder {id}"))?;
-    library.remove_folder(id)?;
+    tracking(&app, ChangeReason::Folders, true, || library.remove_folder(id))?;
     if folder.kind == FolderKind::AndroidTree {
         android::release_folder_access(&app, &folder.location);
     }
@@ -74,13 +75,13 @@ pub fn library_remove_folder(app: AppHandle, library: State<'_, Library>, id: i6
 }
 
 #[tauri::command(async)]
-pub fn library_set_folder_enabled(library: State<'_, Library>, id: i64, enabled: bool) -> Result<Folder> {
-    library.set_folder_enabled(id, enabled)
+pub fn library_set_folder_enabled(app: AppHandle, library: State<'_, Library>, id: i64, enabled: bool) -> Result<Folder> {
+    tracking(&app, ChangeReason::Folders, true, || library.set_folder_enabled(id, enabled))
 }
 
 #[tauri::command(async)]
-pub fn library_rename_folder(library: State<'_, Library>, id: i64, name: String) -> Result<Folder> {
-    library.rename_folder(id, &name)
+pub fn library_rename_folder(app: AppHandle, library: State<'_, Library>, id: i64, name: String) -> Result<Folder> {
+    tracking(&app, ChangeReason::Folders, true, || library.rename_folder(id, &name))
 }
 
 /// Scans every switched-on folder (the refresh button) and returns what changed; null when a scan was

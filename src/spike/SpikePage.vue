@@ -35,9 +35,18 @@ const folderCovers = ref<FolderCovers | null>(null)
 const describe = (s: ScanSummary) =>
   `${s.added} added, ${s.changed} changed, ${s.missing} missing, ${s.returned} back, ${s.moved} moved, ${s.unchanged} unchanged`
 
-// Scans run at start-up and (Android) after changes too: log them all.
+// Scans run at start-up and (Android) after changes too: log them all, and what they changed.
 let stopScanLog: (() => void) | null = null
+let stopChangeLog: (() => void) | null = null
 onMounted(async () => {
+  stopChangeLog = await library.onChange((change) => {
+    const sources = change.sources.length > 6 ? `${change.sources.slice(0, 6).join(', ')}, ...` : change.sources.join(', ')
+    logMsg(`Library changed (${change.reason}): ${change.tracks.length} songs${sources ? `; lists: ${sources}` : ''}`)
+    refreshFolders().catch(() => {})
+    if (songs.value) showSongs().catch(() => {})
+    if (albums.value) showAlbums().catch(() => {})
+    if (artists.value) showArtists().catch(() => {})
+  })
   stopScanLog = await library.onScan((event) => {
     if (event.phase === 'folder') {
       logMsg(event.error ? `Scan: ${event.name} skipped: ${event.error}` : `Scan: ${event.name}: ${describe(event.summary!)}`)
@@ -50,16 +59,15 @@ onMounted(async () => {
       const s = event.summary
       const tags = s.tagsRead + s.unreadable ? `, tags read: ${s.tagsRead}, unreadable: ${s.unreadable}` : ''
       logMsg(`Scan finished${event.changed ? '' : ' (nothing changed)'}${tags}`)
-      refreshFolders().catch(() => {})
-      if (songs.value) showSongs().catch(() => {})
-      if (albums.value) showAlbums().catch(() => {})
-      if (artists.value) showArtists().catch(() => {})
     }
   })
   refreshFolders().catch(() => {})
   if (isAndroid) folderCovers.value = await library.folderCovers().catch(() => null)
 })
-onUnmounted(() => stopScanLog?.())
+onUnmounted(() => {
+  stopScanLog?.()
+  stopChangeLog?.()
+})
 
 const scanNow = () =>
   run('Scan', async () => {
