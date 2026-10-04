@@ -147,6 +147,9 @@ pub fn run() {
             // Scanning: once now (start-up, in the background), and after changes on Android.
             app.manage(library::scanner::Scanner::default());
             library::scanner::start(app.handle());
+            // Android Auto's library: sent now and after changes (Android only).
+            app.manage(library::auto::AutoSender::default());
+            library::auto::start(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

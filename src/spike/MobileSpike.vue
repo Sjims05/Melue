@@ -1,59 +1,15 @@
 <script setup lang="ts">
 /**
  * Spike tests for Android / iOS: the shared sections (SpikePage, PlaybackSpike) plus the plugin's
- * mobile-only features (Android Auto library, car buttons, options), which use the plugin directly.
+ * mobile-only options, which use the plugin directly. The Android Auto library and buttons are the real
+ * app's (auto.rs, src/library/playback.ts).
  */
 import { onMounted, ref } from 'vue'
-import { setLibrary, setOptions } from 'tauri-plugin-native-audio-api'
-import { trackedLists } from '@/platform'
+import { setOptions } from 'tauri-plugin-native-audio-api'
 import PlaybackSpike from './PlaybackSpike.vue'
 import SkipRulesOptions from './SkipRulesOptions.vue'
 import SpikePage from './SpikePage.vue'
-import { logMsg, testTracks } from './spike'
-
-// =====================================================================
-// SECTION 4b: Android Auto library (carSupport in tauri.conf.json)
-// Sent once, then saved natively: Auto can browse and play it with the app closed.
-// =====================================================================
-// The playable folders of the test library, by id.
-const folderTitles: Record<string, string> = { songs: 'All songs', 'pl-test': 'Test playlist' }
-
-// "Recently played playlists", kept by the plugin itself: it records which playable folder a queue
-// was started from (picked in Android Auto, or setQueue's sourceId), also with the app closed.
-async function setUpRecentPlaylists() {
-  const lists = trackedLists
-  await lists.configure([{ id: 'recentPlaylists', track: 'folder', limit: 5 }])
-  // Changes from while the app was closed arrive first. The real app would save them in its database.
-  await lists.onChange(({ listId, entries }) => {
-    const names = entries.map(({ id }) => folderTitles[String(id)] ?? String(id))
-    logMsg(`Tracked list "${listId}": ${names.join(', ') || '(empty)'}`)
-  })
-}
-
-async function sendTestLibrary() {
-  try {
-    // Headers by first letter in Android Auto's lists.
-    const items = (await testTracks()).map((t) => ({ ...t, group: t.title.charAt(0).toUpperCase() }))
-    await setLibrary({
-      items,
-      emptyMessage: 'Open Melue to sync your music',
-      root: [
-        // Fills itself from the tracked list; nothing to rebuild when it changes.
-        { id: 'recent', title: 'Recently played', style: 'list', trackedList: 'recentPlaylists' },
-        { id: 'songs', title: 'All songs', playable: true, style: 'list', children: [1, 2, 3, 4] },
-        {
-          id: 'playlists',
-          title: 'Playlists',
-          style: 'list',
-          children: [{ id: 'pl-test', title: 'Test playlist', subtitle: '3rd and 1st downloaded song', playable: true, children: [3, 1] }],
-        },
-      ],
-    })
-    logMsg('Library sent to Android Auto: Recently played + All songs (4) + Playlists > Test playlist (2)')
-  } catch (e) {
-    logMsg(`setLibrary FAILED: ${e}`)
-  }
-}
+import { logMsg } from './spike'
 
 // =====================================================================
 // SECTION 4d: options + car buttons
@@ -115,7 +71,6 @@ onMounted(async () => {
       keepAliveWhileCarConnected: carKeepAliveOn.value,
       pausedKeepAliveMinutes: keepAliveMinutes.value,
     })
-    await setUpRecentPlaylists()
   } catch (e) {
     logMsg(`Setup FAILED: ${e}`)
   }
@@ -125,12 +80,6 @@ onMounted(async () => {
 <template>
   <SpikePage title="Spike Tests">
     <PlaybackSpike />
-
-    <section class="space-y-2 border rounded p-3">
-      <h2 class="font-semibold">4b. Android Auto library</h2>
-      <p class="text-sm text-muted-foreground">Uses the 4 tracks from section 4 (download them once).</p>
-      <button class="border rounded px-3 py-1" @click="sendTestLibrary()">Send test library</button>
-    </section>
 
     <section class="space-y-2 border rounded p-3">
       <h2 class="font-semibold">4d. Options</h2>

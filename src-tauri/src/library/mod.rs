@@ -2,6 +2,9 @@
 //! asks it things through the commands in commands.rs (wrapped for TypeScript in src/library/).
 
 mod android;
+pub mod auto;
+#[cfg(test)]
+mod auto_tests;
 pub mod changes;
 #[cfg(test)]
 mod changes_tests;

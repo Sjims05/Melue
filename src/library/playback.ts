@@ -1,8 +1,9 @@
 /**
  * Playing from the library: starting a list, and what the player reports back. `startPlayback()` runs
- * once at app start: it sets the player's extra buttons (repeat, shuffle, like) and counts playback events
- * and like presses, including those from while the app wasn't running (Android Auto); the player keeps
- * them until they're handed over.
+ * once at app start: it sets the player's extra buttons (repeat, shuffle, like) and its list of recently
+ * played lists, and counts playback events and like presses, including those from while the app wasn't
+ * running (Android Auto); the player keeps them until they're handed over. The Android Auto library itself
+ * is sent from Rust (auto.rs).
  *
  * Keeping the queue in step with library changes happens in Rust (follow.rs), so it works while the UI
  * is asleep.
@@ -15,10 +16,12 @@ import {
   type NativeAudioPlaybackEvent,
 } from 'tauri-plugin-native-audio-api'
 import { invoke } from '@tauri-apps/api/core'
-import { player } from '@/platform'
+import { player, trackedLists } from '@/platform'
 import { library, type PlaybackOutcome, type Source } from '.'
 
 const LIKE_BUTTON = 'like'
+/** The lists played (albums, playlists, artists), most recent first: Android Auto's "Recently played" tab. */
+export const RECENT_LISTS = 'recentLists'
 
 /** Plays a list from its start, or from the song `startAt` (a song id in it). */
 export async function playSource(source: Source, options: { startAt?: number } = {}): Promise<void> {
@@ -54,6 +57,8 @@ export async function startPlayback(): Promise<void> {
   if (started) return
   started = true
   await player.initialize()
+  // The player keeps this itself, also for lists played in the car with the app closed (auto.rs uses it).
+  await trackedLists.configure([{ id: RECENT_LISTS, track: 'folder', limit: 20 }])
   await setControls({
     buttons: [{ action: 'repeat' }, { action: 'shuffle' }, { action: 'custom', id: LIKE_BUTTON, label: 'Like', icon: 'heart', toggle: true }],
   })

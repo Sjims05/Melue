@@ -193,10 +193,11 @@ impl Snapshot {
     }
 }
 
-/// Tells the UI about a change, and brings the playing queue in line when it touches its list (in the
-/// background: the player is asked what it plays).
+/// Tells the UI about a change, sends Android Auto the library (once things settle), and brings the
+/// playing queue in line when it touches its list (in the background: the player is asked what it plays).
 pub fn emit(app: &AppHandle, change: LibraryChange) {
     let _ = app.emit(CHANGE_EVENT, &change);
+    super::auto::send_soon(app);
     let app = app.clone();
     std::thread::spawn(move || super::follow::follow(&app, &change));
 }
