@@ -19,7 +19,10 @@ defineProps<{ title: string }>()
 async function libraryStatus() {
   try {
     const status = await library.status()
-    logMsg(`Library: open, schema version ${status.schemaVersion}`)
+    logMsg(
+      `Library: schema version ${status.schemaVersion} | ${status.folders} folders, ${status.tracks} tracks, ` +
+        `${status.albums} albums, ${status.artists} artists, ${status.playlists} playlists`,
+    )
   } catch (e) {
     logMsg(`Library FAILED: ${e}`)
   }

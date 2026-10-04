@@ -4,6 +4,8 @@
 mod commands;
 mod migrations;
 #[cfg(test)]
+mod schema_tests;
+#[cfg(test)]
 pub mod testkit;
 
 pub use commands::*;
@@ -46,6 +48,21 @@ impl Library {
     /// The schema version the database is at (see migrations.rs).
     pub fn schema_version(&self) -> Result<i64> {
         self.conn().pragma_query_value(None, "user_version", |row| row.get(0)).map_err(err)
+    }
+
+    /// The schema version and how much is in the library.
+    pub fn status(&self) -> Result<LibraryStatus> {
+        let schema_version = self.schema_version()?;
+        let conn = self.conn();
+        let count = |sql: &str| conn.query_row(sql, [], |row| row.get::<_, i64>(0)).map_err(err);
+        Ok(LibraryStatus {
+            schema_version,
+            folders: count("SELECT count(*) FROM folders")?,
+            tracks: count("SELECT count(*) FROM tracks WHERE missing_since IS NULL")?,
+            albums: count("SELECT count(*) FROM albums")?,
+            artists: count("SELECT count(*) FROM artists")?,
+            playlists: count("SELECT count(*) FROM playlists")?,
+        })
     }
 
     pub fn setting(&self, key: &str) -> Result<Option<String>> {

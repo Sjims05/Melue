@@ -10,11 +10,17 @@ use super::{Library, Result};
 #[serde(rename_all = "camelCase")]
 pub struct LibraryStatus {
     pub schema_version: i64,
+    pub folders: i64,
+    /// Tracks whose files are there (not missing).
+    pub tracks: i64,
+    pub albums: i64,
+    pub artists: i64,
+    pub playlists: i64,
 }
 
 #[tauri::command(async)]
 pub fn library_status(library: State<'_, Library>) -> Result<LibraryStatus> {
-    Ok(LibraryStatus { schema_version: library.schema_version()? })
+    library.status()
 }
 
 /// An app setting saved in the library (null when it was never set).

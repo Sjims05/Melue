@@ -7,12 +7,11 @@ use rusqlite::Connection;
 
 use super::{err, Result};
 
+/// The migrations, in order: migration N (sql/00N_*.sql) brings the schema from version N-1 to N.
 const MIGRATIONS: &[&str] = &[
-    // 1: settings the library keeps for itself and the app.
-    "CREATE TABLE settings (
-        key TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL
-    ) STRICT;",
+    include_str!("sql/001_settings.sql"),
+    include_str!("sql/002_library.sql"),
+    include_str!("sql/003_track_stats.sql"),
 ];
 
 /// The newest schema version.

@@ -7,6 +7,12 @@ import { invoke } from '@tauri-apps/api/core'
 export interface LibraryStatus {
   /** The database's schema version (it upgrades itself when the app updates). */
   schemaVersion: number
+  folders: number
+  /** Tracks whose files are there (not missing). */
+  tracks: number
+  albums: number
+  artists: number
+  playlists: number
 }
 
 export const library = {
