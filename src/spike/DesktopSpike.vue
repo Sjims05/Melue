@@ -26,7 +26,7 @@ const skipSeconds = ref(0)
 
 async function applyVolume() {
   try {
-    await player!.setVolume(volume.value)
+    await player.setVolume(volume.value)
   } catch (e) {
     logMsg(`setVolume FAILED: ${e}`)
   }
@@ -34,7 +34,7 @@ async function applyVolume() {
 
 async function refreshOutputs() {
   try {
-    outputs.value = await player!.getOutputDevices()
+    outputs.value = await player.getOutputDevices()
     logMsg(`Outputs: ${outputs.value.devices.length} | selected: ${outputs.value.selected ? deviceName(outputs.value.selected) : 'system default'} | playing on: ${deviceName(outputs.value.active)}`)
   } catch (e) {
     logMsg(`getOutputDevices FAILED: ${e}`)
@@ -43,7 +43,7 @@ async function refreshOutputs() {
 
 async function chooseOutput(id: string | null) {
   try {
-    outputs.value = await player!.setOutputDevice(id)
+    outputs.value = await player.setOutputDevice(id)
     logMsg(`Output: ${id ? deviceName(id) : 'system default'} -> playing on ${deviceName(outputs.value.active)}`)
   } catch (e) {
     logMsg(`setOutputDevice FAILED: ${e}`)
@@ -103,7 +103,7 @@ async function toggleRepeatAdded() {
 }
 
 async function setUpSavedData() {
-  const lists = trackedLists!
+  const lists = trackedLists
   // Section 4's "Start queue" plays the "songs" folder; songs count after 30 s.
   await lists.configure([
     { id: 'recentPlaylists', track: 'folder', limit: 5 },
@@ -122,7 +122,7 @@ async function setUpSavedData() {
 
 async function showLists() {
   for (const id of ['recentPlaylists', 'recentSongs']) {
-    const entries = await trackedLists!.get(id)
+    const entries = await trackedLists.get(id)
     logMsg(`${id}: ${entries.map((e) => `${folderTitles[String(e.id)] ?? `track ${e.id}`} (${new Date(e.playedAtMs).toLocaleTimeString()})`).join(', ') || '(empty)'}`)
   }
 }
@@ -146,7 +146,7 @@ onMounted(async () => {
     logMsg(`Saved data setup FAILED: ${e}`)
   }
   try {
-    volume.value = (await player!.getState()).volume ?? 1
+    volume.value = (await player.getState()).volume ?? 1
   } catch {
     // Shown as 100%.
   }

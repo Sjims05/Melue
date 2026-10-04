@@ -5,11 +5,8 @@
  */
 import { appDataDir, join } from '@tauri-apps/api/path'
 import { onMounted, onUnmounted, ref } from 'vue'
-import { player as platformPlayer, type PlayerState, type RepeatMode, type UpdateQueueOptions } from '@/platform'
+import { player, type PlayerState, type RepeatMode, type UpdateQueueOptions } from '@/platform'
 import { SMB_MUSIC_PATH, ensureConnected, localCopyPath, logMsg, readTrackInfo, source, testTracks } from './spike'
-
-// Every build has a player now.
-const player = async () => platformPlayer!
 
 // =====================================================================
 // SECTION 3: play the local copy
@@ -20,7 +17,7 @@ async function playLocalFile() {
     return
   }
   try {
-    const p = await player()
+    const p = player
     await p.initialize()
     await p.setQueue([{ src: localCopyPath.value, id: 1, ...(await readTrackInfo(localCopyPath.value, 'Downloaded track')) }])
     await p.play()
@@ -80,7 +77,7 @@ const sleepText = () =>
 async function listenToQueue() {
   if (queueListening) return
   queueListening = true
-  await (await player()).onState((state: PlayerState) => {
+  await player.onState((state: PlayerState) => {
     shuffleOn.value = state.shuffle
     repeatMode.value = state.repeatMode
     playing.value = state.isPlaying
@@ -105,7 +102,7 @@ async function listenToQueue() {
 
 async function startQueue() {
   try {
-    const p = await player()
+    const p = player
     await listenToQueue()
     await p.initialize()
     // ids start at 1: the plugin ignores ids <= 0 for progress checkpoints.
@@ -126,16 +123,16 @@ async function run(label: string, action: () => Promise<unknown>) {
   }
 }
 
-const queuePrevious = () => run('Previous', async () => (await player()).previous())
-const queueNext = () => run('Next', async () => (await player()).next())
-const togglePlay = () => run('Play / pause', async () => (playing.value ? (await player()).pause() : (await player()).play()))
-const sleepInOneMinute = () => run('Sleep timer', async () => (await player()).setSleepTimer({ minutes: 1, fadeOutSeconds: 10 }))
-const sleepAtEndOfSong = () => run('Sleep timer', async () => (await player()).setSleepTimer({ endOfTrack: true }))
-const cancelSleep = () => run('Sleep timer', async () => (await player()).cancelSleepTimer())
+const queuePrevious = () => run('Previous', async () => player.previous())
+const queueNext = () => run('Next', async () => player.next())
+const togglePlay = () => run('Play / pause', async () => (playing.value ? player.pause() : player.play()))
+const sleepInOneMinute = () => run('Sleep timer', async () => player.setSleepTimer({ minutes: 1, fadeOutSeconds: 10 }))
+const sleepAtEndOfSong = () => run('Sleep timer', async () => player.setSleepTimer({ endOfTrack: true }))
+const cancelSleep = () => run('Sleep timer', async () => player.cancelSleepTimer())
 
 const forward30 = () =>
   run('Seek', async () => {
-    const p = await player()
+    const p = player
     await p.seekTo((await p.getState()).currentTime + 30)
   })
 
@@ -147,7 +144,7 @@ const nextRepeatMode: Record<RepeatMode, RepeatMode> = { off: 'all', all: 'one',
 
 async function toggleShuffle() {
   try {
-    const state = await (await player()).setShuffle(!shuffleOn.value)
+    const state = await player.setShuffle(!shuffleOn.value)
     shuffleOn.value = state.shuffle
     logMsg(`Shuffle: ${state.shuffle ? 'on' : 'off'}`)
   } catch (e) {
@@ -157,7 +154,7 @@ async function toggleShuffle() {
 
 async function cycleRepeatMode() {
   try {
-    const state = await (await player()).setRepeatMode(nextRepeatMode[repeatMode.value])
+    const state = await player.setRepeatMode(nextRepeatMode[repeatMode.value])
     repeatMode.value = state.repeatMode
     logMsg(`Repeat: ${state.repeatMode}`)
   } catch (e) {
@@ -170,7 +167,7 @@ async function cycleRepeatMode() {
 // =====================================================================
 async function logQueue() {
   try {
-    const { items, currentIndex, playOrder } = await (await player()).getQueue()
+    const { items, currentIndex, playOrder } = await player.getQueue()
     const name = (i: number) => `${items[i].title}${i === currentIndex ? ' (playing)' : ''}`
     const inPlayOrder = playOrder.map(name).join(' → ') || '(empty)'
     const inList = items.map((_, i) => name(i)).join(', ')
@@ -183,7 +180,7 @@ async function logQueue() {
 
 async function playTrack1Next() {
   try {
-    await (await player()).addToQueue([(await testTracks())[0]], { playNext: true })
+    await player.addToQueue([(await testTracks())[0]], { playNext: true })
     await logQueue()
   } catch (e) {
     logMsg(`addToQueue FAILED: ${e}`)
@@ -192,7 +189,7 @@ async function playTrack1Next() {
 
 async function addTrack4ToEnd() {
   try {
-    await (await player()).addToQueue([(await testTracks())[3]])
+    await player.addToQueue([(await testTracks())[3]])
     await logQueue()
   } catch (e) {
     logMsg(`addToQueue FAILED: ${e}`)
@@ -222,7 +219,7 @@ function cycleUpdateOption(key: keyof typeof updateChoices) {
 
 async function simulatePlaylistChange() {
   try {
-    const p = await player()
+    const p = player
     const [first, second, third, fourth] = await testTracks()
     const secondQueued = (await p.getQueue()).items.some((item) => item.id === second.id)
     const items = secondQueued ? [fourth, first, third] : [fourth, first, third, second]
@@ -237,7 +234,7 @@ async function simulatePlaylistChange() {
 
 async function removeUpNext() {
   try {
-    const p = await player()
+    const p = player
     const { currentIndex, playOrder } = await p.getQueue()
     const upNext = playOrder[playOrder.indexOf(currentIndex) + 1]
     if (upNext === undefined) {
@@ -254,7 +251,7 @@ async function removeUpNext() {
 // Like the real app would: continue the last queue at startup (paused).
 onMounted(async () => {
   try {
-    const p = await player()
+    const p = player
     await listenToQueue()
     await p.initialize()
     const state = await p.restoreLastQueue()

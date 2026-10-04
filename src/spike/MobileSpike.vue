@@ -21,8 +21,7 @@ const folderTitles: Record<string, string> = { songs: 'All songs', 'pl-test': 'T
 // "Recently played playlists", kept by the plugin itself: it records which playable folder a queue
 // was started from (picked in Android Auto, or setQueue's sourceId), also with the app closed.
 async function setUpRecentPlaylists() {
-  // The mobile build always has tracked lists.
-  const lists = trackedLists!
+  const lists = trackedLists
   await lists.configure([{ id: 'recentPlaylists', track: 'folder', limit: 5 }])
   // Changes from while the app was closed arrive first. The real app would save them in its database.
   await lists.onChange(({ listId, entries }) => {

@@ -5,9 +5,10 @@ import { isAndroid, isMobile } from './platform'
  * instead of checking the platform themselves.
  */
 export interface Capabilities {
-  /** A player exists. */
-  player: boolean
-  /** Playback keeps going with the app in the background or the screen off (a native media service). */
+  /**
+   * Playback keeps going after the app is closed or the screen is off (a native media service), as on
+   * Android. On desktop it plays while the app runs, also minimized, and stops when it's closed.
+   */
   backgroundPlayback: boolean
   /** Android Auto (CarPlay later): the car library and the car's buttons. */
   carMode: boolean
@@ -16,7 +17,6 @@ export interface Capabilities {
 }
 
 export const capabilities: Capabilities = {
-  player: true,
   backgroundPlayback: isMobile,
   carMode: isAndroid,
   removableStorage: isAndroid,
