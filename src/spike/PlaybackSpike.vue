@@ -199,9 +199,8 @@ async function addTrack4ToEnd() {
   }
 }
 
-// As if a sync changed the "All songs" playlist. It alternates: the 2nd song removed and the 4th
-// moved to the front, then the 2nd song back (as a new song, at the end of the playlist).
-let playlistChanged = false
+// As if a sync changed the "All songs" playlist: with the 2nd song in the queue, it's removed and the
+// 4th moved to the front; without it, the 2nd song comes back (as a new song, at the end of the playlist).
 const updateChoices = {
   removedCurrent: ['finish', 'skip'],
   removedItems: ['remove', 'keep'],
@@ -223,15 +222,13 @@ function cycleUpdateOption(key: keyof typeof updateChoices) {
 
 async function simulatePlaylistChange() {
   try {
+    const p = await player()
     const [first, second, third, fourth] = await testTracks()
-    const items = playlistChanged ? [fourth, first, third, second] : [fourth, first, third]
-    const { added, removed } = await (await player()).updateQueue(items, { sourceId: 'songs', ...updateOptions.value })
-    logMsg(
-      playlistChanged
-        ? `Playlist changed: "${second.title}" added back (${added} added, ${removed} removed)`
-        : `Playlist changed: "${second.title}" removed, "${fourth.title}" moved to the front (${added} added, ${removed} removed)`,
-    )
-    playlistChanged = !playlistChanged
+    const secondQueued = (await p.getQueue()).items.some((item) => item.id === second.id)
+    const items = secondQueued ? [fourth, first, third] : [fourth, first, third, second]
+    logMsg(`New playlist: ${items.map((t) => t.title).join(', ')}`)
+    const { added, removed } = await p.updateQueue(items, { sourceId: 'songs', ...updateOptions.value })
+    logMsg(`Queue updated: ${added} added, ${removed} removed`)
     await logQueue()
   } catch (e) {
     logMsg(`updateQueue FAILED: ${e}`)
