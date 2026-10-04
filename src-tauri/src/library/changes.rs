@@ -40,6 +40,13 @@ pub struct LibraryChange {
 impl LibraryChange {
     /// A playlist changed (its name, or which songs it has in what order): `tracks` were added, removed or
     /// moved.
+    /// Playlists that changed (linked playlists brought in line with their files by a scan).
+    pub fn playlists(reason: ChangeReason, mut ids: Vec<i64>) -> Self {
+        ids.sort_unstable();
+        ids.dedup();
+        Self { reason, tracks: Vec::new(), sources: ids.into_iter().map(|id| format!("playlist:{id}")).collect() }
+    }
+
     pub fn playlist(id: i64, tracks: Vec<i64>) -> Self {
         let mut tracks = tracks;
         tracks.sort_unstable();

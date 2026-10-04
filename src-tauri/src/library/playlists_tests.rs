@@ -25,7 +25,7 @@ fn track(t: &TestLibrary, path: &str) -> i64 {
 
 /// The playlist's songs, by title, in order.
 fn titles(t: &TestLibrary, playlist: i64) -> Vec<String> {
-    t.library.playlist_entries(playlist).unwrap().into_iter().map(|e| e.track.title).collect()
+    t.library.playlist_entries(playlist).unwrap().into_iter().map(|e| e.track.unwrap().title).collect()
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn what_a_playlist_says_about_itself() {
     assert_eq!((mix.entries, mix.available), (7, 7));
     assert!(mix.duration_ms >= 7 * 240, "{}", mix.duration_ms);
     // The first four different covers, in playlist order.
-    let cover = |n: usize| t.library.playlist_entries(p).unwrap()[n].track.cover.clone().unwrap();
+    let cover = |n: usize| t.library.playlist_entries(p).unwrap()[n].track.clone().unwrap().cover.unwrap();
     assert_eq!(mix.covers, vec![cover(0), cover(2), cover(3), cover(4)]);
 }
 
@@ -110,34 +110,20 @@ fn missing_songs_stay_and_removed_folders_leave() {
     m.remove("Album/01.wav");
     t.scan(f, &m);
     let entries = t.library.playlist_entries(p).unwrap();
-    assert_eq!(entries.iter().map(|e| e.track.available).collect::<Vec<_>>(), vec![false, true]);
+    assert_eq!(entries.iter().map(|e| e.track.as_ref().unwrap().available).collect::<Vec<_>>(), vec![false, true]);
     let mix = t.library.playlist(p).unwrap();
     assert_eq!((mix.entries, mix.available), (2, 1));
 
     std::fs::write(m.path("Album/01.wav"), backup).unwrap();
     m.touch("Album/01.wav", time);
     t.scan(f, &m);
-    assert!(t.library.playlist_entries(p).unwrap()[0].track.available, "back where it was");
+    assert!(t.library.playlist_entries(p).unwrap()[0].track.as_ref().unwrap().available, "back where it was");
 
     // Switched off: unavailable; removed from the library: gone from the playlist.
     t.library.set_folder_enabled(f, false).unwrap();
     assert_eq!(t.library.playlist(p).unwrap().available, 0);
     t.library.remove_folder(f).unwrap();
     assert_eq!(t.library.playlist(p).unwrap().entries, 0);
-}
-
-#[test]
-fn linked_playlists_cant_be_edited_yet() {
-    let (t, _m, f, s) = setup("playlists-linked", 1);
-    t.library
-        .conn()
-        .execute(
-            "INSERT INTO playlists (name, kind, created_at, updated_at, file_folder_id, file_path) VALUES ('File', 'linked', 1, 1, ?1, 'a.m3u')",
-            [f],
-        )
-        .unwrap();
-    let linked = t.library.playlists().unwrap().into_iter().find(|p| p.kind == "linked").unwrap();
-    assert!(t.library.add_to_playlist(linked.id, &s, None).is_err());
 }
 
 #[test]

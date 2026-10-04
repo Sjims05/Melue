@@ -150,7 +150,7 @@ pub fn folder_of(path: &str) -> String {
     path.rfind(['/', '\\']).map_or(String::new(), |end| path[..end].to_string())
 }
 
-fn percent_decode(text: &str) -> String {
+pub(crate) fn percent_decode(text: &str) -> String {
     let hex = |b: u8| (b as char).to_digit(16).map(|d| d as u8);
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());

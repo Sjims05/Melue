@@ -1,8 +1,9 @@
 //! Running scans: every switched-on folder, one scan at a time, at start-up, when asked (the refresh
 //! button), and on Android when the music index changes or the app comes back to the foreground.
 //! A scan lists every folder first (songs show up with their file names), then reads the tags and covers
-//! of new and changed songs (tags.rs), then groups them into albums and artists (grouping.rs). Progress
-//! goes to the UI as `library-scan` events, and what it changed as one `library-changed` event (changes.rs).
+//! of new and changed songs (tags.rs), groups them into albums and artists (grouping.rs), and brings the
+//! linked playlists in line with their files (linked.rs). Progress goes to the UI as `library-scan` events,
+//! and what it changed as `library-changed` events (changes.rs).
 
 use std::fs::File;
 use std::path::Path;
@@ -14,10 +15,11 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::changes::{tracking, ChangeReason};
+use super::changes::{self, tracking, ChangeReason, LibraryChange};
+use super::linked::{LocalFiles, PlaylistFiles};
 use super::scan::{self, ScanSummary};
 use super::tags::{self, TagJob};
-use super::{android, FolderKind, Library, Result};
+use super::{android, Folder, FolderKind, Library, Result};
 
 pub const SCAN_EVENT: &str = "library-scan";
 
@@ -118,6 +120,8 @@ fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
     let _ = app.emit(SCAN_EVENT, ScanEvent::Started);
     let mut total = ScanSummary::default();
     let folder_covers = library.setting(android::FOLDER_COVERS_SETTING)?.as_deref() == Some("1");
+    // The playlist files each folder that could be listed has, for after the songs are done.
+    let mut playlist_files = Vec::new();
     for folder in library.folders()?.into_iter().filter(|f| f.enabled) {
         let listed = match folder.kind {
             FolderKind::Path => scan::list_folder(Path::new(&folder.location)),
@@ -126,7 +130,11 @@ fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
         };
         // A folder that can't be listed (unplugged, offline, no permission) is left as it was: its songs
         // aren't marked missing just because the drive is out.
-        let result = listed.and_then(|files| library.apply_scan(folder.id, &files));
+        let result = listed.and_then(|listing| {
+            let summary = library.apply_scan(folder.id, &listing.songs)?;
+            playlist_files.push((folder.clone(), listing.playlists));
+            Ok(summary)
+        });
         let event = match result {
             Ok(summary) => {
                 total.add(summary);
@@ -143,14 +151,60 @@ fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
         let _ = app.emit(SCAN_EVENT, ScanEvent::Tags { done, total });
     };
     total.add(library.read_tags(&open, &mut progress)?);
-    // Albums and artists from the tags (only what changed is written), then the covers nothing uses.
-    library.regroup_after(&total)?;
+    // Albums and artists from the tags (only what changed is written).
+    let grouped = library.regroup_after(&total)?.is_some();
+
+    // Linked playlists: their files read when new or changed, their lines matched again when songs changed.
+    let linked: bool = library
+        .conn()
+        .query_row("SELECT EXISTS (SELECT 1 FROM playlists WHERE kind = 'linked')", [], |r| r.get(0))
+        .map_err(super::err)?;
+    if grouped || linked || playlist_files.iter().any(|(_, files)| !files.is_empty()) {
+        let index = library.track_index()?;
+        let access = AppFiles(app);
+        let mut changed = Vec::new();
+        for (folder, files) in &playlist_files {
+            changed.extend(library.sync_playlists(folder, files, &access, &index)?);
+        }
+        if grouped || !changed.is_empty() {
+            changed.extend(library.rematch_playlists(&index)?);
+        }
+        if !changed.is_empty() {
+            changes::emit(app, LibraryChange::playlists(ChangeReason::Scan, changed));
+        }
+    }
+
+    // The covers nothing uses any more.
     if let Err(e) = library.clean_covers() {
         eprintln!("melue: can't clean up the covers: {e}");
     }
 
     let _ = app.emit(SCAN_EVENT, ScanEvent::Finished { summary: total, changed: total.changed_anything() });
     Ok(total)
+}
+
+/// Playlist files wherever their folder is: on a disk, or (Android) in a chosen folder.
+pub struct AppFiles<'a>(pub &'a AppHandle);
+
+impl PlaylistFiles for AppFiles<'_> {
+    fn read(&self, folder: &Folder, path: &str) -> Result<Vec<u8>> {
+        match folder.kind {
+            FolderKind::AndroidTree => {
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut android::open_tree_file(self.0, &folder.location, path)?, &mut bytes)
+                    .map_err(|e| format!("can't read {path}: {e}"))?;
+                Ok(bytes)
+            }
+            _ => LocalFiles.read(folder, path),
+        }
+    }
+
+    fn write(&self, folder: &Folder, path: &str, bytes: &[u8]) -> Result<(i64, i64)> {
+        match folder.kind {
+            FolderKind::AndroidTree => android::write_tree_file(self.0, &folder.location, path, bytes),
+            _ => LocalFiles.write(folder, path, bytes),
+        }
+    }
 }
 
 /// Opens a song's file (or a folder cover) wherever its folder is.

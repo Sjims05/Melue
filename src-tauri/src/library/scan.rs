@@ -34,6 +34,13 @@ pub struct FoundFile {
     pub folder_cover: Option<FolderCover>,
 }
 
+/// What listing a folder found: its songs, and its playlist files (.m3u, see linked.rs).
+#[derive(Debug, Default)]
+pub struct Listing {
+    pub songs: Vec<FoundFile>,
+    pub playlists: Vec<FoundFile>,
+}
+
 /// An image file a folder's songs take as their cover.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolderCover {
@@ -130,11 +137,11 @@ pub fn is_audio(name: &str) -> bool {
 /// The music files under a folder on disk, with paths relative to it. Hidden files and folders (starting
 /// with a dot, which includes macOS' `._` files) and folders with a `.nomedia` file are skipped, like
 /// Android does.
-pub fn list_folder(root: &Path) -> Result<Vec<FoundFile>> {
+pub fn list_folder(root: &Path) -> Result<Listing> {
     if !root.is_dir() {
         return Err(format!("{} isn't there (unplugged, or moved?)", root.display()));
     }
-    let mut found = Vec::new();
+    let mut found = Listing::default();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
@@ -162,17 +169,21 @@ pub fn list_folder(root: &Path) -> Result<Vec<FoundFile>> {
                     songs.push(FoundFile { path, name, size: meta.len() as i64, modified_at, folder_cover: None });
                 } else if cover_rank(&name).is_some() {
                     images.push((name, FolderCover { path: relative(&entry.path()), modified_at }));
+                } else if super::m3u::is_playlist(&name) {
+                    let path = relative(&entry.path());
+                    found.playlists.push(FoundFile { path, name, size: meta.len() as i64, modified_at, folder_cover: None });
                 }
             }
         }
         let cover = pick_cover(images);
-        found.extend(songs.into_iter().map(|song| FoundFile { folder_cover: cover.clone(), ..song }));
+        found.songs.extend(songs.into_iter().map(|song| FoundFile { folder_cover: cover.clone(), ..song }));
     }
-    found.sort_by(|a, b| a.path.cmp(&b.path));
+    found.songs.sort_by(|a, b| a.path.cmp(&b.path));
+    found.playlists.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(found)
 }
 
-fn modified_ms(meta: &std::fs::Metadata) -> i64 {
+pub(crate) fn modified_ms(meta: &std::fs::Metadata) -> i64 {
     meta.modified()
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -358,7 +369,7 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     fn scan(t: &TestLibrary, folder_id: i64, root: &Path) -> ScanSummary {
-        t.library.apply_scan(folder_id, &list_folder(root).unwrap()).unwrap()
+        t.library.apply_scan(folder_id, &list_folder(root).unwrap().songs).unwrap()
     }
 
     fn titles(t: &TestLibrary) -> Vec<String> {
@@ -380,7 +391,7 @@ mod tests {
         m.add(".hidden/secret.wav", &Tags::default());
         m.add("Podcasts/ep.wav", &Tags::default());
         m.add_text("Podcasts/.nomedia", "");
-        let found = list_folder(&m.root).unwrap();
+        let found = list_folder(&m.root).unwrap().songs;
         let paths: Vec<&str> = found.iter().map(|f| f.path.as_str()).collect();
         assert_eq!(paths, vec!["Artist/Album/01 One.wav", "Artist/Album/02 Two.flac", "Loose.MP3"]);
         assert!(found.iter().all(|f| f.size > 0 && f.modified_at > 0));

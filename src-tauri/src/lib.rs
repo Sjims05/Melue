@@ -175,6 +175,9 @@ pub fn run() {
             library::library_add_to_playlist,
             library::library_remove_from_playlist,
             library::library_move_in_playlist,
+            library::library_restore_playlist_entry,
+            library::library_set_playlist_options,
+            library::library_unlink_playlist,
             library::library_folder_covers,
             library::library_set_folder_covers,
         ])

@@ -199,6 +199,41 @@ const removeEntry = (entry: PlaylistEntry) =>
     if (openPlaylist.value) await library.removeFromPlaylist(openPlaylist.value.id, [entry.id])
   })
 
+// Linked playlists: greyed songs, settings, unlinking.
+const greyed = (entry: PlaylistEntry) => entry.state === 'removed_here' || entry.state === 'suggested' || !entry.track?.available
+const stateLabel: Record<string, string> = {
+  both: '',
+  here_only: 'only here',
+  removed_here: 'removed here',
+  suggested: 'suggested',
+  file_removed: 'removed from file',
+}
+
+const restoreEntry = (entry: PlaylistEntry) =>
+  run('Restore', async () => {
+    if (openPlaylist.value) await library.restorePlaylistEntry(openPlaylist.value.id, entry.id)
+  })
+
+const toggleOption = (option: 'newInFile' | 'removedFromFile' | 'writeBack') =>
+  run('Playlist setting', async () => {
+    const p = openPlaylist.value
+    if (!p) return
+    const options =
+      option === 'newInFile'
+        ? { newInFile: p.newInFile === 'added' ? ('suggested' as const) : ('added' as const) }
+        : option === 'removedFromFile'
+          ? { removedFromFile: p.removedFromFile === 'removed' ? ('kept' as const) : ('removed' as const) }
+          : { writeBack: !p.writeBack }
+    openPlaylist.value = await library.setPlaylistOptions(p.id, options)
+  })
+
+const unlink = () =>
+  run('Unlink', async () => {
+    if (!openPlaylist.value) return
+    openPlaylist.value = await library.unlinkPlaylist(openPlaylist.value.id)
+    logMsg(`${openPlaylist.value.name} is an app playlist now`)
+  })
+
 const toggleFolderCovers = () =>
   run('Covers next to songs', async () => {
     folderCovers.value = await library.setFolderCovers(!folderCovers.value?.enabled)
@@ -338,7 +373,11 @@ async function libraryStatus() {
           <span>{{ playlist.name }}</span>
           <span class="text-xs text-muted-foreground">
             {{ plural(playlist.entries, 'song') }}{{ playlist.available < playlist.entries ? ` (${playlist.available} available)` : '' }}
-            · {{ duration(playlist.durationMs) }}{{ playlist.kind === 'linked' ? ' · linked' : '' }}
+            · {{ duration(playlist.durationMs) }}
+            <template v-if="playlist.kind === 'linked'">
+              · linked to {{ playlist.file }}{{ playlist.fileMissing ? ' (file gone)' : '' }}
+              {{ playlist.suggested ? ` · ${playlist.suggested} suggested` : '' }}
+            </template>
           </span>
           <button class="border rounded px-2 text-xs" @click="openList(playlist)">Open</button>
           <button class="border rounded px-2 text-xs" @click="renamePlaylist(playlist)">Rename to the name above</button>
@@ -349,11 +388,31 @@ async function libraryStatus() {
             {{ openPlaylist.name }}
             <span class="text-xs text-muted-foreground">(open "Show songs" and use + to add songs)</span>
           </div>
-          <div v-for="entry in entries" :key="entry.id" class="flex items-center gap-2 text-sm" :class="{ 'opacity-40': !entry.track.available }">
+          <div v-if="openPlaylist.kind === 'linked'" class="flex flex-wrap gap-2 text-xs">
+            <span class="text-muted-foreground">{{ openPlaylist.file }}{{ openPlaylist.fileMissing ? ' (file gone)' : '' }}:</span>
+            <button class="border rounded px-2" @click="toggleOption('newInFile')">New in file: {{ openPlaylist.newInFile }}</button>
+            <button class="border rounded px-2" @click="toggleOption('removedFromFile')">
+              Removed from file: {{ openPlaylist.removedFromFile }}
+            </button>
+            <button class="border rounded px-2" @click="toggleOption('writeBack')">Write back: {{ openPlaylist.writeBack ? 'on' : 'off' }}</button>
+            <button class="border rounded px-2" @click="unlink">Unlink</button>
+          </div>
+          <div v-for="entry in entries" :key="entry.id" class="flex items-center gap-2 text-sm" :class="{ 'opacity-40': greyed(entry) }">
             <span class="text-xs text-muted-foreground w-5 text-right">{{ entry.position + 1 }}</span>
-            <span class="truncate">{{ entry.track.title }}</span>
-            <span class="text-xs text-muted-foreground truncate">{{ entry.track.artist }}</span>
-            <span v-if="!entry.track.available" class="text-xs">(unavailable)</span>
+            <template v-if="entry.track">
+              <span class="truncate">{{ entry.track.title }}</span>
+              <span class="text-xs text-muted-foreground truncate">{{ entry.track.artist }}</span>
+              <span v-if="!entry.track.available" class="text-xs">(unavailable)</span>
+            </template>
+            <span v-else class="truncate text-xs">not found: {{ entry.fileEntry }}</span>
+            <span v-if="stateLabel[entry.state]" class="text-xs italic">{{ stateLabel[entry.state] }}</span>
+            <button
+              v-if="entry.state === 'removed_here' || entry.state === 'suggested'"
+              class="border rounded px-2 text-xs"
+              @click="restoreEntry(entry)"
+            >
+              {{ entry.state === 'suggested' ? 'Add' : 'Restore' }}
+            </button>
             <button class="border rounded px-2 text-xs" @click="moveEntry(entry, -1)">↑</button>
             <button class="border rounded px-2 text-xs" @click="moveEntry(entry, 1)">↓</button>
             <button class="border rounded px-2 text-xs" @click="removeEntry(entry)">✕</button>

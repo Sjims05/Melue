@@ -95,18 +95,21 @@ pub fn release_folder_access(app: &AppHandle, uri: &str) {
     let _ = (app, uri);
 }
 
-/// Every song in Android's music index, as found files (their paths are the files' absolute paths). With
-/// `folder_covers`, songs get the cover images next to them (with the photos permission; without it, the
-/// images just aren't seen).
-pub fn list_music(app: &AppHandle, folder_covers: bool) -> Result<Vec<super::scan::FoundFile>> {
+/// Every song in Android's music index, as found files (their paths are the files' absolute paths), and
+/// the playlist files it knows. With `folder_covers`, songs get the cover images next to them (with the
+/// photos permission; without it, the images just aren't seen).
+pub fn list_music(app: &AppHandle, folder_covers: bool) -> Result<super::scan::Listing> {
     #[cfg(target_os = "android")]
     {
         use std::collections::HashMap;
         use std::path::Path;
         use tauri_plugin_melue_android::MelueAndroidExt;
-        let files = app.melue_android().list_music()?;
+        let media = app.melue_android();
+        let files = media.list_music()?;
+        // Playlist files may not be readable with the music permission alone: then there are none.
+        let playlists = media.list_playlists().unwrap_or_default();
         let mut covers: HashMap<String, Option<super::scan::FolderCover>> = HashMap::new();
-        Ok(files
+        let songs = files
             .into_iter()
             .map(|f| {
                 let folder_cover = if folder_covers {
@@ -117,7 +120,12 @@ pub fn list_music(app: &AppHandle, folder_covers: bool) -> Result<Vec<super::sca
                 };
                 super::scan::FoundFile { path: f.path, name: f.name, size: f.size, modified_at: f.modified_at, folder_cover }
             })
-            .collect())
+            .collect();
+        let playlists = playlists
+            .into_iter()
+            .map(|f| super::scan::FoundFile { path: f.path, name: f.name, size: f.size, modified_at: f.modified_at, folder_cover: None })
+            .collect();
+        Ok(super::scan::Listing { songs, playlists })
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -126,15 +134,16 @@ pub fn list_music(app: &AppHandle, folder_covers: bool) -> Result<Vec<super::sca
     }
 }
 
-/// The music files in a folder chosen with the storage picker (and its subfolders), as found files whose
-/// paths are their content:// addresses. Hidden folders and folders with a `.nomedia` file are skipped.
-pub fn list_tree(app: &AppHandle, uri: &str) -> Result<Vec<super::scan::FoundFile>> {
+/// The music and playlist files in a folder chosen with the storage picker (and its subfolders), as found
+/// files whose paths are their content:// addresses. Hidden folders and folders with a `.nomedia` file are
+/// skipped.
+pub fn list_tree(app: &AppHandle, uri: &str) -> Result<super::scan::Listing> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_android_fs::{AndroidFsExt, Entry, FsUri};
         let fs = app.android_fs();
         let root = FsUri { uri: uri.to_string(), document_top_tree_uri: Some(uri.to_string()) };
-        let mut found = Vec::new();
+        let mut found = super::scan::Listing::default();
         let mut stack = vec![root];
         let mut first = true;
         while let Some(dir) = stack.pop() {
@@ -162,13 +171,16 @@ pub fn list_tree(app: &AppHandle, uri: &str) -> Result<Vec<super::scan::FoundFil
                             songs.push(super::scan::FoundFile { path: uri.uri, name, size, modified_at, folder_cover: None });
                         } else if super::scan::cover_rank(&name).is_some() {
                             images.push((name, super::scan::FolderCover { path: uri.uri, modified_at }));
+                        } else if super::m3u::is_playlist(&name) {
+                            let size = len as i64;
+                            found.playlists.push(super::scan::FoundFile { path: uri.uri, name, size, modified_at, folder_cover: None });
                         }
                     }
                     _ => {}
                 }
             }
             let cover = super::scan::pick_cover(images);
-            found.extend(songs.into_iter().map(|song| super::scan::FoundFile { folder_cover: cover.clone(), ..song }));
+            found.songs.extend(songs.into_iter().map(|song| super::scan::FoundFile { folder_cover: cover.clone(), ..song }));
         }
         Ok(found)
     }
@@ -190,6 +202,28 @@ pub fn open_tree_file(app: &AppHandle, location: &str, path: &str) -> Result<std
     #[cfg(not(target_os = "android"))]
     {
         let _ = (app, location, path);
+        Err("chosen Android folders are only for Android".into())
+    }
+}
+
+/// Replaces a file's contents in a folder chosen with the storage picker; returns its new size and
+/// modified time.
+pub fn write_tree_file(app: &AppHandle, location: &str, path: &str, bytes: &[u8]) -> Result<(i64, i64)> {
+    #[cfg(target_os = "android")]
+    {
+        use std::io::Write;
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+        let uri = FsUri { uri: path.to_string(), document_top_tree_uri: Some(location.to_string()) };
+        let fs = app.android_fs();
+        let mut file = fs.open_file_writable(&uri).map_err(|e| format!("can't write {path}: {e}"))?;
+        file.write_all(bytes).map_err(|e| format!("can't write {path}: {e}"))?;
+        drop(file);
+        let meta = fs.get_metadata(&uri).map_err(|e| format!("can't read {path}: {e}"))?;
+        Ok((meta.len() as i64, super::scan::modified_ms(&meta)))
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, location, path, bytes);
         Err("chosen Android folders are only for Android".into())
     }
 }

@@ -166,6 +166,47 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve(JSObject().put("files", files))
     }
 
+    /**
+     * The playlist files (.m3u, .m3u8) Android's index knows, like listMusic. With the music permission
+     * alone Android may show none.
+     */
+    @Command
+    fun listPlaylists(invoke: Invoke) {
+        if (musicState() != PermissionState.GRANTED) {
+            invoke.reject("Melue isn't allowed to read the music on this phone")
+            return
+        }
+        val collection =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            } else {
+                MediaStore.Files.getContentUri("external")
+            }
+        val files = JSArray()
+        @Suppress("DEPRECATION") // DATA: the file's path.
+        val columns = arrayOf(
+            MediaStore.Files.FileColumns.DATA,
+            MediaStore.Files.FileColumns.DISPLAY_NAME,
+            MediaStore.Files.FileColumns.SIZE,
+            MediaStore.Files.FileColumns.DATE_MODIFIED,
+        )
+        @Suppress("DEPRECATION")
+        val selection = "${MediaStore.Files.FileColumns.DATA} LIKE ? OR ${MediaStore.Files.FileColumns.DATA} LIKE ?"
+        activity.contentResolver.query(collection, columns, selection, arrayOf("%.m3u", "%.m3u8"), null)?.use { c ->
+            while (c.moveToNext()) {
+                val path = c.getString(0) ?: continue
+                files.put(
+                    JSObject()
+                        .put("path", path)
+                        .put("name", c.getString(1) ?: path.substringAfterLast('/'))
+                        .put("size", c.getLong(2))
+                        .put("modifiedAt", c.getLong(3) * 1000),
+                )
+            }
+        }
+        invoke.resolve(JSObject().put("files", files))
+    }
+
     /** How many songs the music index has (music only, not ringtones or recordings). */
     @Command
     fun countMusic(invoke: Invoke) {

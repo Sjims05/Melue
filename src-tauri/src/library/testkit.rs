@@ -66,12 +66,19 @@ impl TestLibrary {
         self.library.add_folder(super::FolderKind::Path, folder.root.to_str().unwrap(), None).unwrap()
     }
 
-    /// A whole scan of one folder, as the scanner does it: list it, read tags, group, clean up covers.
+    /// A whole scan of one folder, as the scanner does it: list it, read tags, group, bring its linked
+    /// playlists in line with their files, clean up covers.
     pub fn scan(&self, folder_id: i64, folder: &MusicFolder) -> super::scan::ScanSummary {
         let files = super::scan::list_folder(&folder.root).unwrap();
-        let mut summary = self.library.apply_scan(folder_id, &files).unwrap();
+        let mut summary = self.library.apply_scan(folder_id, &files.songs).unwrap();
         summary.add(self.library.read_tags(&super::tags::open_local, &mut |_, _| {}).unwrap());
-        self.library.regroup_after(&summary).unwrap();
+        let grouped = self.library.regroup_after(&summary).unwrap().is_some();
+        let index = self.library.track_index().unwrap();
+        let folder = self.library.folder(folder_id).unwrap().unwrap();
+        let changed = self.library.sync_playlists(&folder, &files.playlists, &super::linked::LocalFiles, &index).unwrap();
+        if grouped || !changed.is_empty() {
+            self.library.rematch_playlists(&index).unwrap();
+        }
         self.library.clean_covers().unwrap();
         summary
     }

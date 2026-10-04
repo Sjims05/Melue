@@ -11,6 +11,10 @@ mod folders;
 pub mod grouping;
 #[cfg(test)]
 mod grouping_tests;
+mod linked;
+#[cfg(test)]
+mod linked_tests;
+mod m3u;
 mod migrations;
 pub mod playlists;
 #[cfg(test)]

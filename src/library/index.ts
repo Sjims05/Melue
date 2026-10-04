@@ -83,15 +83,32 @@ export interface LibraryChange {
   sources: string[]
 }
 
-/** A playlist made in Melue ('app'), or a playlist file linked into the library ('linked', coming next). */
+/**
+ * A playlist made in Melue ('app'), or a playlist file (.m3u) in a music folder, linked into the library
+ * ('linked'): Melue keeps its own version and shows how it differs from the file (see PlaylistEntry.state).
+ */
 export interface Playlist {
   id: number
   name: string
   kind: 'app' | 'linked'
-  /** Its entries, available or not. */
+  /** Its songs in Melue's version, available or not (greyed ones not counted). */
   entries: number
-  /** Entries that can be played. */
+  /** Those that can be played. */
   available: number
+  /** Linked: songs new in the file waiting to be added (greyed). */
+  suggested: number
+  /** Linked: songs removed in Melue that the file still has (greyed). */
+  removedHere: number
+  /** Linked: the file's name; null for app playlists. */
+  file: string | null
+  /** Linked: the file is gone (deleted, or its folder removed). Unlink to keep it as an app playlist. */
+  fileMissing: boolean
+  /** Linked: songs new in the file are 'added' (default) or 'suggested'. */
+  newInFile: 'added' | 'suggested'
+  /** Linked: songs removed from the file are 'removed' (default) or 'kept' (marked). */
+  removedFromFile: 'removed' | 'kept'
+  /** Linked: Melue's changes are written into the file (off by default). */
+  writeBack: boolean
   /** How long its available songs play. */
   durationMs: number
   /** The first (up to 4) different covers of its songs, for its picture (coverUrl). */
@@ -100,13 +117,32 @@ export interface Playlist {
   updatedAt: number
 }
 
+/**
+ * How an entry of a linked playlist relates to its file. App playlists' entries are always 'both'.
+ * - both: in Melue's version and in the file
+ * - here_only: added in Melue, not in the file
+ * - removed_here: removed in Melue, still in the file (greyed, doesn't play; restorePlaylistEntry)
+ * - suggested: new in the file, not added yet (greyed, doesn't play; restorePlaylistEntry adds it)
+ * - file_removed: removed from the file, kept in Melue (marked)
+ */
+export type PlaylistEntryState = 'both' | 'here_only' | 'removed_here' | 'suggested' | 'file_removed'
+
 /** A song in a playlist. The same song can be in a playlist twice: each entry has its own id. */
 export interface PlaylistEntry {
   id: number
   position: number
   addedAt: number
-  /** Unavailable songs (missing files, folder switched off) stay, shown greyed. */
-  track: Track
+  state: PlaylistEntryState
+  /** Linked: its line in the file. */
+  fileEntry: string | null
+  /** Unavailable songs (missing files, folder switched off) stay, shown greyed. Null: a line of the file that matches no song. */
+  track: Track | null
+}
+
+export interface PlaylistOptions {
+  newInFile?: 'added' | 'suggested'
+  removedFromFile?: 'removed' | 'kept'
+  writeBack?: boolean
 }
 
 /** A song, with its tags as the file has them. */
@@ -223,6 +259,13 @@ export const library = {
   removeFromPlaylist: (id: number, entries: number[]) => invoke<void>('library_remove_from_playlist', { id, entries }),
   moveInPlaylist: (id: number, entry: number, position: number) =>
     invoke<void>('library_move_in_playlist', { id, entry, position }),
+  /** Linked: takes a greyed song (removed here, or suggested by the file) into Melue's version. */
+  restorePlaylistEntry: (id: number, entry: number) => invoke<void>('library_restore_playlist_entry', { id, entry }),
+  /** Linked: its settings (left out: unchanged). Switching write-back on writes the file right away. */
+  setPlaylistOptions: (id: number, options: PlaylistOptions) =>
+    invoke<Playlist>('library_set_playlist_options', { id, ...options }),
+  /** Linked: keeps it as an app playlist; the file is left alone and not linked again. */
+  unlinkPlaylist: (id: number) => invoke<Playlist>('library_unlink_playlist', { id }),
 
   /** Songs that are there, by title. */
   tracks: (offset = 0, limit = 100) => invoke<Track[]>('library_tracks', { offset, limit }),

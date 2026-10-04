@@ -151,7 +151,7 @@ fn a_file_that_cant_be_opened_is_tried_again_next_scan() {
     let m = t.music_folder("Music");
     m.add("a.wav", &Tags::song("A", "X", "Y", 1));
     let f = folder(&t, &m);
-    t.library.apply_scan(f.id, &list_folder(&m.root).unwrap()).unwrap();
+    t.library.apply_scan(f.id, &list_folder(&m.root).unwrap().songs).unwrap();
     // The card is taken out between the two passes.
     let gone = |_: &super::tags::TagJob, _: &str| -> super::Result<std::fs::File> { Err("unplugged".into()) };
     let s = t.library.read_tags(&gone, &mut |_, _| {}).unwrap();
@@ -242,7 +242,7 @@ fn an_interrupted_second_pass_carries_on_after_a_restart() {
         m.add(&format!("{n:02}.wav"), &Tags::song(&format!("Song {n}"), "X", "Y", n));
     }
     let f = folder(&t, &m);
-    t.library.apply_scan(f.id, &list_folder(&m.root).unwrap()).unwrap();
+    t.library.apply_scan(f.id, &list_folder(&m.root).unwrap().songs).unwrap();
     let (first, _) = t.library.read_tag_batch(&open_local, 0, 4).unwrap();
     assert_eq!(first.tags_read, 4);
 
@@ -281,7 +281,7 @@ fn reading_a_thousand_songs_tags() {
         }
     }
     let f = folder(&t, &m);
-    t.library.apply_scan(f.id, &list_folder(&m.root).unwrap()).unwrap();
+    t.library.apply_scan(f.id, &list_folder(&m.root).unwrap().songs).unwrap();
     let start = Instant::now();
     let mut updates = 0;
     let s = t.library.read_tags(&open_local, &mut |_, _| updates += 1).unwrap();

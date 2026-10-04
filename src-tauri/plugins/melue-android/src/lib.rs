@@ -33,7 +33,7 @@ pub enum PermissionState {
     PromptWithRationale,
 }
 
-/// A song in Android's music index.
+/// A song (or playlist file) in Android's index.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MusicFile {
@@ -108,6 +108,11 @@ mod android {
         /// Every song in Android's music index.
         pub fn list_music(&self) -> Result<Vec<MusicFile>, String> {
             self.0.run_mobile_plugin::<Files>("listMusic", ()).map(|f| f.files).map_err(|e| e.to_string())
+        }
+
+        /// The playlist files (.m3u, .m3u8) in Android's index (possibly none with only the music permission).
+        pub fn list_playlists(&self) -> Result<Vec<MusicFile>, String> {
+            self.0.run_mobile_plugin::<Files>("listPlaylists", ()).map(|f| f.files).map_err(|e| e.to_string())
         }
 
         /// Calls `handler` for each of the plugin's `event`s ("musicChanged", "resumed").

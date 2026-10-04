@@ -7,6 +7,7 @@ use tauri::{AppHandle, State};
 use super::scan::ScanSummary;
 use super::changes::{self, tracking, ChangeReason, LibraryChange};
 use super::playlists::{Playlist, PlaylistEntry};
+use super::scanner::AppFiles;
 use super::{android, scanner, Album, Artist, Folder, FolderKind, Library, Result, Track};
 
 #[derive(Serialize)]
@@ -196,7 +197,7 @@ pub fn library_rename_playlist(app: AppHandle, library: State<'_, Library>, id: 
 
 #[tauri::command(async)]
 pub fn library_delete_playlist(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<()> {
-    let tracks = library.playlist_entries(id)?.into_iter().map(|e| e.track.id).collect();
+    let tracks = library.playlist_entries(id)?.into_iter().filter_map(|e| e.track.map(|t| t.id)).collect();
     library.delete_playlist(id)?;
     changes::emit(&app, LibraryChange::playlist(id, tracks));
     Ok(())
@@ -213,6 +214,7 @@ pub fn library_add_to_playlist(
 ) -> Result<Vec<i64>> {
     let added = library.add_to_playlist(id, &tracks, position)?;
     changes::emit(&app, LibraryChange::playlist(id, tracks));
+    write_back(&app, &library, id)?;
     Ok(added)
 }
 
@@ -221,12 +223,56 @@ pub fn library_add_to_playlist(
 pub fn library_remove_from_playlist(app: AppHandle, library: State<'_, Library>, id: i64, entries: Vec<i64>) -> Result<()> {
     let removed = library.remove_from_playlist(id, &entries)?;
     changes::emit(&app, LibraryChange::playlist(id, removed));
-    Ok(())
+    write_back(&app, &library, id)
 }
 
 #[tauri::command(async)]
 pub fn library_move_in_playlist(app: AppHandle, library: State<'_, Library>, id: i64, entry: i64, position: usize) -> Result<()> {
     let track = library.move_in_playlist(id, entry, position)?;
-    changes::emit(&app, LibraryChange::playlist(id, vec![track]));
-    Ok(())
+    changes::emit(&app, LibraryChange::playlist(id, track.into_iter().collect()));
+    write_back(&app, &library, id)
+}
+
+/// After an edit of a linked playlist with write-back on: Melue's version into the file. The edit is saved
+/// either way; a failure to write is reported.
+fn write_back(app: &AppHandle, library: &Library, id: i64) -> Result<()> {
+    match library.write_back_if_on(id, &AppFiles(app)) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("saved in Melue, but the playlist file couldn't be written: {e}")),
+    }
+}
+
+/// Takes a greyed song of a linked playlist (removed here, or suggested by the file) into Melue's version.
+#[tauri::command(async)]
+pub fn library_restore_playlist_entry(app: AppHandle, library: State<'_, Library>, id: i64, entry: i64) -> Result<()> {
+    let track = library.restore_playlist_entry(id, entry)?;
+    changes::emit(&app, LibraryChange::playlist(id, track.into_iter().collect()));
+    write_back(&app, &library, id)
+}
+
+/// A linked playlist's settings (each left as it is when null): songs new in the file 'added' or
+/// 'suggested', songs removed from it 'removed' or 'kept', and writing Melue's changes into the file
+/// (switching it on writes the file right away).
+#[tauri::command(async)]
+pub fn library_set_playlist_options(
+    app: AppHandle,
+    library: State<'_, Library>,
+    id: i64,
+    new_in_file: Option<String>,
+    removed_from_file: Option<String>,
+    write_back: Option<bool>,
+) -> Result<Playlist> {
+    library.set_playlist_options(id, new_in_file.as_deref(), removed_from_file.as_deref(), write_back)?;
+    let result = if write_back == Some(true) { self::write_back(&app, &library, id) } else { Ok(()) };
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    result?;
+    library.playlist(id)
+}
+
+/// Turns a linked playlist into an app playlist (the file is left alone and no longer followed).
+#[tauri::command(async)]
+pub fn library_unlink_playlist(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<Playlist> {
+    library.unlink_playlist(id)?;
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    library.playlist(id)
 }
