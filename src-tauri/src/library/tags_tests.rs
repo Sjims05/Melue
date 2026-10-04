@@ -7,18 +7,14 @@ use super::covers::{self, LARGE, SMALL};
 use super::scan::{cover_rank, find_folder_cover, list_folder, ScanSummary};
 use super::tags::open_local;
 use super::testkit::{MusicFolder, Tags, TestLibrary};
-use super::{Folder, FolderKind, Track};
+use super::{Folder, Track};
 
-/// A whole scan of one folder, as the scanner does it: list, read tags, clean up covers.
 fn scan(t: &TestLibrary, folder: &Folder, m: &MusicFolder) -> ScanSummary {
-    let mut summary = t.library.apply_scan(folder.id, &list_folder(&m.root).unwrap()).unwrap();
-    summary.add(t.library.read_tags(&open_local, &mut |_, _| {}).unwrap());
-    t.library.clean_covers().unwrap();
-    summary
+    t.scan(folder.id, m)
 }
 
 fn folder(t: &TestLibrary, m: &MusicFolder) -> Folder {
-    t.library.add_folder(FolderKind::Path, m.root.to_str().unwrap(), None).unwrap()
+    t.add_folder(m)
 }
 
 /// The track for a file in the folder.
@@ -102,11 +98,11 @@ fn songs_without_tags_are_called_after_their_files() {
     assert_eq!(track(&t, "Old name.wav").title, "Old name");
     assert_eq!(track(&t, "tagged.wav").title, "Real Title");
 
-    // Renamed: the untagged one takes its new name, the tagged one keeps its title. Neither is re-read.
+    // Renamed: the untagged one takes its new name, the tagged one keeps its title.
     m.rename("Old name.wav", "New name.wav");
     m.rename("tagged.wav", "renamed.wav");
     let s = scan(&t, &f, &m);
-    assert_eq!((s.moved, s.tags_read), (2, 0));
+    assert_eq!((s.moved, s.tags_read), (2, 1), "the untagged one is read again for what its new name says");
     assert_eq!(track(&t, "New name.wav").title, "New name");
     assert_eq!(track(&t, "renamed.wav").title, "Real Title");
 }

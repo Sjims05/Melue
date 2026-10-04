@@ -5,7 +5,7 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use super::scan::ScanSummary;
-use super::{android, scanner, Folder, FolderKind, Library, Result, Track};
+use super::{android, scanner, Album, Artist, Folder, FolderKind, Library, Result, Track};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +14,7 @@ pub struct LibraryStatus {
     pub folders: i64,
     /// Tracks whose files are there (not missing).
     pub tracks: i64,
+    /// Albums and artists with songs that are there.
     pub albums: i64,
     pub artists: i64,
     pub playlists: i64,
@@ -116,6 +117,18 @@ pub fn library_set_setting(library: State<'_, Library>, key: String, value: Stri
 #[tauri::command(async)]
 pub fn library_tracks(library: State<'_, Library>, offset: u32, limit: u32) -> Result<Vec<Track>> {
     library.tracks(offset, limit)
+}
+
+/// Albums with songs that are there, by title.
+#[tauri::command(async)]
+pub fn library_albums(library: State<'_, Library>, offset: u32, limit: u32) -> Result<Vec<Album>> {
+    library.albums(offset, limit)
+}
+
+/// Artists with songs that are there, by name (sort name: "The" ignored).
+#[tauri::command(async)]
+pub fn library_artists(library: State<'_, Library>, offset: u32, limit: u32) -> Result<Vec<Artist>> {
+    library.artists(offset, limit)
 }
 
 #[derive(Serialize)]

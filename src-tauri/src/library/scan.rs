@@ -14,6 +14,7 @@ use std::path::Path;
 use rusqlite::params;
 use serde::Serialize;
 
+use super::grouping::sort_key;
 use super::{err, now_ms, Library, Result};
 
 /// The file types the player can play.
@@ -189,11 +190,6 @@ fn format_from_name(name: &str) -> Option<String> {
     Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase())
 }
 
-/// How the library sorts by a name (the grouping rules, step 6, refine this).
-pub fn sort_key(name: &str) -> String {
-    name.to_lowercase()
-}
-
 struct Existing {
     id: i64,
     size: i64,
@@ -305,15 +301,16 @@ impl Library {
             if unique {
                 let id = gone_by_identity[&identity][0];
                 let e = existing.values().find(|e| e.id == id).expect("a gone track");
-                // A song without a title tag is called after its file: the new name.
+                // A song without a title tag is called after its file: the new name (and read again for
+                // what else the name says, see tags.rs).
                 let title = e.tag_title.clone().unwrap_or_else(|| title_from_name(&file.name));
                 let sort_title = sort_key(e.tag_title_sort.as_deref().unwrap_or(&title));
-                let cover_changed = e.folder_cover != file.folder_cover;
+                let read_again = e.folder_cover != file.folder_cover || e.tag_title.is_none();
                 tx.execute(
                     "UPDATE tracks SET path = ?2, title = ?3, sort_title = ?4, folder_cover = ?5, folder_cover_modified_at = ?6,
                          missing_since = NULL, tags_read_at = CASE WHEN ?7 THEN NULL ELSE tags_read_at END
                      WHERE id = ?1",
-                    params![id, file.path, title, sort_title, cover, cover_modified, cover_changed],
+                    params![id, file.path, title, sort_title, cover, cover_modified, read_again],
                 )
                 .map_err(err)?;
                 moved_ids.insert(id);

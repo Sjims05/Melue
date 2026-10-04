@@ -72,3 +72,89 @@ impl Library {
         tracks.collect::<rusqlite::Result<_>>().map_err(err)
     }
 }
+
+/// An album as the UI shows it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Album {
+    pub id: i64,
+    pub title: String,
+    /// The album artist; null for a compilation.
+    pub artist: Option<String>,
+    pub compilation: bool,
+    pub year: Option<i64>,
+    pub cover: Option<String>,
+    /// Its songs that are there.
+    pub tracks: i64,
+}
+
+/// An artist as the UI shows it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Artist {
+    pub id: i64,
+    pub name: String,
+    /// Songs they're a main artist of.
+    pub tracks: i64,
+    /// Songs they're featured on.
+    pub featured: i64,
+    /// Albums they're the album artist of.
+    pub albums: i64,
+}
+
+/// Songs that are there: not missing, in a switched-on folder.
+const PRESENT: &str = "t.missing_since IS NULL AND t.folder_id IN (SELECT id FROM folders WHERE enabled)";
+
+impl Library {
+    /// Albums with songs that are there, by title.
+    pub fn albums(&self, offset: u32, limit: u32) -> Result<Vec<Album>> {
+        let conn = self.conn();
+        let sql = format!(
+            "SELECT a.id, a.title, ar.name, a.compilation, a.year, c.file,
+                    (SELECT count(*) FROM tracks t WHERE t.album_id = a.id AND {PRESENT}) AS n
+             FROM albums a LEFT JOIN artists ar ON ar.id = a.artist_id LEFT JOIN covers c ON c.id = a.cover_id
+             WHERE n > 0 ORDER BY a.sort_title, ar.sort_name, a.id LIMIT ?1 OFFSET ?2"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(err)?;
+        let albums = stmt
+            .query_map(params![limit, offset], |r| {
+                Ok(Album {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    artist: r.get(2)?,
+                    compilation: r.get(3)?,
+                    year: r.get(4)?,
+                    cover: r.get(5)?,
+                    tracks: r.get(6)?,
+                })
+            })
+            .map_err(err)?;
+        albums.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+
+    /// Artists with songs that are there, by name.
+    pub fn artists(&self, offset: u32, limit: u32) -> Result<Vec<Artist>> {
+        let conn = self.conn();
+        let count = |role: &str| {
+            format!(
+                "(SELECT count(*) FROM track_artists x JOIN tracks t ON t.id = x.track_id
+                  WHERE x.artist_id = ar.id AND x.role = '{role}' AND {PRESENT})"
+            )
+        };
+        let sql = format!(
+            "SELECT ar.id, ar.name, {} AS main, {} AS guest,
+                    (SELECT count(*) FROM albums a WHERE a.artist_id = ar.id
+                       AND EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = a.id AND {PRESENT})) AS albums
+             FROM artists ar WHERE main + guest + albums > 0 ORDER BY ar.sort_name, ar.id LIMIT ?1 OFFSET ?2",
+            count("main"),
+            count("featured")
+        );
+        let mut stmt = conn.prepare(&sql).map_err(err)?;
+        let artists = stmt
+            .query_map(params![limit, offset], |r| {
+                Ok(Artist { id: r.get(0)?, name: r.get(1)?, tracks: r.get(2)?, featured: r.get(3)?, albums: r.get(4)? })
+            })
+            .map_err(err)?;
+        artists.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+}

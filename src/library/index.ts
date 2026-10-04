@@ -97,6 +97,33 @@ export interface Track {
   tagsError: string | null
 }
 
+/** An album: songs with the same album title and album artist (see the grouping rules in grouping.rs). */
+export interface Album {
+  id: number
+  title: string
+  /** The album artist; null for a compilation (various artists). */
+  artist: string | null
+  compilation: boolean
+  /** The year most of its songs have. */
+  year: number | null
+  /** The cover most of its songs have, for coverUrl. */
+  cover: string | null
+  /** Its songs that are there. */
+  tracks: number
+}
+
+/** An artist, from the songs' artist tags ("A feat. B" is A, with B featured). */
+export interface Artist {
+  id: number
+  name: string
+  /** Songs they're a main artist of. */
+  tracks: number
+  /** Songs they're featured on. */
+  featured: number
+  /** Albums they're the album artist of. */
+  albums: number
+}
+
 export interface FolderCovers {
   /** Whether all music on the phone uses cover images next to the songs (cover.jpg, folder.jpg). */
   enabled: boolean
@@ -138,6 +165,10 @@ export const library = {
 
   /** Songs that are there, by title. */
   tracks: (offset = 0, limit = 100) => invoke<Track[]>('library_tracks', { offset, limit }),
+  /** Albums with songs that are there, by title ("The" ignored). */
+  albums: (offset = 0, limit = 100) => invoke<Album[]>('library_albums', { offset, limit }),
+  /** Artists with songs that are there, by name ("The" and accents ignored, or their sort tag). */
+  artists: (offset = 0, limit = 100) => invoke<Artist[]>('library_artists', { offset, limit }),
   /** Android, all music on the phone: whether cover images next to the songs are used (off by default). */
   folderCovers: () => invoke<FolderCovers>('library_folder_covers'),
   /** Switching on asks for the photos permission, and is refused without it. Rescans either way. */

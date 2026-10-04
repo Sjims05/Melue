@@ -202,6 +202,7 @@ impl Library {
         if removed == 0 {
             return Err(format!("no folder {id}"));
         }
+        self.regroup_needed.store(true, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
 

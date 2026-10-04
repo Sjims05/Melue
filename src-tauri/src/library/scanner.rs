@@ -1,7 +1,8 @@
 //! Running scans: every switched-on folder, one scan at a time, at start-up, when asked (the refresh
 //! button), and on Android when the music index changes or the app comes back to the foreground.
 //! A scan lists every folder first (songs show up with their file names), then reads the tags and covers
-//! of new and changed songs (tags.rs). Progress goes to the UI as `library-scan` events.
+//! of new and changed songs (tags.rs), then groups them into albums and artists (grouping.rs). Progress
+//! goes to the UI as `library-scan` events.
 
 use std::fs::File;
 use std::path::Path;
@@ -137,6 +138,8 @@ fn scan_folders(app: &AppHandle) -> Result<ScanSummary> {
         let _ = app.emit(SCAN_EVENT, ScanEvent::Tags { done, total });
     };
     total.add(library.read_tags(&open, &mut progress)?);
+    // Albums and artists from the tags (only what changed is written), then the covers nothing uses.
+    library.regroup_after(&total)?;
     if let Err(e) = library.clean_covers() {
         eprintln!("melue: can't clean up the covers: {e}");
     }

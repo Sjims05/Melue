@@ -5,6 +5,9 @@ mod android;
 mod commands;
 pub mod covers;
 mod folders;
+pub mod grouping;
+#[cfg(test)]
+mod grouping_tests;
 mod migrations;
 pub mod scan;
 pub mod scanner;
@@ -19,10 +22,11 @@ pub mod testkit;
 
 pub use commands::*;
 pub use folders::{Folder, FolderKind};
-pub use tracks::Track;
+pub use tracks::{Album, Artist, Track};
 
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension};
@@ -43,6 +47,9 @@ pub(crate) fn err(e: impl Display) -> String {
 
 pub struct Library {
     conn: Mutex<Connection>,
+    /// Albums and artists need building again even if a scan changes nothing: at start-up (new rules in an
+    /// app update) and after a folder's songs were removed. See grouping.rs.
+    regroup_needed: AtomicBool,
     /// Where the covers are kept (covers.rs): a `covers` folder next to the database.
     covers_dir: PathBuf,
 }
@@ -59,7 +66,7 @@ impl Library {
             .map_err(err)?;
         migrations::run(&mut conn)?;
         let covers_dir = path.parent().unwrap_or(Path::new(".")).join("covers");
-        Ok(Self { conn: Mutex::new(conn), covers_dir })
+        Ok(Self { conn: Mutex::new(conn), regroup_needed: AtomicBool::new(true), covers_dir })
     }
 
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -79,9 +86,18 @@ impl Library {
         Ok(LibraryStatus {
             schema_version,
             folders: count("SELECT count(*) FROM folders")?,
-            tracks: count("SELECT count(*) FROM tracks WHERE missing_since IS NULL")?,
-            albums: count("SELECT count(*) FROM albums")?,
-            artists: count("SELECT count(*) FROM artists")?,
+            tracks: count(
+                "SELECT count(*) FROM tracks t JOIN folders f ON f.id = t.folder_id WHERE t.missing_since IS NULL AND f.enabled",
+            )?,
+            // Those with songs that are there (missing songs keep their album and artists until they're back).
+            albums: count(
+                "SELECT count(DISTINCT t.album_id) FROM tracks t JOIN folders f ON f.id = t.folder_id
+                 WHERE t.missing_since IS NULL AND f.enabled",
+            )?,
+            artists: count(
+                "SELECT count(DISTINCT x.artist_id) FROM track_artists x JOIN tracks t ON t.id = x.track_id
+                 JOIN folders f ON f.id = t.folder_id WHERE t.missing_since IS NULL AND f.enabled",
+            )?,
             playlists: count("SELECT count(*) FROM playlists")?,
         })
     }

@@ -2,8 +2,10 @@
 //! new or changed (scan.rs marks them with `tags_read_at = NULL`), a batch at a time. The tags are kept as
 //! the file has them; the grouping rules (step 6) build albums and artists from them.
 //!
-//! A file whose tags can't be read keeps its file-name title (and still plays); it's tried again when it
-//! changes. A file that can't be opened at all (a card taken out mid-scan) is tried again next scan.
+//! What the tags don't say comes from the file name when it can ("01 Artist - Title.mp3", see
+//! grouping.rs). A file whose tags can't be read is named after its file (and still plays); it's tried
+//! again when it changes. A file that can't be opened at all (a card taken out mid-scan) is tried again
+//! next scan.
 
 use std::fs::File;
 use std::io::Read;
@@ -15,7 +17,8 @@ use lofty::prelude::*;
 use lofty::tag::Tag;
 use rusqlite::params;
 
-use super::scan::{sort_key, ScanSummary};
+use super::grouping::{file_name_of, parse_file_name, sort_key};
+use super::scan::{title_from_name, ScanSummary};
 use super::{err, now_ms, FolderKind, Library, Result};
 
 /// Songs read per batch (each batch is saved in one go).
@@ -31,8 +34,6 @@ pub struct TagJob {
     /// The folder's location.
     pub location: String,
     pub path: String,
-    /// Its title now (the file name's, unless tags were read before).
-    pub title: String,
     pub folder_cover: Option<String>,
 }
 
@@ -162,7 +163,7 @@ impl Library {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, f.kind, f.location, t.path, t.title, t.folder_cover
+                "SELECT t.id, f.kind, f.location, t.path, t.folder_cover
                  FROM tracks t JOIN folders f ON f.id = t.folder_id
                  WHERE t.tags_read_at IS NULL AND t.missing_since IS NULL AND f.enabled AND t.id > ?1
                  ORDER BY t.id LIMIT ?2",
@@ -175,8 +176,7 @@ impl Library {
                     kind: FolderKind::parse(&r.get::<_, String>(1)?).unwrap_or(FolderKind::Path),
                     location: r.get(2)?,
                     path: r.get(3)?,
-                    title: r.get(4)?,
-                    folder_cover: r.get(5)?,
+                    folder_cover: r.get(4)?,
                 })
             })
             .map_err(err)?;
@@ -254,7 +254,12 @@ impl Library {
                 )
                 .map_err(err)?;
             for (job, tags, cover_id, error) in results {
-                let title = tags.title.clone().unwrap_or_else(|| job.title.clone());
+                // What the file name says, for what the tags don't.
+                let name = parse_file_name(&title_from_name(&file_name_of(&job.path)));
+                let title = tags.title.clone().unwrap_or(name.title);
+                let artist = tags.artist.clone().or(if tags.title.is_none() { name.artist } else { None });
+                let track_no = tags.track_no.or(name.track);
+                let disc_no = tags.disc_no.or(if tags.track_no.is_none() { name.disc } else { None });
                 let sort_title = sort_key(tags.title_sort.as_deref().unwrap_or(&title));
                 stmt.execute(params![
                     job.track_id,
@@ -263,7 +268,7 @@ impl Library {
                     title,
                     sort_title,
                     tags.title,
-                    tags.artist,
+                    artist,
                     tags.album,
                     tags.album_artist,
                     tags.compilation,
@@ -271,9 +276,9 @@ impl Library {
                     tags.artist_sort,
                     tags.album_sort,
                     tags.album_artist_sort,
-                    tags.track_no,
+                    track_no,
                     tags.track_total,
-                    tags.disc_no,
+                    disc_no,
                     tags.disc_total,
                     tags.year,
                     tags.genre,

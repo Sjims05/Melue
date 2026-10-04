@@ -12,13 +12,24 @@ import {
   logMsg,
 } from './spike'
 import { onMounted, onUnmounted, ref } from 'vue'
-import { coverUrl, library, type FolderCovers, type MusicFolder, type ScanSummary, type Track } from '@/library'
+import {
+  coverUrl,
+  library,
+  type Album,
+  type Artist,
+  type FolderCovers,
+  type MusicFolder,
+  type ScanSummary,
+  type Track,
+} from '@/library'
 import { isAndroid, storage } from '@/platform'
 
 defineProps<{ title: string }>()
 
 const folders = ref<MusicFolder[]>([])
 const songs = ref<Track[] | null>(null)
+const albums = ref<Album[] | null>(null)
+const artists = ref<Artist[] | null>(null)
 const folderCovers = ref<FolderCovers | null>(null)
 
 const describe = (s: ScanSummary) =>
@@ -41,6 +52,8 @@ onMounted(async () => {
       logMsg(`Scan finished${event.changed ? '' : ' (nothing changed)'}${tags}`)
       refreshFolders().catch(() => {})
       if (songs.value) showSongs().catch(() => {})
+      if (albums.value) showAlbums().catch(() => {})
+      if (artists.value) showArtists().catch(() => {})
     }
   })
   refreshFolders().catch(() => {})
@@ -94,9 +107,23 @@ const toggleFolder = (folder: MusicFolder) =>
     logMsg(`${changed.name}: ${changed.enabled ? 'on' : 'off'}`)
   })
 
+// One list at a time: songs, albums or artists.
 async function showSongs() {
+  ;[albums.value, artists.value] = [null, null]
   songs.value = await library.tracks(0, 50)
 }
+
+async function showAlbums() {
+  ;[songs.value, artists.value] = [null, null]
+  albums.value = await library.albums(0, 50)
+}
+
+async function showArtists() {
+  ;[songs.value, albums.value] = [null, null]
+  artists.value = await library.artists(0, 100)
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 const toggleFolderCovers = () =>
   run('Covers next to songs', async () => {
@@ -170,6 +197,8 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="addFolder">Add folder</button>
         <button class="border rounded px-3 py-1" @click="scanNow">Scan now</button>
         <button class="border rounded px-3 py-1" @click="run('Songs', showSongs)">Show songs</button>
+        <button class="border rounded px-3 py-1" @click="run('Albums', showAlbums)">Show albums</button>
+        <button class="border rounded px-3 py-1" @click="run('Artists', showArtists)">Show artists</button>
         <template v-if="isAndroid">
           <button class="border rounded px-3 py-1" @click="useAllMusic">Use all music on this phone</button>
           <button class="border rounded px-3 py-1" @click="musicPermission">Music permission</button>
@@ -203,6 +232,30 @@ async function libraryStatus() {
               <template v-else>{{ details(song) }}</template>
             </div>
           </div>
+        </div>
+      </div>
+      <div v-if="albums" class="space-y-1">
+        <div class="text-xs text-muted-foreground">The first {{ albums.length }} albums by title</div>
+        <div v-for="album in albums" :key="album.id" class="flex items-center gap-2 text-sm">
+          <img v-if="album.cover" :src="coverUrl(album.cover)" class="w-10 h-10 rounded object-cover shrink-0" alt="" />
+          <div v-else class="w-10 h-10 rounded bg-muted shrink-0" />
+          <div class="min-w-0">
+            <div class="truncate">{{ album.title }}</div>
+            <div class="truncate text-xs text-muted-foreground">
+              {{ album.artist ?? 'Various artists' }}{{ album.year ? ` · ${album.year}` : '' }} ·
+              {{ plural(album.tracks, 'song') }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-if="artists" class="space-y-1">
+        <div class="text-xs text-muted-foreground">The first {{ artists.length }} artists by name</div>
+        <div v-for="artist in artists" :key="artist.id" class="text-sm">
+          {{ artist.name }}
+          <span class="text-xs text-muted-foreground">
+            {{ plural(artist.tracks, 'song') }}{{ artist.featured ? `, featured on ${artist.featured}` : ''
+            }}{{ artist.albums ? `, ${plural(artist.albums, 'album')}` : '' }}
+          </span>
         </div>
       </div>
     </section>

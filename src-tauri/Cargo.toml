@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.3.5"
+version = "0.3.6"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -31,6 +31,8 @@ lofty = "0.25"
 # Covers: shrinking them (JPEG, PNG and WebP only), and recognising the same cover in many songs.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+# Sorting and grouping names without their accents (Ólafur with the O's).
+unicode-normalization = "0.1"
 smb2 = "0.11"
 # Playback on every platform (its `mobile` and `desktop` features, both on by default).
 tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }

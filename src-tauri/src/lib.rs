@@ -164,6 +164,8 @@ pub fn run() {
             library::library_music_access,
             library::library_scan,
             library::library_tracks,
+            library::library_albums,
+            library::library_artists,
             library::library_folder_covers,
             library::library_set_folder_covers,
         ])

@@ -61,6 +61,21 @@ impl TestLibrary {
         Self { library, dir }
     }
 
+    /// Adds a music folder (on a disk) to the library.
+    pub fn add_folder(&self, folder: &MusicFolder) -> super::Folder {
+        self.library.add_folder(super::FolderKind::Path, folder.root.to_str().unwrap(), None).unwrap()
+    }
+
+    /// A whole scan of one folder, as the scanner does it: list it, read tags, group, clean up covers.
+    pub fn scan(&self, folder_id: i64, folder: &MusicFolder) -> super::scan::ScanSummary {
+        let files = super::scan::list_folder(&folder.root).unwrap();
+        let mut summary = self.library.apply_scan(folder_id, &files).unwrap();
+        summary.add(self.library.read_tags(&super::tags::open_local, &mut |_, _| {}).unwrap());
+        self.library.regroup_after(&summary).unwrap();
+        self.library.clean_covers().unwrap();
+        summary
+    }
+
     /// A new, empty music folder next to the library.
     pub fn music_folder(&self, name: &str) -> MusicFolder {
         let root = self.dir.path.join(name);
