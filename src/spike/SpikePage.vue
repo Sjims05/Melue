@@ -21,9 +21,12 @@ import {
   type MusicFolder,
   type Playlist,
   type PlaylistEntry,
+  type QueueFollow,
   type ScanSummary,
+  type Source,
   type Track,
 } from '@/library'
+import { playSource, setLiked } from '@/library/playback'
 import { isAndroid, storage } from '@/platform'
 
 defineProps<{ title: string }>()
@@ -70,6 +73,7 @@ onMounted(async () => {
     }
   })
   refreshFolders().catch(() => {})
+  queueFollow.value = await library.queueFollow().catch(() => null)
   if (isAndroid) folderCovers.value = await library.folderCovers().catch(() => null)
 })
 onUnmounted(() => {
@@ -124,10 +128,37 @@ const toggleFolder = (folder: MusicFolder) =>
   })
 
 // One list at a time: songs, albums or artists.
-async function showSongs() {
+// Songs: all by title, recently played, or most played.
+const songsKind = ref<'all' | 'recent' | 'most'>('all')
+const songsHeading = { all: 'songs by title', recent: 'recently played songs', most: 'most played songs' }
+
+async function showSongs(kind = songsKind.value) {
   ;[albums.value, artists.value] = [null, null]
-  songs.value = await library.tracks(0, 50)
+  songsKind.value = kind
+  songs.value = await (kind === 'recent' ? library.recentlyPlayed(50) : kind === 'most' ? library.mostPlayed(50) : library.tracks(0, 50))
 }
+
+// ---- playing (the player's own controls are in the playback section)
+
+const play = (source: Source, startAt?: number) =>
+  run('Play', async () => {
+    await playSource(source, { startAt })
+    logMsg(`Playing ${source}${startAt ? ` from song ${startAt}` : ''}`)
+  })
+
+const toggleLike = (song: Track) =>
+  run('Like', async () => {
+    await setLiked(song.id, !song.liked)
+    logMsg(`${song.liked ? 'Unliked' : 'Liked'} ${song.title}`)
+  })
+
+const queueFollow = ref<QueueFollow | null>(null)
+const toggleQueueFollow = () =>
+  run('Queue follows library', async () => {
+    const current = queueFollow.value ?? (await library.queueFollow())
+    queueFollow.value = await library.setQueueFollow({ ...current, enabled: !current.enabled })
+    logMsg(`The queue follows library changes: ${queueFollow.value.enabled ? 'on' : 'off'}`)
+  })
 
 async function showAlbums() {
   ;[songs.value, artists.value] = [null, null]
@@ -305,7 +336,14 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="run('Folders', refreshFolders)">Show folders</button>
         <button class="border rounded px-3 py-1" @click="addFolder">Add folder</button>
         <button class="border rounded px-3 py-1" @click="scanNow">Scan now</button>
-        <button class="border rounded px-3 py-1" @click="run('Songs', showSongs)">Show songs</button>
+        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('all'))">Show songs</button>
+        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('recent'))">Recently played</button>
+        <button class="border rounded px-3 py-1" @click="run('Songs', () => showSongs('most'))">Most played</button>
+        <button class="border rounded px-3 py-1" @click="play('songs')">Play all songs</button>
+        <button class="border rounded px-3 py-1" @click="play('liked')">Play liked</button>
+        <button class="border rounded px-3 py-1" @click="toggleQueueFollow">
+          Queue follows library: {{ queueFollow?.enabled === false ? 'off' : 'on' }}
+        </button>
         <button class="border rounded px-3 py-1" @click="run('Albums', showAlbums)">Show albums</button>
         <button class="border rounded px-3 py-1" @click="run('Artists', showArtists)">Show artists</button>
         <template v-if="isAndroid">
@@ -325,8 +363,12 @@ async function libraryStatus() {
         </li>
       </ul>
       <div v-if="songs" class="space-y-1">
-        <div class="text-xs text-muted-foreground">The first {{ songs.length }} songs by title</div>
+        <div class="text-xs text-muted-foreground">The first {{ songs.length }} {{ songsHeading[songsKind] }}</div>
         <div v-for="song in songs" :key="song.id" class="flex items-center gap-2 text-sm">
+          <button class="border rounded px-2 text-xs shrink-0" title="Play from here" @click="play('songs', song.id)">▶</button>
+          <button class="border rounded px-2 text-xs shrink-0" :title="song.liked ? 'Unlike' : 'Like'" @click="toggleLike(song)">
+            {{ song.liked ? '♥' : '♡' }}
+          </button>
           <button v-if="openPlaylist" class="border rounded px-2 text-xs shrink-0" :title="`Add to ${openPlaylist.name}`" @click="addSong(song)">
             +
           </button>
@@ -337,6 +379,7 @@ async function libraryStatus() {
             <div class="truncate text-xs text-muted-foreground">
               {{ [song.artist, song.album].filter(Boolean).join(' — ') }}
               <span v-if="song.albumArtist && song.albumArtist !== song.artist">(album: {{ song.albumArtist }})</span>
+              <span v-if="song.playCount">· played {{ song.playCount }}×</span>
             </div>
             <div class="truncate text-xs text-muted-foreground">
               <template v-if="song.tagsError">Tags unreadable: {{ song.tagsError }}</template>
@@ -349,6 +392,7 @@ async function libraryStatus() {
       <div v-if="albums" class="space-y-1">
         <div class="text-xs text-muted-foreground">The first {{ albums.length }} albums by title</div>
         <div v-for="album in albums" :key="album.id" class="flex items-center gap-2 text-sm">
+          <button class="border rounded px-2 text-xs shrink-0" title="Play" @click="play(`album:${album.id}`)">▶</button>
           <img v-if="album.cover" :src="coverUrl(album.cover)" class="w-10 h-10 rounded object-cover shrink-0" alt="" />
           <div v-else class="w-10 h-10 rounded bg-muted shrink-0" />
           <div class="min-w-0">
@@ -385,6 +429,7 @@ async function libraryStatus() {
         </div>
         <div v-if="openPlaylist" class="space-y-1 border rounded p-2">
           <div class="text-sm font-medium">
+            <button class="border rounded px-2 text-xs" title="Play" @click="play(`playlist:${openPlaylist.id}`)">▶</button>
             {{ openPlaylist.name }}
             <span class="text-xs text-muted-foreground">(open "Show songs" and use + to add songs)</span>
           </div>
@@ -422,6 +467,7 @@ async function libraryStatus() {
       <div v-if="artists" class="space-y-1">
         <div class="text-xs text-muted-foreground">The first {{ artists.length }} artists by name</div>
         <div v-for="artist in artists" :key="artist.id" class="text-sm">
+          <button class="border rounded px-2 text-xs" title="Play" @click="play(`artist:${artist.id}`)">▶</button>
           {{ artist.name }}
           <span class="text-xs text-muted-foreground">
             {{ plural(artist.tracks, 'song') }}{{ artist.featured ? `, featured on ${artist.featured}` : ''

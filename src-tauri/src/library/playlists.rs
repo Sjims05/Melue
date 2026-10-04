@@ -11,7 +11,7 @@ use rusqlite::{params, OptionalExtension, Transaction};
 use serde::Serialize;
 
 use super::grouping::file_name_of;
-use super::tracks::{track_row, Track, TRACK_COLUMNS};
+use super::tracks::{track_row, Track, TRACK_COLUMNS, TRACK_COLUMN_COUNT};
 use super::{err, now_ms, Library, Result};
 
 /// How many covers a playlist's picture is made of (the UI shows them as a grid).
@@ -221,11 +221,11 @@ impl Library {
                 let track = if r.get::<_, Option<i64>>(0)?.is_some() { Some(track_row(r)?) } else { None };
                 Ok(PlaylistEntry {
                     track,
-                    id: r.get(18)?,
-                    position: r.get(19)?,
-                    added_at: r.get(20)?,
-                    state: r.get(21)?,
-                    file_entry: r.get(22)?,
+                    id: r.get(TRACK_COLUMN_COUNT)?,
+                    position: r.get(TRACK_COLUMN_COUNT + 1)?,
+                    added_at: r.get(TRACK_COLUMN_COUNT + 2)?,
+                    state: r.get(TRACK_COLUMN_COUNT + 3)?,
+                    file_entry: r.get(TRACK_COLUMN_COUNT + 4)?,
                 })
             })
             .map_err(err)?;

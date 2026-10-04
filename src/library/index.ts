@@ -76,10 +76,10 @@ export type ScanEvent =
  * removed, switched on or off, or renamed).
  */
 export interface LibraryChange {
-  reason: 'scan' | 'folders' | 'playlists'
+  reason: 'scan' | 'folders' | 'playlists' | 'likes'
   /** Songs added, changed (tags, cover, file), gone (missing, removed, hidden with their folder) or back. */
   tracks: number[]
-  /** The playable lists whose songs changed: 'songs' (all songs), 'album:<id>', 'artist:<id>', 'playlist:<id>'. */
+  /** The playable lists whose songs changed: 'songs' (all songs), 'album:<id>', 'artist:<id>', 'playlist:<id>', 'liked'. */
   sources: string[]
 }
 
@@ -171,6 +171,42 @@ export interface Track {
   tagsError: string | null
   /** Whether it can be played (its file is there, its folder switched on). False only in playlists. */
   available: boolean
+  liked: boolean
+  /** How often it was played: to the end, or left after half of it or 4 minutes. */
+  playCount: number
+}
+
+/** A song ready to play (the player's queue item): `id` is the song's library id. */
+export interface QueueItem {
+  id: number
+  src: string
+  title?: string
+  artist?: string
+  album?: string
+  /** Its large cover, as a file path (for the notification and Android Auto). */
+  artworkUrl?: string
+}
+
+/**
+ * A list to play: 'songs' (all, by title), 'album:<id>', 'artist:<id>' (albums oldest first, then songs
+ * not on an album), 'playlist:<id>', 'liked' (most recently liked first).
+ */
+export type Source = 'songs' | 'liked' | `album:${number}` | `artist:${number}` | `playlist:${number}`
+
+/** What leaving a song counted as: a play (to the end, or after half or 4 minutes), a skip (in its first 30 s), or neither. */
+export type PlaybackOutcome = 'play' | 'skip' | 'neither'
+
+/** How the queue follows library changes to the list it plays (the player's updateQueue options). */
+export interface QueueFollow {
+  enabled: boolean
+  /** The playing song left the list: 'finish' it (default), or 'skip' to the next now. */
+  removedCurrent: 'finish' | 'skip'
+  /** Other songs that left it: 'remove' (default) or 'keep'. */
+  removedItems: 'remove' | 'keep'
+  /** New songs: 'inPlace' (default), 'end' or 'next'. */
+  newItems: 'inPlace' | 'end' | 'next'
+  /** The queue's order: the 'playlist's (the list's, default) or the 'queue's own. */
+  order: 'playlist' | 'queue'
 }
 
 /** An album: songs with the same album title and album artist (see the grouping rules in grouping.rs). */
@@ -269,6 +305,18 @@ export const library = {
 
   /** Songs that are there, by title. */
   tracks: (offset = 0, limit = 100) => invoke<Track[]>('library_tracks', { offset, limit }),
+  /** Songs by when they were last played, latest first. */
+  recentlyPlayed: (limit = 50) => invoke<Track[]>('library_recently_played', { limit }),
+  /** Songs by play count, most first. */
+  mostPlayed: (limit = 50) => invoke<Track[]>('library_most_played', { limit }),
+
+  /** A list's songs that can be played, in its order, ready for the player (see playSource). */
+  queueItems: (source: Source) => invoke<QueueItem[]>('library_queue_items', { source }),
+  /** Use setLiked from '@/library/playback' instead: it also updates the player's like button. */
+  setLikedOnly: (id: number, liked: boolean) => invoke<void>('library_set_liked', { id, liked }),
+  likedIds: () => invoke<number[]>('library_liked_ids'),
+  queueFollow: () => invoke<QueueFollow>('library_queue_follow'),
+  setQueueFollow: (settings: QueueFollow) => invoke<QueueFollow>('library_set_queue_follow', { settings }),
   /** Albums with songs that are there, by title ("The" ignored). */
   albums: (offset = 0, limit = 100) => invoke<Album[]>('library_albums', { offset, limit }),
   /** Artists with songs that are there, by name ("The" and accents ignored, or their sort tag). */

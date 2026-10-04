@@ -6,6 +6,8 @@ use tauri::{AppHandle, State};
 
 use super::scan::ScanSummary;
 use super::changes::{self, tracking, ChangeReason, LibraryChange};
+use super::follow::QueueFollow;
+use super::playback::{Outcome, PlaybackEvent};
 use super::playlists::{Playlist, PlaylistEntry};
 use super::scanner::AppFiles;
 use super::{android, scanner, Album, Artist, Folder, FolderKind, Library, Result, Track};
@@ -275,4 +277,54 @@ pub fn library_unlink_playlist(app: AppHandle, library: State<'_, Library>, id: 
     library.unlink_playlist(id)?;
     changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
     library.playlist(id)
+}
+
+// ---- playing (see playback.rs)
+
+/// The queue for a list ("songs", "album:<id>", "artist:<id>", "playlist:<id>", "liked"), ready to play.
+#[tauri::command(async)]
+pub fn library_queue_items(library: State<'_, Library>, source: String) -> Result<Vec<tauri_plugin_native_audio::QueueItem>> {
+    library.queue_items(&source)
+}
+
+/// Counts one of the player's playback events (once, however often it's handed over): "play", "skip" or
+/// "neither" for a song being left, null otherwise.
+#[tauri::command(async)]
+pub fn library_record_playback(library: State<'_, Library>, event: PlaybackEvent) -> Result<Option<Outcome>> {
+    library.record_playback(&event)
+}
+
+#[tauri::command(async)]
+pub fn library_set_liked(app: AppHandle, library: State<'_, Library>, id: i64, liked: bool) -> Result<()> {
+    library.set_liked(id, liked)?;
+    changes::emit(&app, LibraryChange::liked(id));
+    Ok(())
+}
+
+/// Every liked song's id (for the player's like button).
+#[tauri::command(async)]
+pub fn library_liked_ids(library: State<'_, Library>) -> Result<Vec<i64>> {
+    library.liked_ids()
+}
+
+#[tauri::command(async)]
+pub fn library_recently_played(library: State<'_, Library>, limit: u32) -> Result<Vec<Track>> {
+    library.recently_played(limit)
+}
+
+#[tauri::command(async)]
+pub fn library_most_played(library: State<'_, Library>, limit: u32) -> Result<Vec<Track>> {
+    library.most_played(limit)
+}
+
+/// How the queue follows library changes (on, and the player's updateQueue options).
+#[tauri::command(async)]
+pub fn library_queue_follow(library: State<'_, Library>) -> Result<QueueFollow> {
+    library.queue_follow()
+}
+
+#[tauri::command(async)]
+pub fn library_set_queue_follow(library: State<'_, Library>, settings: QueueFollow) -> Result<QueueFollow> {
+    library.set_queue_follow(&settings)?;
+    library.queue_follow()
 }

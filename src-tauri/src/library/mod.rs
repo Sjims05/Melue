@@ -7,6 +7,7 @@ pub mod changes;
 mod changes_tests;
 mod commands;
 pub mod covers;
+pub mod follow;
 mod folders;
 pub mod grouping;
 #[cfg(test)]
@@ -16,6 +17,9 @@ mod linked;
 mod linked_tests;
 mod m3u;
 mod migrations;
+pub mod playback;
+#[cfg(test)]
+mod playback_tests;
 pub mod playlists;
 #[cfg(test)]
 mod playlists_tests;

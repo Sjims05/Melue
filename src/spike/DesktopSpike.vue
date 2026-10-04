@@ -5,7 +5,8 @@
  * Android Auto and car sections don't apply.
  */
 import { onMounted, ref } from 'vue'
-import { getItemProgress, onPlaybackEvent, setOptions, setSkipInterval } from 'tauri-plugin-native-audio-api'
+import { getItemProgress, setOptions, setSkipInterval } from 'tauri-plugin-native-audio-api'
+import { onPlaybackCounted } from '@/library/playback'
 import { player, trackedLists, type OutputDevices } from '@/platform'
 import PlaybackSpike from './PlaybackSpike.vue'
 import SkipRulesOptions from './SkipRulesOptions.vue'
@@ -114,8 +115,9 @@ async function setUpSavedData() {
     const names = entries.map(({ id }) => folderTitles[String(id)] ?? `track ${id}`)
     logMsg(`Tracked list "${listId}": ${names.join(', ') || '(empty)'}`)
   })
-  await onPlaybackEvent((event) => {
-    logMsg(`Playback event: ${event.type} track ${event.itemId} at ${Math.round(event.positionMs / 1000)} s (${new Date(event.atMs).toLocaleTimeString()})`)
+  onPlaybackCounted((event, outcome) => {
+    const counted = outcome ? ` → counted as ${outcome}` : ''
+    logMsg(`Playback event: ${event.type} track ${event.itemId} at ${Math.round(event.positionMs / 1000)} s (${new Date(event.atMs).toLocaleTimeString()})${counted}`)
   })
   await setOptions({ trackProgress: progressOn.value, repeatAddedTracks: repeatAddedOn.value, resumeLastQueue: resumeMode.value })
 }

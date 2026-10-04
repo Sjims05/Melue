@@ -4,7 +4,7 @@
  * mobile-only features (Android Auto library, car buttons, options), which use the plugin directly.
  */
 import { onMounted, ref } from 'vue'
-import { setLibrary, setOptions, setControls, onControlPressed } from 'tauri-plugin-native-audio-api'
+import { setLibrary, setOptions } from 'tauri-plugin-native-audio-api'
 import { trackedLists } from '@/platform'
 import PlaybackSpike from './PlaybackSpike.vue'
 import SkipRulesOptions from './SkipRulesOptions.vue'
@@ -107,24 +107,6 @@ async function cycleKeepAliveMinutes() {
   logMsg(`Controls stay after a pause for: ${keepAliveMinutes.value} min`)
 }
 
-async function setUpCarButtons() {
-  await setControls({
-    buttons: [
-      { action: 'seekBack', seconds: 15 },
-      { action: 'seekForward', seconds: 30 },
-      { action: 'shuffle' },
-      { action: 'repeat' },
-      { action: 'speed', rates: [1, 1.5, 2] },
-      { action: 'custom', id: 'like', label: 'Like', icon: 'heart', toggle: true },
-    ],
-  })
-  // Presses made in the car while the app was closed arrive here first, then live ones.
-  await onControlPressed((press) => {
-    const time = new Date(press.pressedAtMs).toLocaleTimeString()
-    logMsg(`Button "${press.buttonId}" on track id ${press.itemId}: ${press.active === null ? 'pressed' : press.active ? 'on' : 'off'} (at ${time})`)
-  })
-}
-
 onMounted(async () => {
   try {
     await setOptions({
@@ -133,7 +115,6 @@ onMounted(async () => {
       keepAliveWhileCarConnected: carKeepAliveOn.value,
       pausedKeepAliveMinutes: keepAliveMinutes.value,
     })
-    await setUpCarButtons()
     await setUpRecentPlaylists()
   } catch (e) {
     logMsg(`Setup FAILED: ${e}`)

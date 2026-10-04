@@ -24,6 +24,8 @@ pub enum ChangeReason {
     Folders,
     /// A playlist was made, renamed, deleted, or its songs changed.
     Playlists,
+    /// A song was liked or unliked.
+    Likes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -33,7 +35,7 @@ pub struct LibraryChange {
     /// Songs added, changed, gone (missing, removed, hidden) or back, by id.
     pub tracks: Vec<i64>,
     /// The playable lists whose songs changed: "songs" (all songs), "album:<id>", "artist:<id>",
-    /// "playlist:<id>".
+    /// "playlist:<id>", "liked".
     pub sources: Vec<String>,
 }
 
@@ -45,6 +47,11 @@ impl LibraryChange {
         ids.sort_unstable();
         ids.dedup();
         Self { reason, tracks: Vec::new(), sources: ids.into_iter().map(|id| format!("playlist:{id}")).collect() }
+    }
+
+    /// A song liked or unliked.
+    pub fn liked(track: i64) -> Self {
+        Self { reason: ChangeReason::Likes, tracks: vec![track], sources: vec!["liked".into()] }
     }
 
     pub fn playlist(id: i64, tracks: Vec<i64>) -> Self {
@@ -186,9 +193,12 @@ impl Snapshot {
     }
 }
 
-/// Tells the UI about a change.
+/// Tells the UI about a change, and brings the playing queue in line when it touches its list (in the
+/// background: the player is asked what it plays).
 pub fn emit(app: &AppHandle, change: LibraryChange) {
-    let _ = app.emit(CHANGE_EVENT, change);
+    let _ = app.emit(CHANGE_EVENT, &change);
+    let app = app.clone();
+    std::thread::spawn(move || super::follow::follow(&app, &change));
 }
 
 /// Runs `change` and tells the UI what it changed. With `always`, it's told even when no song changed

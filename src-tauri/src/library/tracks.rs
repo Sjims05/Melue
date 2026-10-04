@@ -33,12 +33,19 @@ pub struct Track {
     /// Whether it can be played: its file is there and its folder switched on. Lists of songs only have
     /// those; playlists keep the others too (shown greyed, they come back with their file).
     pub available: bool,
+    pub liked: bool,
+    /// How often it was played (see playback.rs for what counts).
+    pub play_count: i64,
 }
 
 /// A song's columns, for [`track_row`]: `t` is the track, `f` its folder, `c` its cover.
 pub(crate) const TRACK_COLUMNS: &str = "t.id, t.folder_id, t.title, t.artist_credit, t.tag_album, t.tag_album_artist, t.track_no,
     t.disc_no, t.year, t.genre, t.duration_ms, t.format, t.bitrate_kbps, t.sample_rate, c.file, t.tags_read_at IS NOT NULL,
-    t.tags_error, t.missing_since IS NULL AND f.enabled";
+    t.tags_error, t.missing_since IS NULL AND f.enabled, EXISTS (SELECT 1 FROM likes l WHERE l.track_id = t.id),
+    coalesce((SELECT s.play_count FROM track_stats s WHERE s.track_id = t.id), 0)";
+
+/// How many columns [`TRACK_COLUMNS`] is: a query's own columns after it start there.
+pub(crate) const TRACK_COLUMN_COUNT: usize = 20;
 
 /// A song from a row selected with [`TRACK_COLUMNS`] first.
 pub(crate) fn track_row(r: &Row) -> rusqlite::Result<Track> {
@@ -61,6 +68,8 @@ pub(crate) fn track_row(r: &Row) -> rusqlite::Result<Track> {
         tags_read: r.get(15)?,
         tags_error: r.get(16)?,
         available: r.get(17)?,
+        liked: r.get(18)?,
+        play_count: r.get(19)?,
     })
 }
 
