@@ -1,7 +1,9 @@
 //! Melue's music library: an SQLite database in the app's data folder, owned by the Rust side. The UI
 //! asks it things through the commands in commands.rs (wrapped for TypeScript in src/library/).
 
+mod android;
 mod commands;
+mod folders;
 mod migrations;
 #[cfg(test)]
 mod schema_tests;
@@ -9,6 +11,7 @@ mod schema_tests;
 pub mod testkit;
 
 pub use commands::*;
+pub use folders::{Folder, FolderKind};
 
 use std::fmt::Display;
 use std::path::Path;
@@ -17,6 +20,13 @@ use std::sync::{Mutex, MutexGuard};
 use rusqlite::{Connection, OptionalExtension};
 
 pub type Result<T> = std::result::Result<T, String>;
+
+/// Now, in milliseconds since 1970 (how the library stores times).
+pub(crate) fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
+}
 
 /// Turns any error into the message the commands hand to the UI.
 pub(crate) fn err(e: impl Display) -> String {

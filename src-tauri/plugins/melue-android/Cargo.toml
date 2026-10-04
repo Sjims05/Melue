@@ -1,0 +1,14 @@
+[package]
+name = "tauri-plugin-melue-android"
+version = "0.1.0"
+edition = "2021"
+description = "Melue's own Android code: the music permission and Android's music index"
+publish = false
+links = "tauri-plugin-melue-android"
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.2.1"
+version = "0.3.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -35,6 +35,8 @@ tokio = { version = "1", features = ["fs", "io-util"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tauri-plugin-android-fs = "29.0.0"
+# Melue's own Android code: the music permission and Android's music index.
+tauri-plugin-melue-android = { path = "plugins/melue-android" }
 
 
 # Dev builds: optimize the dependencies (the audio decoding and resampling in native-audio would

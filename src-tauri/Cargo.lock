@@ -2713,7 +2713,7 @@ dependencies = [
 
 [[package]]
 name = "melue"
-version = "0.2.1"
+version = "0.3.3"
 dependencies = [
  "lofty",
  "rusqlite",
@@ -2725,6 +2725,7 @@ dependencies = [
  "tauri-plugin-android-fs",
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
+ "tauri-plugin-melue-android",
  "tauri-plugin-native-audio",
  "tauri-plugin-opener",
  "tauri-plugin-persisted-scope",
@@ -4937,6 +4938,15 @@ dependencies = [
  "thiserror 2.0.21",
  "toml 1.1.6+spec-1.1.0",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-melue-android"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

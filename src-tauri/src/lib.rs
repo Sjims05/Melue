@@ -120,9 +120,10 @@ async fn smb_copy_file(
 pub fn run() {
     let builder = tauri::Builder::default();
 
-    // Android only (see Cargo.toml); its permissions are in capabilities/android.json.
+    // Android only (see Cargo.toml): android-fs (its permissions are in capabilities/android.json), and
+    // Melue's own Android code (no JavaScript commands, used by the library).
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(tauri_plugin_android_fs::init());
+    let builder = builder.plugin(tauri_plugin_android_fs::init()).plugin(tauri_plugin_melue_android::init());
 
     builder
         .plugin(tauri_plugin_native_audio::init())
@@ -138,9 +139,19 @@ pub fn run() {
             app.manage(library);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![smb_connect, smb_list_dir, smb_copy_file, library::library_status,
+        .invoke_handler(tauri::generate_handler![
+            smb_connect,
+            smb_list_dir,
+            smb_copy_file,
+            library::library_status,
             library::library_setting,
-            library::library_set_setting
+            library::library_set_setting,
+            library::library_folders,
+            library::library_add_folder,
+            library::library_remove_folder,
+            library::library_set_folder_enabled,
+            library::library_rename_folder,
+            library::library_music_access,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

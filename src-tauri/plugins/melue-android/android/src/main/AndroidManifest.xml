@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Reading the music on the phone: Android 13 and newer. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- The same on Android 12 and older. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+</manifest>

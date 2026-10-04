@@ -1,6 +1,6 @@
 /**
  * Shared parts of the spike test pages (mobile and desktop): the log, SMB, song tags,
- * the storage picker, the wake lock and SQLite. Temporary, until the real UI replaces the spike pages.
+ * the wake lock (the library has its own section). Temporary, until the real UI replaces the spike pages.
  *
  * SMB credentials are read from .env (gitignored), see .env.example.
  */
@@ -8,7 +8,6 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 import { readFile } from '@tauri-apps/plugin-fs'
 import { parseBuffer } from 'music-metadata'
 import { ref } from 'vue'
-import { storage } from '@/platform'
 import { SmbSource } from '@/sources/SmbSource'
 
 // ---- Logging -------------------------------------------------------
@@ -102,24 +101,6 @@ export async function smbDownloadOneFile() {
     logMsg(`SMB: downloaded to ${destPath}`)
   } catch (e) {
     logMsg(`SMB download FAILED: ${e}`)
-  }
-}
-
-// =====================================================================
-// SECTION 2: (future feature demo) pick where the music is stored.
-// Android: the system picker (also SD cards). Desktop: a folder dialog.
-// Independent of the SMB flow above.
-// =====================================================================
-export async function pickLocalStorageFolder() {
-  try {
-    const folder = await storage.pickMusicFolder()
-    if (!folder) {
-      logMsg('Storage picker: cancelled')
-      return
-    }
-    logMsg(`Storage picker: picked ${folder} (not wired to anything yet — just proving the picker works)`)
-  } catch (e) {
-    logMsg(`Storage picker FAILED: ${e}`)
   }
 }
 
