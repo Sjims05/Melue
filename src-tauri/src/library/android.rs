@@ -259,6 +259,33 @@ pub fn set_hidden_from_other_apps(app: &AppHandle, location: &str, hidden: bool)
     }
 }
 
+/// Android: calls `handler` when the app comes back to the foreground. Elsewhere: nothing (desktop: see the
+/// window's focus in lib.rs).
+pub fn on_resume(app: &AppHandle, handler: impl Fn() + Send + Sync + 'static) {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_melue_android::MelueAndroidExt;
+        if let Err(e) = app.melue_android().listen("resumed", handler) {
+            eprintln!("melue: can't follow the app coming back: {e}");
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = (app, handler);
+}
+
+/// Android: calls `handler` when Cancel is pressed on the "Syncing music" notification.
+pub fn on_sync_cancel(app: &AppHandle, handler: impl Fn() + Send + Sync + 'static) {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_melue_android::MelueAndroidExt;
+        if let Err(e) = app.melue_android().listen("syncCancel", handler) {
+            eprintln!("melue: can't follow the sync notification: {e}");
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = (app, handler);
+}
+
 /// Android: calls `handler` when the music index changes or the app comes back to the foreground.
 /// Elsewhere: nothing to listen to.
 pub fn on_music_changes(app: &AppHandle, handler: impl Fn() + Send + Sync + Clone + 'static) {

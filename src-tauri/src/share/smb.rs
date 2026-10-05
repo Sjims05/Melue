@@ -436,6 +436,45 @@ impl Share for SmbShare {
         }
     }
 
+    fn watch(&self, on_change: Arc<dyn Fn() + Send + Sync>) -> ShareResult<Option<super::Watch>> {
+        let Some(runtime) = self.runtime.as_ref() else { return Ok(None) };
+        let (conn, config, base) = (self.conn.clone(), self.config.clone(), self.base.clone());
+        let alive = Arc::new(AtomicBool::new(true));
+        let still = alive.clone();
+        let (ready, started) = std::sync::mpsc::channel();
+        let task = runtime.spawn(async move {
+            let watcher = async {
+                let mut guard = conn.lock().await;
+                if guard.is_none() {
+                    *guard = Some(connect(&config).await?);
+                }
+                let c = guard.as_mut().expect("connected");
+                c.client.watch(&c.tree, &base, true).await.map_err(|e| classify(e, &base))
+            }
+            .await;
+            let mut watcher = match watcher {
+                Ok(watcher) => {
+                    let _ = ready.send(Ok(()));
+                    watcher
+                }
+                Err(e) => {
+                    still.store(false, Ordering::SeqCst);
+                    let _ = ready.send(Err(e));
+                    return;
+                }
+            };
+            // The watcher has its own connection: syncing goes on next to it.
+            while let Ok(events) = watcher.next_events().await {
+                if !events.is_empty() {
+                    on_change();
+                }
+            }
+            still.store(false, Ordering::SeqCst);
+        });
+        started.recv().unwrap_or_else(|_| Err(ShareError::Other { detail: "the share's runtime stopped".into() }))?;
+        Ok(Some(super::Watch::new(alive, move || task.abort())))
+    }
+
     fn free_space(&self) -> ShareResult<Option<u64>> {
         let info = self.quick(self.config.share.clone(), |c| Box::pin(async move { c.client.fs_info(&mut c.tree).await }))?;
         Ok(Some(info.free_bytes))

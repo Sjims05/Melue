@@ -16,6 +16,8 @@ mod plan_tests;
 pub mod run;
 #[cfg(test)]
 mod run_tests;
+pub mod schedule;
+pub mod scheduler;
 #[cfg(target_os = "android")]
 mod tree;
 
@@ -33,11 +35,30 @@ pub struct SyncSettings {
     pub remove_gone: bool,
     /// Ask before a sync removes more than this many songs (0: always ask).
     pub ask_before_removing: u32,
+    /// Sync when Melue starts.
+    pub at_start: bool,
+    /// Sync when the user comes back to the app, if the last sync is at least this many minutes ago (None: no).
+    pub on_return_after_minutes: Option<u32>,
+    /// Sync when the share says its music changed (SMB change notifications, while Melue runs).
+    pub on_change: bool,
+    /// Also sync every this many minutes while Melue runs (None: no).
+    pub every_minutes: Option<u32>,
+    /// Copy songs on metered connections (mobile data, a phone's hotspot). Off: they wait for Wi-Fi; moves,
+    /// renames and removals still happen.
+    pub copy_on_metered: bool,
 }
 
 impl Default for SyncSettings {
     fn default() -> Self {
-        Self { remove_gone: false, ask_before_removing: 5 }
+        Self {
+            remove_gone: false,
+            ask_before_removing: 5,
+            at_start: true,
+            on_return_after_minutes: Some(15),
+            on_change: true,
+            every_minutes: None,
+            copy_on_metered: false,
+        }
     }
 }
 

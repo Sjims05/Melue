@@ -216,3 +216,20 @@ fn the_real_nas_does_everything() {
     drop(clean_up);
     assert_eq!(share.stat(&folder).unwrap(), None);
 }
+
+#[test]
+#[ignore = "uses the real NAS from melue/.env (run: cargo test real_nas -- --ignored); works only in its own test folder"]
+fn the_real_nas_says_when_its_music_changes() {
+    let (config, folder) = nas().expect("melue/.env with the VITE_SMB_* settings");
+    let share = SmbShare::new(config).unwrap();
+    let _clean_up = CleanUp { share: &share, folder: &folder };
+    let (changed, noticed) = std::sync::mpsc::channel();
+    let watch = share.watch(std::sync::Arc::new(move || {
+        let _ = changed.send(());
+    }));
+    let watch = watch.unwrap().expect("SMB shares can be watched");
+    assert!(watch.alive());
+    share.write(&format!("{folder}/Album/new.mp3"), b"a new song").unwrap();
+    assert!(noticed.recv_timeout(std::time::Duration::from_secs(10)).is_ok(), "the NAS said something changed");
+    drop(watch);
+}

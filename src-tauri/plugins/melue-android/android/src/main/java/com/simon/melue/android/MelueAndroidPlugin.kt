@@ -12,10 +12,13 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import android.database.ContentObserver
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import android.content.pm.PackageManager
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.webkit.WebView
@@ -53,7 +56,23 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     /** The permission this Android version uses for reading music. */
     private fun musicAlias() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) "audio" else "storage"
 
-    private fun musicState(): PermissionState = getPermissionState(musicAlias()) ?: PermissionState.DENIED
+    private fun musicState(): PermissionState = state(musicAlias(), musicPermissionName())
+
+    private fun musicPermissionName() =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
+
+    /**
+     * A permission's state: Android's own answer first (through the app, always current), then Tauri's
+     * (which tells "not asked yet" from "denied"; it answers "denied" when its own bookkeeping isn't there).
+     */
+    private fun state(alias: String, permission: String): PermissionState {
+        val granted = activity.applicationContext.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        val tauri = getPermissionState(alias)
+        if (granted != (tauri == PermissionState.GRANTED)) {
+            Log.w("MelueAndroid", "$permission: Android says ${if (granted) "granted" else "not granted"}, Tauri says $tauri")
+        }
+        return if (granted) PermissionState.GRANTED else tauri ?: PermissionState.PROMPT
+    }
 
     /** Whether Melue may read the music on the phone: granted, denied, prompt or prompt-with-rationale. */
     @Command
@@ -84,7 +103,10 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     /** The permission this Android version uses for reading photos. */
     private fun photosAlias() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) "photos" else "storage"
 
-    private fun photosState(): PermissionState = getPermissionState(photosAlias()) ?: PermissionState.DENIED
+    private fun photosState(): PermissionState = state(
+        photosAlias(),
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE,
+    )
 
     /** Whether Melue may read the photos on the phone (for cover images next to the songs). */
     @Command
@@ -140,6 +162,8 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         }
         activity.contentResolver.registerContentObserver(audioCollection(), true, watcher)
         observer = watcher
+        // Cancel on the "Syncing music" notification goes to Melue's Rust code.
+        SyncService.onCancel = { trigger("syncCancel", JSObject()) }
     }
 
     override fun onResume() {
@@ -300,6 +324,29 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
                 ?: throw IllegalStateException("the folder's provider can't move documents")
         }.onSuccess { invoke.resolve(JSObject().put("uri", it.toString())) }
             .onFailure { invoke.reject("can't move the file: ${it.message}") }
+    }
+
+    // ---- syncing
+
+    /** Whether the connection is metered (mobile data, a phone's hotspot): Android's own answer. */
+    @Command
+    fun networkMetered(invoke: Invoke) {
+        val connectivity = activity.getSystemService(ConnectivityManager::class.java)
+        invoke.resolve(JSObject().put("metered", connectivity.isActiveNetworkMetered))
+    }
+
+    /** Shows or updates the "Syncing music" notification: `done` of `total` files, `text` the current one. */
+    @Command
+    fun syncNotification(invoke: Invoke) {
+        val args = invoke.getArgs()
+        SyncService.show(activity.applicationContext, args.getInteger("done") ?: 0, args.getInteger("total") ?: 0, args.getString("text") ?: "")
+        invoke.resolve()
+    }
+
+    @Command
+    fun syncNotificationDone(invoke: Invoke) {
+        SyncService.stop(activity.applicationContext)
+        invoke.resolve()
     }
 
     /** How many songs the music index has (music only, not ringtones or recordings). */

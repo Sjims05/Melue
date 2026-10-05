@@ -130,6 +130,7 @@ pub async fn share_set_password(app: AppHandle, password: String, store: Option<
 pub async fn share_remove(app: AppHandle) -> Result<ShareInfo, SetupError> {
     on_share_thread(move || {
         with_stores(&app, setup::remove)??;
+        crate::sync::scheduler::stop_watching(&app);
         changes::emit(&app, LibraryChange::sync());
         info(&app)
     })

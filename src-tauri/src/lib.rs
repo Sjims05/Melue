@@ -82,7 +82,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(SpikeShare::default())
         .manage(share::commands::SessionPasswords::default())
-        .manage(sync::commands::SyncState::default())
+        .manage(sync::scheduler::Syncing::default())
         // Covers for the UI: cover://localhost/<file>-300.jpg (src/library's coverUrl makes these).
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             use tauri::Manager;
@@ -101,7 +101,24 @@ pub fn run() {
             // Android Auto's library: sent now and after changes (Android only).
             app.manage(library::auto::AutoSender::default());
             library::auto::start(app.handle());
+            // Syncing with the share by itself (start-up, coming back, the share's changes; see sync/schedule.rs).
+            sync::scheduler::start(app.handle());
+            library::android::on_resume(app.handle(), {
+                let app = app.handle().clone();
+                move || sync::scheduler::trigger(&app, sync::schedule::Trigger::Return)
+            });
+            library::android::on_sync_cancel(app.handle(), {
+                let app = app.handle().clone();
+                move || sync::scheduler::cancel(&app)
+            });
             Ok(())
+        })
+        // Desktop: back into the window counts as coming back to the app (a sync if the last is a while ago).
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Focused(true) = event {
+                use tauri::Manager;
+                sync::scheduler::trigger(window.app_handle(), sync::schedule::Trigger::Return);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             smb_connect,
@@ -116,6 +133,8 @@ pub fn run() {
             sync::commands::sync_plan,
             sync::commands::sync_now,
             sync::commands::sync_cancel,
+            sync::commands::sync_status,
+            sync::commands::sync_simulate_notification,
             sync::commands::sync_settings,
             sync::commands::sync_set_settings,
             library::library_status,

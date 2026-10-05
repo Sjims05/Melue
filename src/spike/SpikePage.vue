@@ -11,7 +11,8 @@ import {
   smbListFiles,
   logMsg,
 } from './spike'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import {
   coverUrl,
   library,
@@ -268,15 +269,63 @@ const dryRun = () =>
 const removalsWaiting = ref(0)
 let lastLoggedFile: string | null = null
 
+// Every file of a running sync (also the ones started by themselves) goes to the log.
+watch(
+  () => sync.status?.syncing?.current,
+  (current) => {
+    const p = sync.status?.syncing
+    if (p && current && current !== lastLoggedFile) {
+      lastLoggedFile = current
+      logMsg(`Sync: file ${p.filesDone + 1} of ${p.filesTotal} (${megabytes(p.bytesDone)} of ${megabytes(p.bytesTotal)}): ${current}`)
+    }
+  },
+)
+
+// Every sync that ends (also the ones that start by themselves, and those that copy nothing) goes to the log.
+watch(
+  () => sync.status?.last?.atMs,
+  (at, before) => {
+    const last = sync.status?.last
+    if (!last || at === before) return
+    const r = last.result
+    logMsg(
+      `Sync (${last.trigger}) done: ${r.copied} copied, ${r.moved} moved, ${r.adopted} already here, ${r.removed} removed` +
+        `${r.waitingForWifi ? `, ${r.waitingForWifi} waiting for Wi-Fi` : ''}${r.failed.length ? `, ${r.failed.length} failed` : ''}`,
+    )
+  },
+)
+watch(
+  () => sync.status?.problem,
+  (problem) => {
+    if (problem) logMsg(`Sync didn't run: ${describeSyncFailure(problem)}`)
+  },
+)
+
+const simulateSyncNotification = () =>
+  run('Simulate sync notification', async () => {
+    await invoke('sync_simulate_notification')
+    logMsg('Sync notification: a pretend sync of 20 files, one a second (look at the notification)')
+  })
+
+/** The sync status in words. */
+const syncStatusText = computed(() => {
+  const s = sync.status
+  if (!s) return ''
+  if (s.syncing) return `syncing: ${s.syncing.filesDone} of ${s.syncing.filesTotal} files (${megabytes(s.syncing.bytesDone)})`
+  const parts: string[] = []
+  if (s.last) {
+    const r = s.last.result
+    parts.push(`last sync ${new Date(s.last.atMs).toLocaleTimeString()} (${s.last.trigger}): ${r.copied} copied, ${r.moved} moved`)
+    if (r.waitingForWifi) parts.push(`${r.waitingForWifi} waiting for Wi-Fi`)
+    if (r.removalsWaiting) parts.push(`${r.removalsWaiting} removals waiting for your OK`)
+  }
+  if (s.problem) parts.push(`problem: ${describeSyncFailure(s.problem)}`)
+  return parts.join(' · ')
+})
+
 async function syncNow(confirmedRemoval = false) {
   const started = performance.now()
   logMsg(confirmedRemoval ? 'Sync: removing the songs gone from the share…' : 'Sync: starting…')
-  const stop = await syncing.onProgress((p) => {
-    if (p.current && p.current !== lastLoggedFile) {
-      lastLoggedFile = p.current
-      logMsg(`Sync: file ${p.filesDone + 1} of ${p.filesTotal} (${megabytes(p.bytesDone)} of ${megabytes(p.bytesTotal)}): ${p.current}`)
-    }
-  })
   try {
     const r = await syncing.now(confirmedRemoval)
     const took = ((performance.now() - started) / 1000).toFixed(1)
@@ -290,7 +339,6 @@ async function syncNow(confirmedRemoval = false) {
   } catch (e) {
     logMsg(`Sync FAILED: ${describeSyncFailure(e)}`)
   } finally {
-    stop()
     lastLoggedFile = null
     await refreshFolders().catch(() => {})
   }
@@ -302,7 +350,12 @@ const changeSyncSettings = (change: Partial<SyncSettings>) =>
   shareRun('Sync settings', async () => {
     const current = syncSettings.value ?? (await syncing.settings())
     syncSettings.value = await syncing.setSettings({ ...current, ...change })
-    logMsg(`Sync: remove songs gone from the share: ${syncSettings.value.removeGone ? 'yes' : 'no'}, ask before removing more than ${syncSettings.value.askBeforeRemoving}`)
+    const v = syncSettings.value
+    logMsg(
+      `Sync settings: at start ${v.atStart ? 'on' : 'off'}, coming back ${v.onReturnAfterMinutes ? `after ${v.onReturnAfterMinutes} min` : 'off'}, ` +
+        `on changes ${v.onChange ? 'on' : 'off'}, every ${v.everyMinutes ? `${v.everyMinutes} min` : 'never'}, ` +
+        `copy on mobile data ${v.copyOnMetered ? 'yes' : 'no'}, remove gone ${v.removeGone ? 'yes' : 'no'} (ask over ${v.askBeforeRemoving})`,
+    )
   })
 
 const showInOtherApps = (shown: boolean) =>
@@ -551,6 +604,43 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="syncNow()">Sync now</button>
         <button class="border rounded px-3 py-1" @click="cancelSync">Cancel sync</button>
         <button v-if="removalsWaiting" class="border rounded px-3 py-1" @click="syncNow(true)">Remove {{ removalsWaiting }} songs gone from the share</button>
+      </div>
+      <div v-if="syncStatusText" class="text-sm">Sync status: {{ syncStatusText }}</div>
+      <div class="flex flex-wrap gap-2 text-sm">
+        <button class="border rounded px-3 py-1" @click="changeSyncSettings({ atStart: !syncSettings?.atStart })">At start: {{ syncSettings?.atStart ? 'on' : 'off' }}</button>
+        <label class="flex items-center gap-1">
+          Coming back:
+          <select
+            class="border rounded px-1"
+            :value="syncSettings?.onReturnAfterMinutes ?? 0"
+            @change="changeSyncSettings({ onReturnAfterMinutes: Number(($event.target as HTMLSelectElement).value) || null })"
+          >
+            <option :value="0">off</option>
+            <option :value="5">after 5 min</option>
+            <option :value="15">after 15 min</option>
+            <option :value="60">after 60 min</option>
+          </select>
+        </label>
+        <button class="border rounded px-3 py-1" @click="changeSyncSettings({ onChange: !syncSettings?.onChange })">On share changes: {{ syncSettings?.onChange ? 'on' : 'off' }}</button>
+        <label class="flex items-center gap-1">
+          Every:
+          <select
+            class="border rounded px-1"
+            :value="syncSettings?.everyMinutes ?? 0"
+            @change="changeSyncSettings({ everyMinutes: Number(($event.target as HTMLSelectElement).value) || null })"
+          >
+            <option :value="0">never</option>
+            <option :value="15">15 min</option>
+            <option :value="30">30 min</option>
+            <option :value="60">60 min</option>
+          </select>
+        </label>
+        <template v-if="isAndroid">
+          <button class="border rounded px-3 py-1" @click="changeSyncSettings({ copyOnMetered: !syncSettings?.copyOnMetered })">
+            Copy songs on mobile data: {{ syncSettings?.copyOnMetered ? 'yes' : 'no' }}
+          </button>
+          <button class="border rounded px-3 py-1" @click="simulateSyncNotification">Simulate sync notification</button>
+        </template>
         <button class="border rounded px-3 py-1" @click="changeSyncSettings({ removeGone: !syncSettings?.removeGone })">
           Remove songs gone from the share: {{ syncSettings?.removeGone ? 'yes' : 'no' }}
         </button>

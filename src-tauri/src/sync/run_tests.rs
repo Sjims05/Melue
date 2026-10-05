@@ -3,7 +3,7 @@
 use std::sync::atomic::AtomicBool;
 
 use super::plan::{make_plan, SyncPlan};
-use super::run::{run, Progress, SyncError, SyncResult, KEEP_FREE};
+use super::run::{run, Progress, RunOptions, SyncError, SyncResult, KEEP_FREE};
 use super::SyncSettings;
 use crate::library::testkit::{TestDir, TestLibrary};
 use crate::share::folder::FolderShare;
@@ -30,7 +30,8 @@ impl Setup {
 
     fn sync_from(&self, source: &dyn Share, settings: &SyncSettings, confirmed: bool) -> SyncResult {
         let plan = self.plan(settings);
-        run(&self.t.library, source, &self.here, &plan, None, confirmed, &AtomicBool::new(false), &mut |_| {}).unwrap()
+        let options = RunOptions { confirmed_removal: confirmed, ..Default::default() };
+        run(&self.t.library, source, &self.here, &plan, options, &AtomicBool::new(false), &mut |_| {}).unwrap()
     }
 
     fn sync(&self) -> SyncResult {
@@ -66,7 +67,7 @@ fn a_sync_copies_everything_and_then_has_nothing_to_do() {
     s.share.add("ABBA/notes.txt", b"not synced");
     let mut seen = Vec::new();
     let plan = s.plan(&SyncSettings::default());
-    let result = run(&s.t.library, &s.share.share, &s.here, &plan, None, false, &AtomicBool::new(false), &mut |p: &Progress| seen.push(p.clone())).unwrap();
+    let result = run(&s.t.library, &s.share.share, &s.here, &plan, RunOptions::default(), &AtomicBool::new(false), &mut |p: &Progress| seen.push(p.clone())).unwrap();
     assert_eq!((result.copied, result.bytes), (3, (song.len() + 3 + playlist.len()) as u64));
     assert!(result.failed.is_empty() && result.stopped.is_none());
     assert_eq!(s.files_here(), vec!["ABBA/Waterloo/01.mp3", "ABBA/Waterloo/cover.jpg", "Lists/Mix.m3u"], "no temporary files left");
@@ -126,7 +127,7 @@ fn songs_gone_from_the_share_are_kept_or_removed_with_an_ok() {
     assert_eq!(s.sync().removed, 0);
     assert_eq!(s.files_here().len(), 7);
     // Removing 6 with "ask before removing more than 5": waits for the OK.
-    let removing = SyncSettings { remove_gone: true, ask_before_removing: 5 };
+    let removing = SyncSettings { remove_gone: true, ask_before_removing: 5, ..Default::default() };
     let waiting = s.sync_from(&s.share.share, &removing, false);
     assert_eq!((waiting.removed, waiting.removals_waiting), (0, 6));
     assert_eq!(s.files_here().len(), 7);
@@ -145,7 +146,7 @@ fn an_interrupted_sync_is_finished_by_the_next_one() {
     let plan = s.plan(&SyncSettings::default());
     // Two files copy, then the share is lost halfway through the third.
     let losing = FailAfter { inner: &s.share.share, reads_left: std::cell::Cell::new(2).into() };
-    let result = run(&s.t.library, &losing, &s.here, &plan, None, false, &AtomicBool::new(false), &mut |_| {}).unwrap();
+    let result = run(&s.t.library, &losing, &s.here, &plan, RunOptions::default(), &AtomicBool::new(false), &mut |_| {}).unwrap();
     assert_eq!(result.copied, 2);
     assert!(result.stopped.is_some(), "losing the share stops the sync");
     assert_eq!(s.files_here().len(), 2, "no half files, no temporary files");
@@ -232,10 +233,10 @@ fn not_enough_space_copies_nothing() {
     let s = Setup::new("space");
     s.share.add("big.mp3", &vec![1u8; 2048]);
     let plan = s.plan(&SyncSettings::default());
-    let refused = run(&s.t.library, &s.share.share, &s.here, &plan, Some(KEEP_FREE + 1000), false, &AtomicBool::new(false), &mut |_| {});
+    let refused = run(&s.t.library, &s.share.share, &s.here, &plan, RunOptions { free_space: Some(KEEP_FREE + 1000), ..Default::default() }, &AtomicBool::new(false), &mut |_| {});
     assert_eq!(refused, Err(SyncError::NotEnoughSpace { needed: 2048 + KEEP_FREE, free: KEEP_FREE + 1000 }));
     assert!(s.files_here().is_empty());
-    assert!(run(&s.t.library, &s.share.share, &s.here, &plan, Some(KEEP_FREE + 4096), false, &AtomicBool::new(false), &mut |_| {}).is_ok());
+    assert!(run(&s.t.library, &s.share.share, &s.here, &plan, RunOptions { free_space: Some(KEEP_FREE + 4096), ..Default::default() }, &AtomicBool::new(false), &mut |_| {}).is_ok());
 }
 
 #[test]
@@ -246,7 +247,7 @@ fn cancelling_stops_after_the_current_file() {
     }
     let plan = s.plan(&SyncSettings::default());
     let cancel = AtomicBool::new(false);
-    let result = run(&s.t.library, &s.share.share, &s.here, &plan, None, false, &cancel, &mut |p| {
+    let result = run(&s.t.library, &s.share.share, &s.here, &plan, RunOptions::default(), &cancel, &mut |p| {
         if p.files_done == 2 {
             cancel.store(true, std::sync::atomic::Ordering::SeqCst);
         }
@@ -255,4 +256,20 @@ fn cancelling_stops_after_the_current_file() {
     assert!(result.cancelled);
     assert_eq!(result.copied, 2);
     assert_eq!(s.sync().copied, 2, "the rest next time");
+}
+
+#[test]
+fn on_a_metered_connection_copies_wait_and_the_rest_happens() {
+    let s = Setup::new("metered");
+    s.share.add("Old/a.mp3", b"a");
+    s.sync();
+    std::fs::create_dir_all(s.share.path("New")).unwrap();
+    std::fs::rename(s.share.path("Old/a.mp3"), s.share.path("New/a.mp3")).unwrap();
+    s.share.add("b.mp3", b"new on the share");
+    let plan = s.plan(&SyncSettings::default());
+    let options = RunOptions { no_copies: true, free_space: Some(0), ..Default::default() };
+    let result = run(&s.t.library, &s.share.share, &s.here, &plan, options, &AtomicBool::new(false), &mut |_| {}).unwrap();
+    assert_eq!((result.moved, result.copied, result.waiting_for_wifi), (1, 0, 1), "no space check either: nothing is copied");
+    assert_eq!(s.files_here(), vec!["New/a.mp3"]);
+    assert_eq!(s.sync().copied, 1, "copied once on Wi-Fi");
 }

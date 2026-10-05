@@ -11,7 +11,7 @@ use std::io::{self, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::plan::{PlanFile, SyncPlan};
 use crate::library::Library;
@@ -21,7 +21,7 @@ use crate::share::{Entry, Share, ShareError};
 pub const KEEP_FREE: u64 = 500 * 1024 * 1024;
 
 /// How far a sync is.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
     pub files_done: u32,
@@ -33,7 +33,7 @@ pub struct Progress {
 }
 
 /// What a sync did.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncResult {
     pub copied: u32,
@@ -45,6 +45,8 @@ pub struct SyncResult {
     pub failed: Vec<(String, String)>,
     /// Songs gone from the share waiting for the user's OK to be removed.
     pub removals_waiting: u32,
+    /// Files not copied because the connection is metered (they wait for Wi-Fi).
+    pub waiting_for_wifi: u32,
     pub cancelled: bool,
     /// Why the sync stopped before the end (the share lost, the device full).
     pub stopped: Option<String>,
@@ -145,20 +147,29 @@ fn copy(source: &dyn Share, target: &dyn Share, path: &str, progress: &mut dyn F
     })
 }
 
-/// Carries out `plan`. `free_space`: free bytes on this device, when known. `confirmed_removal`: the user
-/// said yes to removing more songs than the setting allows. `cancel` stops it after the current file.
-#[allow(clippy::too_many_arguments)]
+/// How a sync runs.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RunOptions {
+    /// Free bytes on this device, when known.
+    pub free_space: Option<u64>,
+    /// The user said yes to removing more songs than the setting allows.
+    pub confirmed_removal: bool,
+    /// Copies wait for Wi-Fi (a metered connection): everything else still happens.
+    pub no_copies: bool,
+}
+
+/// Carries out `plan`. `cancel` stops it after the current file.
 pub fn run(
     library: &Library,
     source: &dyn Share,
     target: &dyn Share,
     plan: &SyncPlan,
-    free_space: Option<u64>,
-    confirmed_removal: bool,
+    options: RunOptions,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(&Progress),
 ) -> Result<SyncResult, SyncError> {
-    if let Some(free) = free_space {
+    let RunOptions { free_space, confirmed_removal, no_copies } = options;
+    if let Some(free) = free_space.filter(|_| !no_copies) {
         let needed = plan.bytes + KEEP_FREE;
         if free < needed {
             return Err(SyncError::NotEnoughSpace { needed, free });
@@ -196,9 +207,15 @@ pub fn run(
         library.forget_synced(path)?;
     }
 
-    // Copies.
-    let files: Vec<&PlanFile> = plan.download.iter().chain(&plan.update).collect();
-    let mut state = Progress { files_total: files.len() as u32, bytes_total: plan.bytes, ..Default::default() };
+    // Copies (on a metered connection they wait for Wi-Fi).
+    let files: Vec<&PlanFile> = if no_copies {
+        result.waiting_for_wifi = (plan.download.len() + plan.update.len()) as u32;
+        Vec::new()
+    } else {
+        plan.download.iter().chain(&plan.update).collect()
+    };
+    let bytes_total = files.iter().map(|f| f.size).sum();
+    let mut state = Progress { files_total: files.len() as u32, bytes_total, ..Default::default() };
     for file in files {
         if cancel.load(Ordering::SeqCst) {
             result.cancelled = true;

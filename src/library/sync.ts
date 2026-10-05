@@ -14,6 +14,8 @@ import { library, type FolderKind, type MusicFolder } from '.'
 export const sync = reactive({
   /** A share is set up: show the sync buttons and options. */
   available: false,
+  /** Whether a sync is running (and how far), the last sync, the last problem. Live. */
+  status: null as SyncStatus | null,
 })
 
 let started = false
@@ -25,7 +27,11 @@ export async function startSync(): Promise<void> {
   await library.onChange((change) => {
     if (change.reason === 'sync') refresh().catch(() => {})
   })
+  await listen<SyncStatus>('sync-status', (e) => {
+    sync.status = e.payload
+  })
   await refresh()
+  sync.status = await invoke<SyncStatus>('sync_status').catch(() => null)
 }
 
 async function refresh() {
@@ -156,6 +162,33 @@ export interface SyncSettings {
   removeGone: boolean
   /** Ask before removing more than this many songs (0: always ask). Default 5. */
   askBeforeRemoving: number
+  /** Sync when Melue starts (default on). */
+  atStart: boolean
+  /** Sync when the user comes back to the app if the last sync is this many minutes ago (default 15; null: no). */
+  onReturnAfterMinutes: number | null
+  /** Sync when the share says its music changed, while Melue runs (default on). */
+  onChange: boolean
+  /** Also sync every this many minutes while Melue runs (default null: no). */
+  everyMinutes: number | null
+  /** Copy songs on metered connections (mobile data, a hotspot); off: they wait for Wi-Fi (default off). */
+  copyOnMetered: boolean
+}
+
+/** What started a sync. */
+export type SyncTrigger = 'start' | 'return' | 'changed' | 'periodic' | 'button'
+
+export interface LastSync {
+  atMs: number
+  trigger: SyncTrigger
+  result: SyncResult
+}
+
+export interface SyncStatus {
+  /** A sync is running: how far it is. */
+  syncing: SyncProgress | null
+  last: LastSync | null
+  /** Why the last try didn't sync (cleared by the next sync). */
+  problem: SyncFailure | null
 }
 
 /** How far a running sync is. */
@@ -177,6 +210,8 @@ export interface SyncResult {
   removed: number
   /** Files that couldn't be copied (tried again next sync): [path, why]. */
   failed: [string, string][]
+  /** Files not copied because the connection is metered (they wait for Wi-Fi). */
+  waitingForWifi: number
   /** Songs gone from the share waiting for the user's OK to be removed (syncing.now(true) removes them). */
   removalsWaiting: number
   cancelled: boolean
@@ -218,8 +253,7 @@ export const syncing = {
   now: (confirmedRemoval = false) => invoke<SyncResult>('sync_now', { confirmedRemoval }),
   /** Stops a running sync after the file it's copying. */
   cancel: () => invoke<void>('sync_cancel'),
-  /** Calls `listener` with a running sync's progress. Resolves to a function that stops listening. */
-  onProgress: (listener: (progress: SyncProgress) => void) => listen<SyncProgress>('sync-progress', (e) => listener(e.payload)),
+  status: () => invoke<SyncStatus>('sync_status'),
   settings: () => invoke<SyncSettings>('sync_settings'),
   setSettings: (settings: SyncSettings) => invoke<SyncSettings>('sync_set_settings', { settings }),
 }

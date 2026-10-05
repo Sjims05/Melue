@@ -99,6 +99,18 @@ mod android {
         uri: String,
     }
 
+    #[derive(Deserialize)]
+    struct Metered {
+        metered: bool,
+    }
+
+    #[derive(Serialize)]
+    struct SyncNotification<'a> {
+        done: u32,
+        total: u32,
+        text: &'a str,
+    }
+
     #[derive(Serialize)]
     struct Listen {
         event: String,
@@ -169,6 +181,24 @@ mod android {
                 .run_mobile_plugin::<Moved>("moveDocument", Move { document, from, to })
                 .map(|m| m.uri)
                 .map_err(|e| e.to_string())
+        }
+
+        /// Whether the connection is metered (mobile data, a phone's hotspot).
+        pub fn metered(&self) -> Result<bool, String> {
+            self.0.run_mobile_plugin::<Metered>("networkMetered", ()).map(|m| m.metered).map_err(|e| e.to_string())
+        }
+
+        /// Shows or updates the "Syncing music" notification: `done` of `total` files, `text` the current one.
+        pub fn sync_notification(&self, done: u32, total: u32, text: &str) -> Result<(), String> {
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("syncNotification", SyncNotification { done, total, text })
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+
+        /// The sync is over: the notification goes.
+        pub fn sync_notification_done(&self) -> Result<(), String> {
+            self.0.run_mobile_plugin::<serde_json::Value>("syncNotificationDone", ()).map(|_| ()).map_err(|e| e.to_string())
         }
 
         /// Calls `handler` for each of the plugin's `event`s ("musicChanged", "resumed").

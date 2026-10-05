@@ -21,6 +21,8 @@ mod tests;
 
 use std::fmt;
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -108,6 +110,13 @@ pub trait Share: Send + Sync {
     /// Free space on the share, when it says.
     fn free_space(&self) -> ShareResult<Option<u64>>;
 
+    /// Calls `on_change` whenever something in the music folder changes, while the returned [`Watch`] is kept
+    /// (and the share with it). None: this share can't tell (only SMB shares can).
+    fn watch(&self, on_change: Arc<dyn Fn() + Send + Sync>) -> ShareResult<Option<Watch>> {
+        let _ = on_change;
+        Ok(None)
+    }
+
     /// A whole small file (state files, playlists).
     fn read(&self, path: &str) -> ShareResult<Vec<u8>> {
         let mut bytes = Vec::new();
@@ -135,6 +144,32 @@ pub trait Share: Send + Sync {
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(files)
+    }
+}
+
+/// Watching a share for changes; dropping it stops.
+pub struct Watch {
+    alive: Arc<AtomicBool>,
+    stop: Option<Box<dyn FnOnce() + Send>>,
+}
+
+impl Watch {
+    /// `alive` turns false when the watching ends by itself (the connection lost); `stop` ends it.
+    pub fn new(alive: Arc<AtomicBool>, stop: impl FnOnce() + Send + 'static) -> Self {
+        Self { alive, stop: Some(Box::new(stop)) }
+    }
+
+    /// Whether it's still watching.
+    pub fn alive(&self) -> bool {
+        self.alive.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            stop();
+        }
     }
 }
 

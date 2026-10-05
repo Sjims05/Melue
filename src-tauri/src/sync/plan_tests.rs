@@ -165,7 +165,7 @@ fn gone_from_the_share_is_kept_unless_the_setting_removes_it() {
     assert!(!kept.remove_gone && !kept.needs_confirmation);
 
     // Removing: more than the setting's 5 asks first; 6 or more allowed doesn't; 0 always asks.
-    let removing = |ask| s.plan_with(&SyncSettings { remove_gone: true, ask_before_removing: ask });
+    let removing = |ask| s.plan_with(&SyncSettings { remove_gone: true, ask_before_removing: ask, ..Default::default() });
     assert!(removing(5).needs_confirmation);
     assert!(!removing(6).needs_confirmation);
     assert!(removing(0).needs_confirmation);
