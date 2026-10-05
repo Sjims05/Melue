@@ -15,6 +15,12 @@ use lofty::tag::{Tag, TagType};
 
 use super::Library;
 
+/// A name no other test, or earlier run, has used: the time and a counter.
+pub fn unique() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    format!("{}-{}", super::now_ms(), COUNTER.fetch_add(1, Ordering::Relaxed))
+}
+
 /// A temporary folder, removed when dropped.
 pub struct TestDir {
     pub path: PathBuf,

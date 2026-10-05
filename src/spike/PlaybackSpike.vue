@@ -37,7 +37,7 @@ async function downloadQueueTracks() {
   try {
     await ensureConnected()
     const entries = await source.listFiles(SMB_MUSIC_PATH)
-    const mp3s = entries.filter((e) => !e.isDirectory && e.name.toLowerCase().endsWith('.mp3')).slice(0, 4)
+    const mp3s = entries.filter((e) => !e.isDir && e.name.toLowerCase().endsWith('.mp3')).slice(0, 4)
     if (mp3s.length === 0) {
       logMsg('Queue: no mp3s found')
       return

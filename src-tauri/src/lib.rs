@@ -1,119 +1,70 @@
 mod library;
+mod share;
 
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use smb2::SmbClient;
-use serde::Serialize;
+use std::sync::{Arc, Mutex};
 
-struct SmbState(Arc<Mutex<Option<SmbClient>>>);
-#[derive(Serialize)]
-struct SmbEntry {
-    name: String,
-    is_directory: bool,
-    size: u64,
+use share::smb::{SmbConfig, SmbShare};
+use share::{Entry, Share};
+
+/// The spike's SMB share (section 1, with .env's test login), through Phase 2's share access.
+#[derive(Default)]
+struct SpikeShare(Mutex<Option<Arc<SmbShare>>>);
+
+impl SpikeShare {
+    fn get(&self) -> Result<Arc<SmbShare>, String> {
+        self.0.lock().unwrap().clone().ok_or_else(|| "not connected: connect first".to_string())
+    }
 }
 
-// (placeholder for now — full version next)
+/// Runs share work on a thread meant for waiting, not one of Tauri's async threads.
+async fn on_share_thread<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(work).await.map_err(|e| e.to_string())?
+}
+
+/// Connects to the share (its root folder) and checks it can be listed.
 #[tauri::command]
-async fn smb_connect(
-    state: tauri::State<'_, SmbState>,
-    host: String,
-    user: String,
-    pass: String,
-) -> Result<(), String> {
-    let client = smb2::connect(&host, &user, &pass)
-        .await
-        .map_err(|e| e.to_string())?;
-    *state.0.lock().await = Some(client);
+async fn smb_connect(state: tauri::State<'_, SpikeShare>, host: String, user: String, pass: String, share: String) -> Result<(), String> {
+    let connected = on_share_thread(move || {
+        let connected = SmbShare::new(SmbConfig { host, share, folder: String::new(), user, password: pass })?;
+        connected.check()?;
+        Ok(connected)
+    })
+    .await?;
+    *state.0.lock().unwrap() = Some(Arc::new(connected));
     Ok(())
 }
 
 #[tauri::command]
-async fn smb_list_dir(
-    state: tauri::State<'_, SmbState>,
-    share: String,
-    path: String,
-) -> Result<Vec<SmbEntry>, String> {
-    let mut guard = state.0.lock().await;
-    let client = guard.as_mut().ok_or("Not connected. Call smb_connect first.")?;
-
-    let mut tree = client
-        .connect_share(&share)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let entries = client
-        .list_directory(&mut tree, &path)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(entries
-        .into_iter()
-        .map(|e| SmbEntry {
-            name: e.name,
-            is_directory: e.is_directory,
-            size: e.size,
-        })
-        .collect())
+async fn smb_list_dir(state: tauri::State<'_, SpikeShare>, path: String) -> Result<Vec<Entry>, String> {
+    let share = state.get()?;
+    on_share_thread(move || Ok(share.list(&path)?)).await
 }
 
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
-
+/// Downloads a file to `local_path` (a temporary file first, renamed when complete). Returns its size.
 #[tauri::command]
-async fn smb_copy_file(
-    state: tauri::State<'_, SmbState>,
-    share: String,
-    remote_path: String,
-    local_path: String,
-) -> Result<(), String> {
-    let mut guard = state.0.lock().await;
-    let client = guard.as_mut().ok_or("Not connected. Call smb_connect first.")?;
-
-    let tree = client
-        .connect_share(&share)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let mut download = client
-        .download(&tree, &remote_path)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let expected_size = download.size();
-    let tmp_path = format!("{local_path}.tmp");
-
-    // The destination folder may not exist yet (on Windows the app data folder is only made when needed).
-    if let Some(parent) = std::path::Path::new(&local_path).parent() {
-        tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
-    }
-
-    let mut local_file = File::create(&tmp_path).await.map_err(|e| e.to_string())?;
-
-    let mut total_written: u64 = 0;
-    while let Some(chunk_result) = download.next_chunk().await {
-        let chunk = chunk_result.map_err(|e| e.to_string())?;
-        local_file
-            .write_all(&chunk)
-            .await
-            .map_err(|e| e.to_string())?;
-        total_written += chunk.len() as u64;
-    }
-    local_file.flush().await.map_err(|e| e.to_string())?;
-    drop(local_file);
-
-    if total_written != expected_size {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return Err(format!(
-            "Size mismatch: expected {expected_size}, got {total_written}"
-        ));
-    }
-
-    tokio::fs::rename(&tmp_path, &local_path)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
+async fn smb_copy_file(state: tauri::State<'_, SpikeShare>, remote_path: String, local_path: String) -> Result<u64, String> {
+    let share = state.get()?;
+    on_share_thread(move || {
+        let local = std::path::PathBuf::from(&local_path);
+        if let Some(parent) = local.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let part = std::path::PathBuf::from(format!("{local_path}.part"));
+        let copied = (|| -> Result<u64, String> {
+            let mut file = std::fs::File::create(&part).map_err(|e| e.to_string())?;
+            let size = share.read_to(&remote_path, &mut file, &mut |_| {})?;
+            file.sync_all().map_err(|e| e.to_string())?;
+            Ok(size)
+        })();
+        match copied.and_then(|size| std::fs::rename(&part, &local).map(|_| size).map_err(|e| e.to_string())) {
+            Ok(size) => Ok(size),
+            Err(e) => {
+                let _ = std::fs::remove_file(&part);
+                Err(e)
+            }
+        }
+    })
+    .await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -131,7 +82,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(SmbState(Arc::new(Mutex::new(None))))
+        .manage(SpikeShare::default())
         // Covers for the UI: cover://localhost/<file>-300.jpg (src/library's coverUrl makes these).
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             use tauri::Manager;

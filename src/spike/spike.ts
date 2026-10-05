@@ -8,7 +8,7 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 import { readFile } from '@tauri-apps/plugin-fs'
 import { parseBuffer } from 'music-metadata'
 import { ref } from 'vue'
-import { SmbSource } from '@/sources/SmbSource'
+import { invoke } from '@tauri-apps/api/core'
 
 // ---- Logging -------------------------------------------------------
 export const log = ref<string[]>([])
@@ -26,12 +26,28 @@ const SMB_SHARE = import.meta.env.VITE_SMB_SHARE
 export const SMB_MUSIC_PATH = import.meta.env.VITE_SMB_MUSIC_PATH
 // -----------------------------------------------------------------------
 
-export const source = new SmbSource()
+/** A file or folder on the share (Phase 2's share access, in Rust: src-tauri/src/share). */
+export interface ShareEntry {
+  path: string
+  name: string
+  isDir: boolean
+  size: number
+  modifiedMs: number
+}
+
+/** The share with .env's test login. */
+export const source = {
+  connect: () => invoke<void>('smb_connect', { host: SMB_HOST, user: SMB_USER, pass: SMB_PASS, share: SMB_SHARE }),
+  /** A folder's files and folders (relative to the share). */
+  listFiles: (path: string) => invoke<ShareEntry[]>('smb_list_dir', { path }),
+  /** Downloads a file safely (a temporary file first). Resolves with its size. */
+  copyFile: (remotePath: string, localPath: string) => invoke<number>('smb_copy_file', { remotePath, localPath }),
+}
 let connected = false
 
 export async function ensureConnected() {
   if (connected) return
-  await source.connect({ host: SMB_HOST, user: SMB_USER, pass: SMB_PASS, share: SMB_SHARE })
+  await source.connect()
   connected = true
   logMsg('SMB: connected')
 }
@@ -75,7 +91,7 @@ export async function smbListFiles() {
     const entries = await source.listFiles(SMB_MUSIC_PATH)
     logMsg(`SMB: found ${entries.length} entries`)
     for (const e of entries.slice(0, 20)) {
-      logMsg(`  - [${e.isDirectory ? 'DIR' : 'FILE'}] ${e.name} (${e.size} bytes)`)
+      logMsg(`  - [${e.isDir ? 'DIR' : 'FILE'}] ${e.name} (${e.size} bytes)`)
     }
   } catch (e) {
     logMsg(`SMB list FAILED: ${e}`)
@@ -86,7 +102,7 @@ export async function smbDownloadOneFile() {
   try {
     await ensureConnected()
     const entries = await source.listFiles(SMB_MUSIC_PATH)
-    const mp3 = entries.find((e) => !e.isDirectory && e.name.toLowerCase().endsWith('.mp3'))
+    const mp3 = entries.find((e) => !e.isDir && e.name.toLowerCase().endsWith('.mp3'))
     if (!mp3) {
       logMsg('SMB: no mp3 found')
       return
