@@ -114,3 +114,52 @@ export const share = {
   /** Android: shows the synced music in other apps (default) or hides it (a .nomedia file). */
   setShownInOtherApps: (shown: boolean) => invoke<void>('share_set_shown_in_other_apps', { shown }),
 }
+
+// ---- the sync (src-tauri/src/sync)
+
+export type SyncFileKind = 'song' | 'playlist' | 'cover'
+
+/** Why a file is copied: new on the share, deleted here, changed on the share, or changed here (undone). */
+export type SyncWhy = 'new' | 'deletedHere' | 'changedThere' | 'changedHere'
+
+export interface PlanFile {
+  path: string
+  kind: SyncFileKind
+  size: number
+  why: SyncWhy
+}
+
+/** What a sync would do (paths relative to the music folder). Nothing is changed by planning. */
+export interface SyncPlan {
+  download: PlanFile[]
+  update: PlanFile[]
+  /** Here already, the same as on the share: only remembered. */
+  adopt: string[]
+  /** Moved or renamed on the share: the copy here follows (no download). */
+  moves: { from: string; to: string }[]
+  /** Synced before, gone from the share: kept here, unless `removeGone`. */
+  gone: string[]
+  /** Put here by hand: stays. */
+  onlyHere: string[]
+  forget: string[]
+  removeGone: boolean
+  /** Removing that many needs the user's OK first. */
+  needsConfirmation: boolean
+  unchanged: number
+  /** How much would be copied. */
+  bytes: number
+}
+
+export interface SyncSettings {
+  /** Remove the copies of songs gone from the share (default off: kept, listed for a clean-up). */
+  removeGone: boolean
+  /** Ask before removing more than this many songs (0: always ask). Default 5. */
+  askBeforeRemoving: number
+}
+
+export const syncing = {
+  /** What a sync would do now (the dry run). Rejects with a SetupError. */
+  plan: () => invoke<SyncPlan>('sync_plan'),
+  settings: () => invoke<SyncSettings>('sync_settings'),
+  setSettings: (settings: SyncSettings) => invoke<SyncSettings>('sync_set_settings', { settings }),
+}

@@ -192,8 +192,15 @@ pub fn set_up(
         (_, None) => return Err("where should the synced music go? Choose a folder".to_string().into()),
     };
     let previous = library.share_settings()?;
-    if let Some(old) = previous.filter(|p| p.sync_folder_id != folder.id) {
-        let _ = library.set_folder_synced(old.sync_folder_id, false);
+    if let Some(old) = &previous {
+        if old.sync_folder_id != folder.id {
+            let _ = library.set_folder_synced(old.sync_folder_id, false);
+        }
+    }
+    // Another share or folder: what was synced from the old one says nothing about the new one.
+    let same = previous.as_ref().is_some_and(|old| old.sync_folder_id == folder.id && same_place(&old.setup, &setup));
+    if !same {
+        library.forget_all_synced()?;
     }
     let settings = ShareSettings { setup, sync_folder_id: folder.id };
     library.save_share_settings(Some(&settings))?;
@@ -228,8 +235,21 @@ pub fn remove(library: &Library, stores: &PasswordStores) -> Result<(), SetupErr
         let _ = library.set_folder_synced(settings.sync_folder_id, false);
     }
     stores.forget();
+    library.forget_all_synced()?;
     library.save_share_settings(None)?;
     Ok(())
+}
+
+/// Whether two setups are the same place on the same share (a new password or store doesn't matter).
+fn same_place(a: &ShareSetup, b: &ShareSetup) -> bool {
+    match (a, b) {
+        (
+            ShareSetup::Smb { host: h1, share: s1, folder: f1, .. },
+            ShareSetup::Smb { host: h2, share: s2, folder: f2, .. },
+        ) => h1.eq_ignore_ascii_case(h2) && s1.eq_ignore_ascii_case(s2) && f1.trim_matches('/') == f2.trim_matches('/'),
+        (ShareSetup::Drive { path: p1, .. }, ShareSetup::Drive { path: p2, .. }) => p1 == p2,
+        _ => false,
+    }
 }
 
 /// The share, ready to use (with its password from where it's kept), and its setup.

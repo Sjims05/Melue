@@ -18,7 +18,7 @@ mod grouping_tests;
 mod linked;
 #[cfg(test)]
 mod linked_tests;
-mod m3u;
+pub mod m3u;
 mod migrations;
 pub mod playback;
 #[cfg(test)]

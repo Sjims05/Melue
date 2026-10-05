@@ -1,5 +1,6 @@
 mod library;
 mod share;
+mod sync;
 
 use std::sync::{Arc, Mutex};
 
@@ -111,6 +112,9 @@ pub fn run() {
             share::commands::share_set_password,
             share::commands::share_remove,
             share::commands::share_set_shown_in_other_apps,
+            sync::commands::sync_plan,
+            sync::commands::sync_settings,
+            sync::commands::sync_set_settings,
             library::library_status,
             library::library_setting,
             library::library_set_setting,

@@ -36,6 +36,8 @@ import {
   type ShareInfo,
   type ShareSetup,
   type SyncFolderChoice,
+  type SyncSettings,
+  syncing,
 } from '@/library/sync'
 import { smbTestLogin } from './spike'
 import { isAndroid, storage } from '@/platform'
@@ -86,6 +88,7 @@ onMounted(async () => {
   refreshFolders().catch(() => {})
   queueFollow.value = await library.queueFollow().catch(() => null)
   shareInfo.value = await share.info().catch(() => null)
+  syncSettings.value = await syncing.settings().catch(() => null)
   if (isAndroid) folderCovers.value = await library.folderCovers().catch(() => null)
 })
 onUnmounted(() => {
@@ -232,6 +235,39 @@ const removeShare = () =>
   shareRun('Remove share', async () => {
     await share.remove()
     logMsg('Share removed: its synced folder stays as a normal folder, with its songs')
+  })
+
+// ---- the sync
+
+const syncSettings = ref<SyncSettings | null>(null)
+const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
+const firstFew = (items: string[]) => (items.length > 3 ? `${items.slice(0, 3).join(', ')}, …` : items.join(', '))
+
+const dryRun = () =>
+  shareRun('Dry run', async () => {
+    const started = performance.now()
+    const plan = await syncing.plan()
+    const took = Math.round(performance.now() - started)
+    logMsg(
+      `Dry run (${took} ms): ${plan.download.length} to download, ${plan.update.length} to update (${megabytes(plan.bytes)}), ` +
+        `${plan.moves.length} moved, ${plan.adopt.length} already here, ${plan.unchanged} unchanged, ${plan.gone.length} gone from the share` +
+        `${plan.removeGone ? ' (removed)' : ' (kept)'}, ${plan.onlyHere.length} only here${plan.needsConfirmation ? ' — removing needs your OK' : ''}`,
+    )
+    const lists: [string, string[]][] = [
+      ['Download', plan.download.map((f) => `${f.path} (${f.why})`)],
+      ['Update', plan.update.map((f) => `${f.path} (${f.why})`)],
+      ['Move', plan.moves.map((m) => `${m.from} → ${m.to}`)],
+      ['Gone from the share', plan.gone],
+      ['Only here', plan.onlyHere],
+    ]
+    for (const [name, items] of lists) if (items.length) logMsg(`  ${name}: ${firstFew(items)}`)
+  })
+
+const changeSyncSettings = (change: Partial<SyncSettings>) =>
+  shareRun('Sync settings', async () => {
+    const current = syncSettings.value ?? (await syncing.settings())
+    syncSettings.value = await syncing.setSettings({ ...current, ...change })
+    logMsg(`Sync: remove songs gone from the share: ${syncSettings.value.removeGone ? 'yes' : 'no'}, ask before removing more than ${syncSettings.value.askBeforeRemoving}`)
   })
 
 const showInOtherApps = (shown: boolean) =>
@@ -476,6 +512,20 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="setUpShare()">Set up share{{ isAndroid ? ' (choose folder)' : '' }}</button>
         <button class="border rounded px-3 py-1" @click="giveSharePassword">{{ shareInfo?.needsPassword ? 'Give password' : 'Change password' }}</button>
         <button class="border rounded px-3 py-1" @click="removeShare">Remove share</button>
+        <button class="border rounded px-3 py-1" @click="dryRun">Dry run</button>
+        <button class="border rounded px-3 py-1" @click="changeSyncSettings({ removeGone: !syncSettings?.removeGone })">
+          Remove songs gone from the share: {{ syncSettings?.removeGone ? 'yes' : 'no' }}
+        </button>
+        <label class="flex items-center gap-1 text-sm">
+          Ask before removing more than
+          <input
+            type="number"
+            min="0"
+            class="border rounded px-1 w-14"
+            :value="syncSettings?.askBeforeRemoving ?? 5"
+            @change="changeSyncSettings({ askBeforeRemoving: Number(($event.target as HTMLInputElement).value) })"
+          />
+        </label>
         <template v-if="isAndroid">
           <button class="border rounded px-3 py-1" @click="showInOtherApps(true)">Show in other apps</button>
           <button class="border rounded px-3 py-1" @click="showInOtherApps(false)">Hide from other apps</button>

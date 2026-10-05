@@ -21,7 +21,7 @@ pub(crate) async fn on_share_thread<T: Send + 'static, E: Send + 'static + From<
 }
 
 /// The password stores, for `work`.
-fn with_stores<T>(app: &AppHandle, work: impl FnOnce(&Library, &PasswordStores) -> T) -> Result<T, SetupError> {
+pub(crate) fn with_stores<T>(app: &AppHandle, work: impl FnOnce(&Library, &PasswordStores) -> T) -> Result<T, SetupError> {
     let secure = SystemSecrets::new(app);
     let file = FileSecrets::new(app.path().app_data_dir().map_err(|e| e.to_string())?.join("secrets.json"));
     let session = app.state::<SessionPasswords>();
