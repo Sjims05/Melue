@@ -15,7 +15,7 @@ pub mod folders;
 pub mod grouping;
 #[cfg(test)]
 mod grouping_tests;
-mod linked;
+pub mod linked;
 #[cfg(test)]
 mod linked_tests;
 pub mod m3u;

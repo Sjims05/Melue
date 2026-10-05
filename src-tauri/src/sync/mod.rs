@@ -3,6 +3,7 @@
 //! folder by hand (they stay, "only on this device").
 //!
 //! - plan.rs: what a sync would do (the dry run).
+//! - run.rs: doing it, safely (local.rs and, on Android, tree.rs: the synced folder).
 //!
 //! Only what Melue uses is synced: songs, playlist files and cover images. Melue's own data on the share
 //! (synced playback, playlists, likes...) is in its own hidden folder, synced by its own steps.
@@ -12,6 +13,11 @@ pub mod local;
 pub mod plan;
 #[cfg(test)]
 mod plan_tests;
+pub mod run;
+#[cfg(test)]
+mod run_tests;
+#[cfg(target_os = "android")]
+mod tree;
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -102,7 +108,6 @@ impl Library {
     }
 
     /// Remembers a file as synced: `share` as it is on the share, `local` as the copy is now.
-    #[cfg_attr(not(test), allow(dead_code))] // the copying uses it (step 4)
     pub fn record_synced(&self, share: &Entry, local: &Entry) -> Result<()> {
         self.conn()
             .execute(
@@ -117,7 +122,6 @@ impl Library {
     }
 
     /// Forgets a synced file (gone from the share and from here, or removed).
-    #[allow(dead_code)] // the copying uses it (step 4)
     pub fn forget_synced(&self, path: &str) -> Result<()> {
         self.conn().execute("DELETE FROM synced_files WHERE path = ?1", [path]).map(|_| ()).map_err(err)
     }

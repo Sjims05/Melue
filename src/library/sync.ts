@@ -7,6 +7,7 @@
  * instead: that never changes while the app runs; this does.
  */
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { reactive } from 'vue'
 import { library, type FolderKind, type MusicFolder } from '.'
 
@@ -157,9 +158,68 @@ export interface SyncSettings {
   askBeforeRemoving: number
 }
 
+/** How far a running sync is. */
+export interface SyncProgress {
+  filesDone: number
+  filesTotal: number
+  bytesDone: number
+  bytesTotal: number
+  /** The file being copied (null at the end). */
+  current: string | null
+}
+
+/** What a sync did. */
+export interface SyncResult {
+  copied: number
+  bytes: number
+  moved: number
+  adopted: number
+  removed: number
+  /** Files that couldn't be copied (tried again next sync): [path, why]. */
+  failed: [string, string][]
+  /** Songs gone from the share waiting for the user's OK to be removed (syncing.now(true) removes them). */
+  removalsWaiting: number
+  cancelled: boolean
+  /** Why it stopped before the end (the share lost, the device full). */
+  stopped: string | null
+}
+
+/** Why Sync now didn't sync. */
+export type SyncFailure =
+  | { kind: 'setup'; error: SetupError }
+  | { kind: 'notEnoughSpace'; needed: number; free: number }
+  | { kind: 'running' }
+  | { kind: 'other'; detail: string }
+
+export function describeSyncFailure(e: unknown): string {
+  const failure = e as SyncFailure
+  const gb = (bytes: number) => `${(bytes / 1e9).toFixed(1)} GB`
+  switch (failure?.kind) {
+    case 'setup':
+      return describeSetupError(failure.error)
+    case 'notEnoughSpace':
+      return `Not enough free space: needs ${gb(failure.needed)}, ${gb(failure.free)} free`
+    case 'running':
+      return 'A sync is running already'
+    case 'other':
+      return failure.detail
+    default:
+      return String(e)
+  }
+}
+
 export const syncing = {
   /** What a sync would do now (the dry run). Rejects with a SetupError. */
   plan: () => invoke<SyncPlan>('sync_plan'),
+  /**
+   * Syncs now (the library then scans the synced folder). `confirmedRemoval`: yes to removing more songs gone
+   * from the share than the setting allows. Rejects with a SyncFailure.
+   */
+  now: (confirmedRemoval = false) => invoke<SyncResult>('sync_now', { confirmedRemoval }),
+  /** Stops a running sync after the file it's copying. */
+  cancel: () => invoke<void>('sync_cancel'),
+  /** Calls `listener` with a running sync's progress. Resolves to a function that stops listening. */
+  onProgress: (listener: (progress: SyncProgress) => void) => listen<SyncProgress>('sync-progress', (e) => listener(e.payload)),
   settings: () => invoke<SyncSettings>('sync_settings'),
   setSettings: (settings: SyncSettings) => invoke<SyncSettings>('sync_set_settings', { settings }),
 }

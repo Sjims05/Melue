@@ -39,6 +39,8 @@ tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }
 tokio = { version = "1", features = ["fs", "io-util", "rt-multi-thread", "sync", "time"] }
 # Waiting for the SMB share's answers from any thread, Tauri's async ones included (see share/smb.rs).
 futures-executor = "0.3"
+# Free space on this device, before a sync copies (sync/run.rs).
+fs4 = "0.13"
 
 # The share's password in the system's secure store (share/secrets.rs; Android uses Melue's Android plugin).
 [target.'cfg(windows)'.dependencies]

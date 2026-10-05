@@ -37,6 +37,7 @@ import {
   type ShareSetup,
   type SyncFolderChoice,
   type SyncSettings,
+  describeSyncFailure,
   syncing,
 } from '@/library/sync'
 import { smbTestLogin } from './spike'
@@ -262,6 +263,40 @@ const dryRun = () =>
     ]
     for (const [name, items] of lists) if (items.length) logMsg(`  ${name}: ${firstFew(items)}`)
   })
+
+/** Songs gone from the share waiting for an OK to be removed (after a sync). */
+const removalsWaiting = ref(0)
+let lastLoggedFile: string | null = null
+
+async function syncNow(confirmedRemoval = false) {
+  const started = performance.now()
+  logMsg(confirmedRemoval ? 'Sync: removing the songs gone from the share…' : 'Sync: starting…')
+  const stop = await syncing.onProgress((p) => {
+    if (p.current && p.current !== lastLoggedFile) {
+      lastLoggedFile = p.current
+      logMsg(`Sync: file ${p.filesDone + 1} of ${p.filesTotal} (${megabytes(p.bytesDone)} of ${megabytes(p.bytesTotal)}): ${p.current}`)
+    }
+  })
+  try {
+    const r = await syncing.now(confirmedRemoval)
+    const took = ((performance.now() - started) / 1000).toFixed(1)
+    removalsWaiting.value = r.removalsWaiting
+    logMsg(
+      `Sync done in ${took} s: ${r.copied} copied (${megabytes(r.bytes)}), ${r.moved} moved, ${r.adopted} already here, ${r.removed} removed` +
+        `${r.cancelled ? ', cancelled' : ''}${r.stopped ? `, stopped: ${r.stopped}` : ''}` +
+        `${r.removalsWaiting ? `, ${r.removalsWaiting} removals waiting for your OK` : ''}`,
+    )
+    for (const [path, why] of r.failed) logMsg(`  couldn't copy ${path}: ${why}`)
+  } catch (e) {
+    logMsg(`Sync FAILED: ${describeSyncFailure(e)}`)
+  } finally {
+    stop()
+    lastLoggedFile = null
+    await refreshFolders().catch(() => {})
+  }
+}
+
+const cancelSync = () => syncing.cancel().then(() => logMsg('Sync: cancelling after this file…'))
 
 const changeSyncSettings = (change: Partial<SyncSettings>) =>
   shareRun('Sync settings', async () => {
@@ -513,6 +548,9 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="giveSharePassword">{{ shareInfo?.needsPassword ? 'Give password' : 'Change password' }}</button>
         <button class="border rounded px-3 py-1" @click="removeShare">Remove share</button>
         <button class="border rounded px-3 py-1" @click="dryRun">Dry run</button>
+        <button class="border rounded px-3 py-1" @click="syncNow()">Sync now</button>
+        <button class="border rounded px-3 py-1" @click="cancelSync">Cancel sync</button>
+        <button v-if="removalsWaiting" class="border rounded px-3 py-1" @click="syncNow(true)">Remove {{ removalsWaiting }} songs gone from the share</button>
         <button class="border rounded px-3 py-1" @click="changeSyncSettings({ removeGone: !syncSettings?.removeGone })">
           Remove songs gone from the share: {{ syncSettings?.removeGone ? 'yes' : 'no' }}
         </button>

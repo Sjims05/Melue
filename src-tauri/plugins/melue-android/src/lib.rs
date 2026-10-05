@@ -88,6 +88,18 @@ mod android {
     }
 
     #[derive(Serialize)]
+    struct Move<'a> {
+        document: &'a str,
+        from: &'a str,
+        to: &'a str,
+    }
+
+    #[derive(Deserialize)]
+    struct Moved {
+        uri: String,
+    }
+
+    #[derive(Serialize)]
     struct Listen {
         event: String,
         handler: Channel<serde_json::Value>,
@@ -147,6 +159,15 @@ mod android {
             self.0
                 .run_mobile_plugin::<serde_json::Value>("secretDelete", Secret { key, value: None })
                 .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+
+        /// Moves a document of a chosen folder (`document`, in folder `from`) into folder `to` of it, keeping the
+        /// file and its time. Returns its new address.
+        pub fn move_document(&self, document: &str, from: &str, to: &str) -> Result<String, String> {
+            self.0
+                .run_mobile_plugin::<Moved>("moveDocument", Move { document, from, to })
+                .map(|m| m.uri)
                 .map_err(|e| e.to_string())
         }
 

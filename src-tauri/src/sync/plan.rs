@@ -27,6 +27,8 @@ pub struct PlanFile {
     pub path: String,
     pub kind: FileKind,
     pub size: u64,
+    /// Its modified time on the share (remembered once it's copied).
+    pub modified_ms: i64,
     pub why: Why,
 }
 
@@ -112,7 +114,7 @@ pub fn make_plan(share: Vec<Entry>, local: Vec<Entry>, records: Vec<Record>, set
         let k = key(&file.path);
         let here = local.remove(&k);
         let record = records.remove(&k);
-        let copy = |why| PlanFile { path: file.path.clone(), kind, size: file.size, why };
+        let copy = |why| PlanFile { path: file.path.clone(), kind, size: file.size, modified_ms: file.modified_ms, why };
         match (here, record) {
             (None, None) => new.push((file, kind)),
             (None, Some(r)) => plan.download.push(copy(if changed_there(&file, &r) { Why::ChangedThere } else { Why::DeletedHere })),
@@ -154,7 +156,7 @@ pub fn make_plan(share: Vec<Entry>, local: Vec<Entry>, records: Vec<Record>, set
                 let (record, _) = gone_here.remove(at);
                 plan.moves.push(PlanMove { from: record.path, to: file.path });
             }
-            None => plan.download.push(PlanFile { path: file.path, kind, size: file.size, why: Why::New }),
+            None => plan.download.push(PlanFile { path: file.path, kind, size: file.size, modified_ms: file.modified_ms, why: Why::New }),
         }
     }
     plan.gone = gone_here.into_iter().map(|(record, _)| record.path).collect();

@@ -82,6 +82,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(SpikeShare::default())
         .manage(share::commands::SessionPasswords::default())
+        .manage(sync::commands::SyncState::default())
         // Covers for the UI: cover://localhost/<file>-300.jpg (src/library's coverUrl makes these).
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             use tauri::Manager;
@@ -113,6 +114,8 @@ pub fn run() {
             share::commands::share_remove,
             share::commands::share_set_shown_in_other_apps,
             sync::commands::sync_plan,
+            sync::commands::sync_now,
+            sync::commands::sync_cancel,
             sync::commands::sync_settings,
             sync::commands::sync_set_settings,
             library::library_status,

@@ -200,40 +200,6 @@ pub fn list_tree(app: &AppHandle, uri: &str) -> Result<super::scan::Listing> {
     }
 }
 
-/// Every file in a folder chosen with the storage picker and its subfolders (hidden ones left out), with
-/// paths relative to it ("ABBA/Waterloo/01.mp3"): the synced folder as the sync sees it.
-pub fn walk_tree(app: &AppHandle, uri: &str) -> Result<Vec<crate::share::Entry>> {
-    #[cfg(target_os = "android")]
-    {
-        use tauri_plugin_android_fs::{AndroidFsExt, Entry, FsUri};
-        let fs = app.android_fs();
-        let root = FsUri { uri: uri.to_string(), document_top_tree_uri: Some(top_tree(uri)) };
-        let mut found = Vec::new();
-        let mut stack = vec![(root, String::new())];
-        while let Some((dir, relative)) = stack.pop() {
-            let entries = fs.read_dir(&dir).map_err(|e| format!("can't read the synced folder: {e}"))?;
-            for entry in entries {
-                match entry {
-                    Entry::Dir { uri, name, .. } if !name.starts_with('.') => stack.push((uri, crate::share::join(&relative, &name))),
-                    Entry::File { name, len, last_modified, .. } if !name.starts_with('.') => {
-                        let modified_ms = last_modified.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
-                        let path = crate::share::join(&relative, &name);
-                        found.push(crate::share::Entry { path, name, is_dir: false, size: len, modified_ms });
-                    }
-                    _ => {}
-                }
-            }
-        }
-        found.sort_by(|a, b| a.path.cmp(&b.path));
-        Ok(found)
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = (app, uri);
-        Err("chosen Android folders are only for Android".into())
-    }
-}
-
 /// Opens a file in a folder chosen with the storage picker (`path` is its content:// address).
 pub fn open_tree_file(app: &AppHandle, location: &str, path: &str) -> Result<std::fs::File> {
     #[cfg(target_os = "android")]

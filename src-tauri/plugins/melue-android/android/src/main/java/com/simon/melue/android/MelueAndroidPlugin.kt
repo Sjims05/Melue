@@ -16,6 +16,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.webkit.WebView
 import app.tauri.PermissionState
@@ -282,6 +283,23 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         val key = invoke.getArgs().getString("key") ?: return invoke.reject("a secret needs a key")
         secrets.edit().remove(key).apply()
         invoke.resolve()
+    }
+
+    /**
+     * Moves a document (a file in a folder chosen with the picker) into another folder of it, keeping the file
+     * itself (and its modified time). Answers the moved document's new address.
+     */
+    @Command
+    fun moveDocument(invoke: Invoke) {
+        val args = invoke.getArgs()
+        val document = args.getString("document") ?: return invoke.reject("moveDocument needs the document")
+        val from = args.getString("from") ?: return invoke.reject("moveDocument needs the folder it's in")
+        val to = args.getString("to") ?: return invoke.reject("moveDocument needs the folder to move it to")
+        runCatching {
+            DocumentsContract.moveDocument(activity.contentResolver, Uri.parse(document), Uri.parse(from), Uri.parse(to))
+                ?: throw IllegalStateException("the folder's provider can't move documents")
+        }.onSuccess { invoke.resolve(JSObject().put("uri", it.toString())) }
+            .onFailure { invoke.reject("can't move the file: ${it.message}") }
     }
 
     /** How many songs the music index has (music only, not ringtones or recordings). */
