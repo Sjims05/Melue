@@ -100,6 +100,11 @@ mod android {
     }
 
     #[derive(Deserialize)]
+    struct DeviceName {
+        name: String,
+    }
+
+    #[derive(Deserialize)]
     struct Metered {
         metered: bool,
     }
@@ -181,6 +186,11 @@ mod android {
                 .run_mobile_plugin::<Moved>("moveDocument", Move { document, from, to })
                 .map(|m| m.uri)
                 .map_err(|e| e.to_string())
+        }
+
+        /// The phone's name, as set in its settings, or its model.
+        pub fn device_name(&self) -> Result<String, String> {
+            self.0.run_mobile_plugin::<DeviceName>("deviceName", ()).map(|d| d.name).map_err(|e| e.to_string())
         }
 
         /// Whether the connection is metered (mobile data, a phone's hotspot).

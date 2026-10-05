@@ -199,3 +199,16 @@ fn queue_follow_settings_and_which_changes_touch_a_queue() {
     assert!(!affects(&change, None), "a queue not started from a list");
     assert!(affects(&LibraryChange::liked(5), Some("liked")));
 }
+
+#[test]
+fn queue_items_for_songs_keep_their_order() {
+    let (t, m, f) = setup("play-items-for");
+    m.add("a.wav", &song("A", "Band", "", 1));
+    m.add("b.wav", &song("B", "Band", "", 2));
+    t.scan(f, &m);
+    let (a, b) = (track(&t, "a.wav"), track(&t, "b.wav"));
+    let titles = |ids: &[i64]| -> Vec<String> { t.library.queue_items_for(ids).unwrap().into_iter().map(|i| i.title.unwrap()).collect() };
+    assert_eq!(titles(&[b, a, b]), vec!["B", "A", "B"]);
+    assert_eq!(titles(&[a, 9999]), vec!["A"], "songs not there are left out");
+    assert!(titles(&[]).is_empty());
+}

@@ -436,7 +436,7 @@ impl Share for SmbShare {
         }
     }
 
-    fn watch(&self, on_change: Arc<dyn Fn() + Send + Sync>) -> ShareResult<Option<super::Watch>> {
+    fn watch(&self, on_change: Arc<dyn Fn(&str) + Send + Sync>) -> ShareResult<Option<super::Watch>> {
         let Some(runtime) = self.runtime.as_ref() else { return Ok(None) };
         let (conn, config, base) = (self.conn.clone(), self.config.clone(), self.base.clone());
         let alive = Arc::new(AtomicBool::new(true));
@@ -465,8 +465,8 @@ impl Share for SmbShare {
             };
             // The watcher has its own connection: syncing goes on next to it.
             while let Ok(events) = watcher.next_events().await {
-                if !events.is_empty() {
-                    on_change();
+                for event in events {
+                    on_change(&event.filename.replace('\\', "/"));
                 }
             }
             still.store(false, Ordering::SeqCst);

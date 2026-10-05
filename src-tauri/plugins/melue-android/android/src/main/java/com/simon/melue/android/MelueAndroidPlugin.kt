@@ -20,6 +20,7 @@ import android.os.Looper
 import android.util.Log
 import android.content.pm.PackageManager
 import android.provider.DocumentsContract
+import android.provider.Settings
 import android.provider.MediaStore
 import android.webkit.WebView
 import app.tauri.PermissionState
@@ -327,6 +328,13 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     // ---- syncing
+
+    /** The phone's name, as set in its settings (About phone), or its model. */
+    @Command
+    fun deviceName(invoke: Invoke) {
+        val name = Settings.Global.getString(activity.contentResolver, Settings.Global.DEVICE_NAME)
+        invoke.resolve(JSObject().put("name", if (name.isNullOrBlank()) Build.MODEL else name))
+    }
 
     /** Whether the connection is metered (mobile data, a phone's hotspot): Android's own answer. */
     @Command

@@ -39,7 +39,11 @@ import {
   type SyncFolderChoice,
   type SyncSettings,
   describeSyncFailure,
+  minutesAndSeconds,
+  playbackSync,
   syncing,
+  type PlaybackFile,
+  type PlaybackSettings,
 } from '@/library/sync'
 import { smbTestLogin } from './spike'
 import { isAndroid, storage } from '@/platform'
@@ -92,11 +96,51 @@ onMounted(async () => {
   shareInfo.value = await share.info().catch(() => null)
   syncSettings.value = await syncing.settings().catch(() => null)
   if (isAndroid) folderCovers.value = await library.folderCovers().catch(() => null)
+  playbackSettings.value = await playbackSync.settings().catch(() => null)
+  playbackOffer.value = await playbackSync.offer().catch(() => null)
+  stopOffers = await playbackSync.onOffer((offer) => {
+    playbackOffer.value = offer
+    logMsg(`Playback: offered ${describeOffer(offer)}`)
+  })
+  stopFollowed = await playbackSync.onFollowed((other) => logMsg(`Playback: continued ${describeOffer(other)} (follow)`))
 })
 onUnmounted(() => {
   stopScanLog?.()
   stopChangeLog?.()
+  stopOffers?.()
+  stopFollowed?.()
 })
+
+// ---- synced playback
+const playbackSettings = ref<PlaybackSettings | null>(null)
+const playbackOffer = ref<PlaybackFile | null>(null)
+let stopOffers: (() => void) | null = null
+let stopFollowed: (() => void) | null = null
+
+const describeOffer = (o: PlaybackFile) =>
+  `${o.deviceName}: ${o.title ?? o.queue[o.index]}${o.artist ? ` — ${o.artist}` : ''} at ${minutesAndSeconds(o.positionS)}` +
+  ` (${o.playing ? 'playing' : 'paused'}, saved ${new Date(o.savedAtMs).toLocaleTimeString()}, ${o.queue.length} in the queue)`
+
+const answerOffer = (continueHere: boolean) =>
+  run(continueHere ? 'Continue' : 'Not now', async () => {
+    const offer = playbackOffer.value
+    playbackOffer.value = null
+    await (continueHere ? playbackSync.continue() : playbackSync.notNow())
+    if (offer) logMsg(continueHere ? `Playback: continued from ${offer.deviceName} (paused)` : 'Playback: not now')
+  })
+
+const changePlaybackSettings = (change: Partial<PlaybackSettings>) =>
+  run('Playback settings', async () => {
+    if (!playbackSettings.value) return
+    playbackSettings.value = await playbackSync.setSettings({ ...playbackSettings.value, ...change })
+    logMsg(`Playback sync: ${playbackSettings.value.mode}, this device is "${playbackSettings.value.deviceName}"`)
+  })
+
+const checkPlayback = () =>
+  run('Check playback', async () => {
+    await playbackSync.check()
+    logMsg('Playback: looking at the other devices (an offer shows up if there is one)')
+  })
 
 const scanNow = () =>
   run('Scan', async () => {
@@ -658,6 +702,36 @@ async function libraryStatus() {
           <button class="border rounded px-3 py-1" @click="showInOtherApps(true)">Show in other apps</button>
           <button class="border rounded px-3 py-1" @click="showInOtherApps(false)">Hide from other apps</button>
         </template>
+      </div>
+      <div v-if="playbackOffer" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
+        Continue where you left off on {{ playbackOffer.deviceName }}?
+        <span class="font-medium">{{ playbackOffer.title ?? playbackOffer.queue[playbackOffer.index] }}{{ playbackOffer.artist ? ` — ${playbackOffer.artist}` : '' }}</span>
+        at {{ minutesAndSeconds(playbackOffer.positionS) }}
+        <button class="border rounded px-3 py-1" @click="answerOffer(true)">Continue</button>
+        <button class="border rounded px-3 py-1" @click="answerOffer(false)">Not now</button>
+      </div>
+      <div v-if="sync.available" class="flex flex-wrap items-center gap-2 text-sm">
+        <label class="flex items-center gap-1">
+          Playback across devices:
+          <select
+            class="border rounded px-1"
+            :value="playbackSettings?.mode ?? 'ask'"
+            @change="changePlaybackSettings({ mode: ($event.target as HTMLSelectElement).value as PlaybackSettings['mode'] })"
+          >
+            <option value="ask">ask</option>
+            <option value="follow">follow without asking</option>
+            <option value="off">off</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1">
+          This device:
+          <input
+            class="border rounded px-1 w-36"
+            :value="playbackSettings?.deviceName ?? ''"
+            @change="changePlaybackSettings({ deviceName: ($event.target as HTMLInputElement).value })"
+          />
+        </label>
+        <button class="border rounded px-3 py-1" @click="checkPlayback">Check other devices</button>
       </div>
       <div v-if="noSecureStore" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
         No secure place for the password on this system.

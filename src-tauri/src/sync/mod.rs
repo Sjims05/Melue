@@ -9,6 +9,9 @@
 //! (synced playback, playlists, likes...) is in its own hidden folder, synced by its own steps.
 
 pub mod commands;
+pub mod handoff;
+#[cfg(test)]
+mod handoff_tests;
 pub mod local;
 pub mod plan;
 #[cfg(test)]

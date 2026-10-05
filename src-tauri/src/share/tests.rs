@@ -224,12 +224,13 @@ fn the_real_nas_says_when_its_music_changes() {
     let share = SmbShare::new(config).unwrap();
     let _clean_up = CleanUp { share: &share, folder: &folder };
     let (changed, noticed) = std::sync::mpsc::channel();
-    let watch = share.watch(std::sync::Arc::new(move || {
-        let _ = changed.send(());
+    let watch = share.watch(std::sync::Arc::new(move |path: &str| {
+        let _ = changed.send(path.to_string());
     }));
     let watch = watch.unwrap().expect("SMB shares can be watched");
     assert!(watch.alive());
     share.write(&format!("{folder}/Album/new.mp3"), b"a new song").unwrap();
-    assert!(noticed.recv_timeout(std::time::Duration::from_secs(10)).is_ok(), "the NAS said something changed");
+    let path = noticed.recv_timeout(std::time::Duration::from_secs(10)).expect("the NAS said something changed");
+    assert!(path.starts_with(&folder), "{path}");
     drop(watch);
 }

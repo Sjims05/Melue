@@ -1,0 +1,461 @@
+//! Synced playback: carrying on where another device left off. Each device keeps what it plays in its own
+//! small file on the share, `.melue/playback/<device id>.json` (the queue by the songs' paths on the share,
+//! the song, where in it, playing or not, shuffle and repeat), saved when the song or the queue changes, on
+//! pause, on closing, and every 30 seconds while playing.
+//!
+//! At start-up, on coming back to the app, and when the share says a playback file changed, the newest other
+//! device's playback is looked at. When it's newer than what this device last played (and than the last one
+//! answered), it's offered: "Continue where you left off on <device>?" (the `playback-offer` event). Continue
+//! loads its queue paused at its position. A device that is playing is never interrupted. The setting can also
+//! follow other devices without asking, or switch it all off.
+//!
+//! Only songs on the share are carried over (the synced folder's): a song that's only on one device isn't
+//! saved, and songs another device has that aren't here (not synced yet) are left out of its queue.
+
+use std::collections::HashMap;
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::Mutex;
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_native_audio::NativeAudioExt;
+
+use crate::library::linked::document_path;
+use crate::library::{err, now_ms, Folder, FolderKind, Library, Result};
+use crate::share::commands::with_stores;
+use crate::share::setup;
+use crate::share::Share;
+
+/// Where the playback files are on the share.
+pub const DIR: &str = ".melue/playback";
+pub const OFFER_EVENT: &str = "playback-offer";
+/// Sent when another device's playback was loaded without asking (the "follow" setting).
+pub const FOLLOWED_EVENT: &str = "playback-followed";
+const SETTINGS: &str = "playback_sync";
+const DEVICE_ID: &str = "device_id";
+/// When this device's playback last changed (was saved).
+const SAVED_AT: &str = "playback_saved_at";
+/// The newest other device's playback answered (Continue or Not now): its time.
+const ANSWERED: &str = "playback_answered";
+/// How often the player is looked at.
+const POLL: Duration = Duration::from_secs(5);
+/// While playing, the position is saved this often.
+pub const SAVE_PLAYING_MS: i64 = 30_000;
+/// Paused, moving more than this (seconds) is saved.
+const MOVED_S: f64 = 2.0;
+
+/// One device's playback, as kept on the share.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackFile {
+    pub device_id: String,
+    pub device_name: String,
+    /// When it changed.
+    pub saved_at_ms: i64,
+    #[serde(flatten)]
+    pub state: Playback,
+    /// The song's title and artist (to say what it is, even on a device that doesn't have it).
+    pub title: Option<String>,
+    pub artist: Option<String>,
+}
+
+/// What a device plays.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Playback {
+    /// The queue's songs, by their path on the share.
+    pub queue: Vec<String>,
+    /// The song in `queue`.
+    pub index: usize,
+    /// Seconds into the song.
+    pub position_s: f64,
+    pub playing: bool,
+    pub shuffle: bool,
+    /// "off", "all" or "one".
+    pub repeat: String,
+}
+
+/// What to do with another device's playback.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Mode {
+    /// Ask first: "Continue where you left off on <device>?".
+    #[default]
+    Ask,
+    /// Load it (paused) without asking.
+    Follow,
+    /// Neither saved nor offered.
+    Off,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PlaybackSettings {
+    pub mode: Mode,
+    /// This device's name for the others (None: the computer's name or the phone's).
+    pub device_name: Option<String>,
+}
+
+/// Synced playback's state while Melue runs.
+#[derive(Default)]
+pub struct Handoff {
+    /// The playback last saved (or loaded), to tell when it changes, and when it was saved.
+    last: Mutex<Option<(Playback, i64)>>,
+    /// Another device's playback waiting for an answer.
+    offer: Mutex<Option<PlaybackFile>>,
+    /// The share, kept open between saves (opened again after a problem).
+    share: Mutex<Option<Box<dyn Share>>>,
+    checks: Mutex<Option<Sender<()>>>,
+}
+
+// ---- the rules (plain functions, tested in handoff_tests.rs)
+
+/// Whether a changed file on the share is a playback file.
+pub fn is_playback_file(path: &str) -> bool {
+    path.strip_prefix(DIR).is_some_and(|rest| rest.starts_with('/') && rest.ends_with(".json"))
+}
+
+/// A song's path on the share, from its path in the synced folder (None: a folder that isn't synced).
+pub fn share_path(folder: &Folder, track_path: &str) -> Option<String> {
+    match folder.kind {
+        FolderKind::Path => Some(track_path.replace('\\', "/")),
+        // A chosen Android folder's songs are content:// addresses: their document paths, within the folder's.
+        FolderKind::AndroidTree => {
+            let root = document_path(&folder.location);
+            document_path(track_path).strip_prefix(&format!("{}/", root.trim_end_matches('/'))).map(str::to_string)
+        }
+        FolderKind::AndroidMedia => None,
+    }
+}
+
+/// Paths compare without case (like the sync's).
+fn key(path: &str) -> String {
+    path.to_lowercase()
+}
+
+/// The queue to save: its songs on the share (others left out) and the song's place among them. None: the
+/// song isn't on the share (then nothing is saved).
+pub fn on_share(ids: &[Option<i64>], index: usize, paths: &HashMap<i64, String>) -> Option<(Vec<String>, usize)> {
+    let path = |id: &Option<i64>| id.and_then(|id| paths.get(&id).cloned());
+    path(ids.get(index)?)?;
+    let before = ids[..index].iter().filter(|id| path(id).is_some()).count();
+    Some((ids.iter().filter_map(path).collect(), before))
+}
+
+/// The songs here for a saved queue, and the song's place among them. None: the song isn't here.
+pub fn here(playback: &Playback, songs: &HashMap<String, i64>) -> Option<(Vec<i64>, usize)> {
+    let id = |path: &String| songs.get(&key(path)).copied();
+    id(playback.queue.get(playback.index)?)?;
+    let before = playback.queue[..playback.index].iter().filter(|p| id(p).is_some()).count();
+    Some((playback.queue.iter().filter_map(id).collect(), before))
+}
+
+/// Whether the playback changed enough to save: another song or queue, play or pause, shuffle or repeat;
+/// while playing every [`SAVE_PLAYING_MS`]; paused, moved to another place in the song.
+pub fn needs_saving(last: Option<&(Playback, i64)>, now: &Playback, now_ms: i64) -> bool {
+    let Some((last, saved_ms)) = last else { return true };
+    let other_song = last.queue != now.queue || last.index != now.index;
+    let other_settings = last.playing != now.playing || last.shuffle != now.shuffle || last.repeat != now.repeat;
+    other_song
+        || other_settings
+        || (now.playing && now_ms - saved_ms >= SAVE_PLAYING_MS)
+        || (!now.playing && (now.position_s - last.position_s).abs() > MOVED_S)
+}
+
+/// The other device's playback to offer: the newest, if it's newer than `after_ms` (this device's own
+/// playback, and the last one answered).
+pub fn newest_other(files: Vec<PlaybackFile>, me: &str, after_ms: i64) -> Option<PlaybackFile> {
+    files
+        .into_iter()
+        .filter(|f| f.device_id != me && !f.state.queue.is_empty() && f.saved_at_ms > after_ms)
+        .max_by_key(|f| f.saved_at_ms)
+}
+
+// ---- this device
+
+/// This device's id (made the first time: it stays when the device is renamed).
+pub fn device_id(library: &Library) -> Result<String> {
+    if let Some(id) = library.setting(DEVICE_ID)?.filter(|id| !id.is_empty()) {
+        return Ok(id);
+    }
+    use std::hash::{BuildHasher, Hasher};
+    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+    hasher.write_i64(now_ms());
+    hasher.write_u32(std::process::id());
+    let id = format!("{:016x}", hasher.finish());
+    library.set_setting(DEVICE_ID, &id)?;
+    Ok(id)
+}
+
+/// The computer's name, or the phone's (as set in its settings, or its model).
+fn system_name(app: &AppHandle) -> String {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_melue_android::MelueAndroidExt;
+        app.melue_android().device_name().unwrap_or_else(|_| "Phone".into())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = app;
+        ["COMPUTERNAME", "HOSTNAME"]
+            .iter()
+            .find_map(|name| std::env::var(name).ok().filter(|n| !n.trim().is_empty()))
+            .unwrap_or_else(|| "Computer".into())
+    }
+}
+
+pub fn settings(app: &AppHandle) -> Result<PlaybackSettings> {
+    let saved: PlaybackSettings = match app.state::<Library>().setting(SETTINGS)? {
+        Some(json) => serde_json::from_str(&json).map_err(err)?,
+        None => PlaybackSettings::default(),
+    };
+    let device_name = saved.device_name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| system_name(app));
+    Ok(PlaybackSettings { device_name: Some(device_name), ..saved })
+}
+
+pub fn set_settings(app: &AppHandle, settings: &PlaybackSettings) -> Result<()> {
+    let name = settings.device_name.as_deref().map(str::trim).filter(|n| !n.is_empty() && *n != system_name(app));
+    let saved = PlaybackSettings { mode: settings.mode, device_name: name.map(str::to_string) };
+    app.state::<Library>().set_setting(SETTINGS, &serde_json::to_string(&saved).map_err(err)?)
+}
+
+impl Library {
+    /// The synced folder's songs: (track id, path on the share).
+    fn synced_songs(&self, folder: &Folder) -> Result<Vec<(i64, String)>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT id, path FROM tracks WHERE folder_id = ?1 AND missing_since IS NULL").map_err(err)?;
+        let rows = stmt.query_map([folder.id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
+        let rows: Vec<(i64, String)> = rows.collect::<rusqlite::Result<_>>().map_err(err)?;
+        Ok(rows.into_iter().filter_map(|(id, path)| share_path(folder, &path).map(|p| (id, p))).collect())
+    }
+
+    /// The synced folder (None: no share set up).
+    fn synced_folder(&self) -> Result<Option<Folder>> {
+        match self.share_settings()? {
+            Some(settings) => self.folder(settings.sync_folder_id),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Runs `work` with the share (opened when needed; a failure closes it, to be opened again next time).
+fn with_share<T>(app: &AppHandle, work: impl FnOnce(&dyn Share) -> Result<T>) -> Result<T> {
+    let handoff = app.state::<Handoff>();
+    let mut share = handoff.share.lock().unwrap();
+    if share.is_none() {
+        let (_, opened) = with_stores(app, |library, stores| setup::current(library, stores, &setup::open))
+            .and_then(|r| r)
+            .map_err(|e| format!("{e:?}"))?;
+        *share = Some(opened);
+    }
+    let result = work(share.as_deref().expect("opened"));
+    if result.is_err() {
+        *share = None;
+    }
+    result
+}
+
+/// What plays here now, on the share's terms, and the song's (title, artist).
+type PlayingHere = (Playback, (Option<String>, Option<String>));
+
+/// What plays here now (None: nothing, or a song that isn't on the share).
+fn playing_here(app: &AppHandle, library: &Library, folder: &Folder) -> Result<Option<PlayingHere>> {
+    let player = app.native_audio();
+    let state = player.get_state()?;
+    if state.queue_index < 0 {
+        return Ok(None);
+    }
+    let queue = player.get_queue()?;
+    let Ok(index) = usize::try_from(queue.current_index) else { return Ok(None) };
+    let paths: HashMap<i64, String> = library.synced_songs(folder)?.into_iter().collect();
+    let ids: Vec<Option<i64>> = queue.items.iter().map(|i| i.id).collect();
+    let Some((songs, index_on_share)) = on_share(&ids, index, &paths) else { return Ok(None) };
+    let current = &queue.items[index];
+    let playback = Playback {
+        queue: songs,
+        index: index_on_share,
+        position_s: state.current_time.max(0.0),
+        playing: state.is_playing,
+        shuffle: state.shuffle,
+        repeat: if state.repeat_mode.is_empty() { "off".into() } else { state.repeat_mode },
+    };
+    Ok(Some((playback, (current.title.clone(), current.artist.clone()))))
+}
+
+/// Saves what plays here when it changed (`force`: also when it didn't, e.g. on closing).
+fn save(app: &AppHandle, force: bool) -> Result<()> {
+    let library = app.state::<Library>();
+    if settings(app)?.mode == Mode::Off {
+        return Ok(());
+    }
+    let Some(folder) = library.synced_folder()? else { return Ok(()) };
+    let Some((playback, (title, artist))) = playing_here(app, &library, &folder)? else { return Ok(()) };
+    let handoff = app.state::<Handoff>();
+    let now = now_ms();
+    {
+        let mut last = handoff.last.lock().unwrap();
+        // Melue just started: the player's queue from last time isn't something new to tell the others.
+        if last.is_none() && !force {
+            *last = Some((playback, now));
+            return Ok(());
+        }
+        if !force && !needs_saving(last.as_ref(), &playback, now) {
+            return Ok(());
+        }
+    }
+    let file = PlaybackFile {
+        device_id: device_id(&library)?,
+        device_name: settings(app)?.device_name.unwrap_or_default(),
+        saved_at_ms: now,
+        state: playback,
+        title,
+        artist,
+    };
+    let json = serde_json::to_vec_pretty(&file).map_err(err)?;
+    with_share(app, |share| {
+        share.create_dir_all(DIR)?;
+        Ok(share.write(&format!("{DIR}/{}.json", file.device_id), &json)?)
+    })?;
+    // Only once it's on the share (otherwise it's tried again on the next look at the player).
+    *handoff.last.lock().unwrap() = Some((file.state, now));
+    library.set_setting(SAVED_AT, &now.to_string())
+}
+
+/// Saves what plays here now (closing the app).
+pub fn save_now(app: &AppHandle) {
+    if let Err(e) = save(app, true) {
+        eprintln!("melue: playback: can't save: {e}");
+    }
+}
+
+/// Every device's playback on the share (files that can't be read are left out).
+fn read_all(app: &AppHandle) -> Result<Vec<PlaybackFile>> {
+    with_share(app, |share| {
+        let entries = match share.list(DIR) {
+            Ok(entries) => entries,
+            Err(crate::share::ShareError::NotFound { .. }) => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
+        Ok(entries
+            .iter()
+            .filter(|e| !e.is_dir && e.name.ends_with(".json"))
+            .filter_map(|e| share.read(&e.path).ok())
+            .filter_map(|bytes| serde_json::from_slice(&bytes).ok())
+            .collect())
+    })
+}
+
+fn setting_ms(library: &Library, key: &str) -> i64 {
+    library.setting(key).ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0)
+}
+
+/// Looks at the other devices' playback: offers the newest (or loads it, with "follow").
+fn look(app: &AppHandle) -> Result<()> {
+    let library = app.state::<Library>();
+    let mode = settings(app)?.mode;
+    if mode == Mode::Off || !library.sync_available()? {
+        return Ok(());
+    }
+    let after = setting_ms(&library, SAVED_AT).max(setting_ms(&library, ANSWERED));
+    let Some(other) = newest_other(read_all(app)?, &device_id(&library)?, after) else { return Ok(()) };
+    // Never interrupt: playing here wins (and soon saves, which makes it the newest).
+    if app.native_audio().get_state()?.is_playing {
+        return Ok(());
+    }
+    // A song that isn't here yet (not synced) can't be continued.
+    let Some(folder) = library.synced_folder()? else { return Ok(()) };
+    let songs: HashMap<String, i64> = library.synced_songs(&folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
+    if here(&other.state, &songs).is_none() {
+        return Ok(());
+    }
+    let handoff = app.state::<Handoff>();
+    match mode {
+        Mode::Follow => {
+            load(app, &other)?;
+            let _ = app.emit(FOLLOWED_EVENT, &other);
+        }
+        _ => {
+            let mut offer = handoff.offer.lock().unwrap();
+            if offer.as_ref().is_some_and(|o| o.saved_at_ms >= other.saved_at_ms) {
+                return Ok(());
+            }
+            *offer = Some(other.clone());
+            let _ = app.emit(OFFER_EVENT, &other);
+        }
+    }
+    Ok(())
+}
+
+/// Loads another device's playback, paused at its position.
+fn load(app: &AppHandle, other: &PlaybackFile) -> Result<()> {
+    let library = app.state::<Library>();
+    let folder = library.synced_folder()?.ok_or("no share is set up")?;
+    let songs: HashMap<String, i64> = library.synced_songs(&folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
+    let (ids, index) = here(&other.state, &songs).ok_or("that song isn't here (not synced yet?)")?;
+    let items = library.queue_items_for(&ids)?;
+    let player = app.native_audio();
+    player.set_queue(items, index, other.state.position_s, None)?;
+    player.set_shuffle(other.state.shuffle)?;
+    player.set_repeat_mode(&other.state.repeat)?;
+    library.set_setting(ANSWERED, &other.saved_at_ms.to_string())?;
+    // Not something new to tell the others: it's theirs (saved once it changes here).
+    let loaded = playing_here(app, &library, &folder)?.map(|(p, ..)| p).unwrap_or_else(|| Playback { playing: false, ..other.state.clone() });
+    *app.state::<Handoff>().last.lock().unwrap() = Some((loaded, now_ms()));
+    Ok(())
+}
+
+/// The offer waiting for an answer.
+pub fn offer(app: &AppHandle) -> Option<PlaybackFile> {
+    app.state::<Handoff>().offer.lock().unwrap().clone()
+}
+
+/// The answer to the offer: Continue (load it) or Not now (it isn't offered again).
+pub fn answer(app: &AppHandle, continue_here: bool) -> Result<()> {
+    let Some(other) = app.state::<Handoff>().offer.lock().unwrap().take() else { return Ok(()) };
+    if continue_here {
+        load(app, &other)
+    } else {
+        app.state::<Library>().set_setting(ANSWERED, &other.saved_at_ms.to_string())
+    }
+}
+
+/// Asks for a look at the other devices' playback (start-up, coming back, a playback file changed).
+pub fn check(app: &AppHandle) {
+    if let Some(checks) = app.state::<Handoff>().checks.lock().unwrap().as_ref() {
+        let _ = checks.send(());
+    }
+}
+
+/// Starts synced playback: a look shortly after start-up, then saving what plays here every few seconds
+/// when it changed, and looking again when asked.
+pub fn start(app: &AppHandle) {
+    let (sender, checks) = mpsc::channel::<()>();
+    *app.state::<Handoff>().checks.lock().unwrap() = Some(sender.clone());
+    let app = app.clone();
+    std::thread::Builder::new()
+        .name("melue-playback".into())
+        .spawn(move || {
+            // After the player has restored its queue.
+            std::thread::sleep(Duration::from_secs(3));
+            let _ = sender.send(());
+            loop {
+                match checks.recv_timeout(POLL) {
+                    Ok(()) => {
+                        while checks.try_recv().is_ok() {}
+                        if let Err(e) = look(&app) {
+                            eprintln!("melue: playback: can't look at the other devices: {e}");
+                        }
+                    }
+                    Err(RecvTimeoutError::Timeout) => {}
+                    Err(RecvTimeoutError::Disconnected) => return,
+                }
+                if app.state::<Library>().sync_available().unwrap_or(false) {
+                    if let Err(e) = save(&app, false) {
+                        eprintln!("melue: playback: can't save: {e}");
+                    }
+                }
+            }
+        })
+        .expect("the playback thread");
+}

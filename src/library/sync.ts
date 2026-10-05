@@ -257,3 +257,52 @@ export const syncing = {
   settings: () => invoke<SyncSettings>('sync_settings'),
   setSettings: (settings: SyncSettings) => invoke<SyncSettings>('sync_set_settings', { settings }),
 }
+
+// ---- synced playback: carrying on where another device left off
+
+/** Another device's playback: its queue (songs by their path on the share), the song, where in it. */
+export interface PlaybackFile {
+  deviceId: string
+  deviceName: string
+  savedAtMs: number
+  queue: string[]
+  index: number
+  positionS: number
+  playing: boolean
+  shuffle: boolean
+  repeat: 'off' | 'all' | 'one'
+  title: string | null
+  artist: string | null
+}
+
+/** Ask first ("Continue where you left off on ...?"), load it without asking, or off. */
+export type PlaybackMode = 'ask' | 'follow' | 'off'
+
+export interface PlaybackSettings {
+  mode: PlaybackMode
+  /** This device's name for the others (the computer's name or the phone's unless changed). */
+  deviceName: string | null
+}
+
+export const playbackSync = {
+  settings: () => invoke<PlaybackSettings>('playback_sync_settings'),
+  setSettings: (settings: PlaybackSettings) => invoke<PlaybackSettings>('playback_sync_set_settings', { settings }),
+  /** Another device's playback waiting for an answer, if any. */
+  offer: () => invoke<PlaybackFile | null>('playback_offer'),
+  /** Calls `listener` when another device's playback is offered. Resolves to a function that stops listening. */
+  onOffer: (listener: (offer: PlaybackFile) => void) => listen<PlaybackFile>('playback-offer', (e) => listener(e.payload)),
+  /** Calls `listener` when another device's playback was loaded without asking (the "follow" setting). */
+  onFollowed: (listener: (other: PlaybackFile) => void) => listen<PlaybackFile>('playback-followed', (e) => listener(e.payload)),
+  /** Continue: the other device's queue, loaded paused at its position. */
+  continue: () => invoke<void>('playback_continue'),
+  /** Not now: not offered again (until that device plays something else). */
+  notNow: () => invoke<void>('playback_not_now'),
+  /** Looks at the other devices' playback now. */
+  check: () => invoke<void>('playback_check'),
+}
+
+/** "1:23" for 83 seconds. */
+export function minutesAndSeconds(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}

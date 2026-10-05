@@ -103,9 +103,15 @@ pub fn run() {
             library::auto::start(app.handle());
             // Syncing with the share by itself (start-up, coming back, the share's changes; see sync/schedule.rs).
             sync::scheduler::start(app.handle());
+            // Synced playback: what plays here goes to the share; another device's is offered (see sync/handoff.rs).
+            app.manage(sync::handoff::Handoff::default());
+            sync::handoff::start(app.handle());
             library::android::on_resume(app.handle(), {
                 let app = app.handle().clone();
-                move || sync::scheduler::trigger(&app, sync::schedule::Trigger::Return)
+                move || {
+                    sync::scheduler::trigger(&app, sync::schedule::Trigger::Return);
+                    sync::handoff::check(&app);
+                }
             });
             library::android::on_sync_cancel(app.handle(), {
                 let app = app.handle().clone();
@@ -115,9 +121,15 @@ pub fn run() {
         })
         // Desktop: back into the window counts as coming back to the app (a sync if the last is a while ago).
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Focused(true) = event {
-                use tauri::Manager;
-                sync::scheduler::trigger(window.app_handle(), sync::schedule::Trigger::Return);
+            use tauri::Manager;
+            match event {
+                tauri::WindowEvent::Focused(true) => {
+                    sync::scheduler::trigger(window.app_handle(), sync::schedule::Trigger::Return);
+                    sync::handoff::check(window.app_handle());
+                }
+                // Closing: where the song is now goes to the share.
+                tauri::WindowEvent::CloseRequested { .. } => sync::handoff::save_now(window.app_handle()),
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -137,6 +149,12 @@ pub fn run() {
             sync::commands::sync_simulate_notification,
             sync::commands::sync_settings,
             sync::commands::sync_set_settings,
+            sync::commands::playback_sync_settings,
+            sync::commands::playback_sync_set_settings,
+            sync::commands::playback_offer,
+            sync::commands::playback_continue,
+            sync::commands::playback_not_now,
+            sync::commands::playback_check,
             library::library_status,
             library::library_setting,
             library::library_set_setting,

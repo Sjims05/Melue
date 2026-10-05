@@ -110,9 +110,10 @@ pub trait Share: Send + Sync {
     /// Free space on the share, when it says.
     fn free_space(&self) -> ShareResult<Option<u64>>;
 
-    /// Calls `on_change` whenever something in the music folder changes, while the returned [`Watch`] is kept
-    /// (and the share with it). None: this share can't tell (only SMB shares can).
-    fn watch(&self, on_change: Arc<dyn Fn() + Send + Sync>) -> ShareResult<Option<Watch>> {
+    /// Calls `on_change` with the path of whatever changes in the music folder (hidden files too, like
+    /// `.melue/...`), while the returned [`Watch`] is kept (and the share with it). None: this share can't tell
+    /// (only SMB shares can).
+    fn watch(&self, on_change: Arc<dyn Fn(&str) + Send + Sync>) -> ShareResult<Option<Watch>> {
         let _ = on_change;
         Ok(None)
     }

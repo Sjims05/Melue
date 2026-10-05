@@ -28,6 +28,10 @@ const PLAY_AFTER_MS: i64 = 4 * 60_000;
 /// How long counted events are remembered (to count a repeated one once).
 const SEEN_FOR_MS: i64 = 30 * 24 * 3600 * 1000;
 
+/// The columns of a queue item (see `queue_item`), from tracks `t`, folders `f` and covers `c`.
+const ITEM_SELECT: &str = "SELECT t.id, f.kind, f.location, t.path, t.title, t.artist_credit, t.tag_album, c.file
+    FROM tracks t JOIN folders f ON f.id = t.folder_id LEFT JOIN covers c ON c.id = t.cover_id";
+
 /// A playback event from the player.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,27 +109,10 @@ impl Library {
             ("liked", None) => ("JOIN likes l ON l.track_id = t.id", "", "l.liked_at DESC, t.id"),
             _ => return Err(format!("not a list: {source}")),
         };
-        let sql = format!(
-            "SELECT t.id, f.kind, f.location, t.path, t.title, t.artist_credit, t.tag_album, c.file
-             FROM tracks t JOIN folders f ON f.id = t.folder_id LEFT JOIN covers c ON c.id = t.cover_id {join}
-             WHERE t.missing_since IS NULL AND f.enabled {filter}
-             ORDER BY {order}"
-        );
+        let sql = format!("{ITEM_SELECT} {join} WHERE t.missing_since IS NULL AND f.enabled {filter} ORDER BY {order}");
         let conn = self.conn();
         let mut stmt = conn.prepare(&sql).map_err(err)?;
-        let to_item = |r: &rusqlite::Row| -> rusqlite::Result<QueueItem> {
-            let (kind, location, path): (String, String, String) = (r.get(1)?, r.get(2)?, r.get(3)?);
-            let src = if kind == "path" { Path::new(&location).join(&path).to_string_lossy().into_owned() } else { path };
-            let cover: Option<String> = r.get(7)?;
-            Ok(QueueItem {
-                id: Some(r.get(0)?),
-                src,
-                title: Some(r.get(4)?),
-                artist: r.get(5)?,
-                album: r.get(6)?,
-                artwork_url: cover.map(|c| self.covers_dir().join(covers::file_name(&c, LARGE)).to_string_lossy().into_owned()),
-            })
-        };
+        let to_item = |r: &rusqlite::Row| self.queue_item(r);
         // The lists with an id use it as ?1.
         let items = match id {
             Some(id) => stmt.query_map([id], to_item),
@@ -133,6 +120,35 @@ impl Library {
         }
         .map_err(err)?;
         items.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+
+    /// Queue items for songs, in the order given (songs not there left out).
+    pub fn queue_items_for(&self, ids: &[i64]) -> Result<Vec<QueueItem>> {
+        let sql = format!("{ITEM_SELECT} WHERE t.missing_since IS NULL AND f.enabled AND t.id IN (SELECT value FROM json_each(?1))");
+        let conn = self.conn();
+        let mut stmt = conn.prepare(&sql).map_err(err)?;
+        let found: std::collections::HashMap<i64, QueueItem> = stmt
+            .query_map([serde_json::to_string(ids).map_err(err)?], |r| self.queue_item(r))
+            .map_err(err)?
+            .map(|item| item.map(|i| (i.id.unwrap_or_default(), i)))
+            .collect::<rusqlite::Result<_>>()
+            .map_err(err)?;
+        Ok(ids.iter().filter_map(|id| found.get(id).cloned()).collect())
+    }
+
+    /// A queue item from an [`ITEM_SELECT`] row.
+    fn queue_item(&self, r: &rusqlite::Row) -> rusqlite::Result<QueueItem> {
+        let (kind, location, path): (String, String, String) = (r.get(1)?, r.get(2)?, r.get(3)?);
+        let src = if kind == "path" { Path::new(&location).join(&path).to_string_lossy().into_owned() } else { path };
+        let cover: Option<String> = r.get(7)?;
+        Ok(QueueItem {
+            id: Some(r.get(0)?),
+            src,
+            title: Some(r.get(4)?),
+            artist: r.get(5)?,
+            album: r.get(6)?,
+            artwork_url: cover.map(|c| self.covers_dir().join(covers::file_name(&c, LARGE)).to_string_lossy().into_owned()),
+        })
     }
 
     /// Counts a playback event (once, however often it's handed over). Returns what a song being left

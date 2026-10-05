@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+use super::handoff;
 use super::local;
 use super::plan::{make_plan, SyncPlan};
 use super::run::{run, Progress, RunOptions, SyncError, SyncResult};
@@ -212,7 +213,8 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
     result
 }
 
-/// Asks the share to say when its music changes (when that's on and it isn't being watched already).
+/// Asks the share to say when its music changes (when that's on and it isn't being watched already). A
+/// change in Melue's playback files is for synced playback (handoff.rs), not a sync.
 fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
     let on_change = app.state::<Library>().sync_settings().map(|s| s.on_change).unwrap_or(false);
     let syncing = app.state::<Syncing>();
@@ -225,7 +227,14 @@ fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
         return;
     }
     let handle = app.clone();
-    match share.watch(Arc::new(move || trigger(&handle, Trigger::Changed))) {
+    let on_change = move |path: &str| {
+        if handoff::is_playback_file(path) {
+            handoff::check(&handle);
+        } else if !path.split('/').any(crate::share::is_hidden) {
+            trigger(&handle, Trigger::Changed);
+        }
+    };
+    match share.watch(Arc::new(on_change)) {
         Ok(Some(watch)) => *watching = Some((share, watch)),
         _ => *watching = None,
     }
