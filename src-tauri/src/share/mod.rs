@@ -7,7 +7,12 @@
 //! place only when complete, so nothing ever sees half a file. Failures are sorted into [`ShareError`]s the
 //! UI can act on ("turn on the VPN?", "wrong password").
 
+pub mod commands;
 pub mod folder;
+pub mod secrets;
+pub mod setup;
+#[cfg(test)]
+mod setup_tests;
 pub mod smb;
 #[cfg(test)]
 pub mod testkit;

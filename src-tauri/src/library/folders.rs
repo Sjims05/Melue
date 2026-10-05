@@ -113,6 +113,28 @@ pub fn normalize_path(path: &str) -> Result<PathBuf> {
     Ok(PathBuf::from(plain))
 }
 
+/// A folder's location as stored: a normalized path, '' or a content:// address.
+fn clean_location(kind: FolderKind, location: &str) -> Result<String> {
+    Ok(match kind {
+        FolderKind::Path => normalize_path(location)?.to_string_lossy().into_owned(),
+        FolderKind::AndroidMedia => String::new(),
+        FolderKind::AndroidTree => {
+            let uri = location.trim();
+            if !uri.starts_with("content://") {
+                return Err("a chosen Android folder needs its content:// address".into());
+            }
+            uri.to_string()
+        }
+    })
+}
+
+fn same_location(kind: FolderKind, a: &str, b: &str) -> bool {
+    match kind {
+        FolderKind::Path => relation(Path::new(a), Path::new(b)) == Some("same"),
+        _ => a == b,
+    }
+}
+
 /// Whether two normalized paths are the same, or one contains the other. Windows compares without case.
 fn relation(a: &Path, b: &Path) -> Option<&'static str> {
     let key = |p: &Path| {
@@ -149,25 +171,42 @@ impl Library {
 
     /// Adds a music folder. `location`: a path (Path), '' (AndroidMedia) or a tree URI (AndroidTree).
     /// Refuses one that's already there, or (for paths) inside or around one that is, since its files
-    /// would be in the library twice; and all music on the phone together with chosen folders.
+    /// would be in the library twice; and all music on the phone together with chosen folders. The synced
+    /// folder (see [`Library::add_synced_folder`]) is the exception: the folders around it skip it.
     pub fn add_folder(&self, kind: FolderKind, location: &str, name: Option<&str>) -> Result<Folder> {
-        let location = match kind {
-            FolderKind::Path => normalize_path(location)?.to_string_lossy().into_owned(),
-            FolderKind::AndroidMedia => String::new(),
-            FolderKind::AndroidTree => {
-                let uri = location.trim();
-                if !uri.starts_with("content://") {
-                    return Err("a chosen Android folder needs its content:// address".into());
-                }
-                uri.to_string()
-            }
-        };
+        self.add_folder_as(kind, location, name, false)
+    }
+
+    /// Adds the folder the share syncs into (or, for a network drive played straight from the share, the
+    /// drive). It may be inside a library folder, or contain one: the outer folder's scan skips the inner one,
+    /// so nothing is in the library twice. It's also allowed next to all music on the phone (which skips it).
+    /// Already in the library: it's marked as the synced folder.
+    pub fn add_synced_folder(&self, kind: FolderKind, location: &str, name: Option<&str>) -> Result<Folder> {
+        let location = clean_location(kind, location)?;
+        if let Some(existing) = self.folders()?.into_iter().find(|f| f.kind == kind && same_location(kind, &f.location, &location)) {
+            return self.set_folder_synced(existing.id, true);
+        }
+        self.add_folder_as(kind, &location, name, true)
+    }
+
+    /// Marks a folder as the synced one, or a normal folder again (the share removed: its songs stay).
+    pub fn set_folder_synced(&self, id: i64, synced: bool) -> Result<Folder> {
+        let changed = self.conn().execute("UPDATE folders SET synced = ?2 WHERE id = ?1", params![id, synced]).map_err(err)?;
+        if changed == 0 {
+            return Err(format!("no folder {id}"));
+        }
+        Ok(self.folder(id)?.expect("the folder"))
+    }
+
+    fn add_folder_as(&self, kind: FolderKind, location: &str, name: Option<&str>, synced: bool) -> Result<Folder> {
+        let location = clean_location(kind, location)?;
         let existing = self.folders()?;
         for folder in &existing {
             if folder.kind == kind && folder.location == location {
                 return Err(format!("{} is already in the library", folder.name));
             }
-            if kind == FolderKind::Path && folder.kind == FolderKind::Path {
+            // Nested folders are refused, except around the synced folder (the outer one skips it).
+            if kind == FolderKind::Path && folder.kind == FolderKind::Path && !synced && !folder.synced {
                 match relation(Path::new(&location), Path::new(&folder.location)) {
                     Some("same") => return Err(format!("{} is already in the library", folder.name)),
                     Some("inside") => {
@@ -183,11 +222,13 @@ impl Library {
                 }
             }
         }
-        check_android_choice(&existing, kind, None)?;
+        if !synced {
+            check_android_choice(&existing, kind, None)?;
+        }
         let conn = self.conn();
         conn.execute(
-            "INSERT INTO folders (kind, location, name, added_at) VALUES (?1, ?2, ?3, ?4)",
-            params![kind.as_str(), location, name.map(str::trim).filter(|n| !n.is_empty()), now_ms()],
+            "INSERT INTO folders (kind, location, name, added_at, synced) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![kind.as_str(), location, name.map(str::trim).filter(|n| !n.is_empty()), now_ms(), synced],
         )
         .map_err(err)?;
         let id = conn.last_insert_rowid();
@@ -209,7 +250,7 @@ impl Library {
     /// Switches a folder on or off. Off hides its tracks but keeps them (and their likes and history).
     pub fn set_folder_enabled(&self, id: i64, enabled: bool) -> Result<Folder> {
         let folder = self.folder(id)?.ok_or_else(|| format!("no folder {id}"))?;
-        if enabled {
+        if enabled && !folder.synced {
             check_android_choice(&self.folders()?, folder.kind, Some(id))?;
         }
         self.conn().execute("UPDATE folders SET enabled = ?2 WHERE id = ?1", params![id, enabled]).map_err(err)?;
@@ -231,8 +272,9 @@ impl Library {
 
 /// On Android, all music on the phone and chosen folders are alternatives: the media index already covers
 /// the chosen folders, so having both on would put songs in the library twice.
+/// (The synced folder doesn't count: all music on the phone skips it.)
 fn check_android_choice(existing: &[Folder], kind: FolderKind, except: Option<i64>) -> Result<()> {
-    let enabled = |k: FolderKind| existing.iter().any(|f| f.kind == k && f.enabled && Some(f.id) != except);
+    let enabled = |k: FolderKind| existing.iter().any(|f| f.kind == k && f.enabled && !f.synced && Some(f.id) != except);
     match kind {
         FolderKind::AndroidTree if enabled(FolderKind::AndroidMedia) => Err(
             "all music on this phone is already in the library, which includes this folder; switch it off to choose folders instead"
@@ -242,6 +284,63 @@ fn check_android_choice(existing: &[Folder], kind: FolderKind, except: Option<i6
             "chosen folders are in the library; switch them off to use all music on this phone instead".into(),
         ),
         _ => Ok(()),
+    }
+}
+
+/// Where a file is, comparable across folder kinds: lower case, '/'-separated, absolute where it can be
+/// (Android's "primary:Music/x" is "/storage/emulated/0/music/x").
+fn comparable(kind: FolderKind, location: &str, path: &str) -> String {
+    let logical = super::linked::logical_path(kind, location, path);
+    let absolute = match kind {
+        FolderKind::AndroidTree => android_path(&logical),
+        _ => logical,
+    };
+    absolute.trim_end_matches('/').to_lowercase()
+}
+
+/// A chosen Android folder's document path as a file path: "primary:Music" is "/storage/emulated/0/Music",
+/// "1234-ABCD:Music" (an SD card) is "/storage/1234-ABCD/Music".
+pub(crate) fn android_path(document: &str) -> String {
+    match document.split_once(':') {
+        Some(("primary", rest)) => format!("/storage/emulated/0/{rest}"),
+        Some((volume, rest)) if !volume.is_empty() => format!("/storage/{volume}/{rest}"),
+        _ => document.to_string(),
+    }
+}
+
+/// Where a folder's files start, comparable (None: all music on the phone, which has every folder in it).
+fn root_of(folder: &Folder) -> Option<String> {
+    match folder.kind {
+        FolderKind::AndroidMedia => None,
+        // A chosen folder's files are addressed in full (content://...): its root is its own address.
+        FolderKind::AndroidTree => Some(android_path(&super::linked::document_path(&folder.location)).trim_end_matches('/').to_lowercase()),
+        FolderKind::Path => Some(comparable(folder.kind, &folder.location, "")),
+    }
+}
+
+impl Library {
+    /// Leaves out of a folder's listing the files of a synced folder inside it (they're that folder's), so
+    /// nothing is in the library twice.
+    pub fn skip_nested(&self, folder: &Folder, listing: super::scan::Listing) -> Result<super::scan::Listing> {
+        let outer = root_of(folder);
+        let nested: Vec<String> = self
+            .folders()?
+            .iter()
+            .filter(|f| f.synced && f.id != folder.id)
+            .filter_map(root_of)
+            .filter(|root| outer.as_ref().is_none_or(|outer| root.starts_with(&format!("{outer}/"))))
+            .collect();
+        if nested.is_empty() {
+            return Ok(listing);
+        }
+        let keep = |file: &super::scan::FoundFile| {
+            let path = comparable(folder.kind, &folder.location, &file.path);
+            !nested.iter().any(|root| path.starts_with(&format!("{root}/")))
+        };
+        Ok(super::scan::Listing {
+            songs: listing.songs.into_iter().filter(|f| keep(f)).collect(),
+            playlists: listing.playlists.into_iter().filter(|f| keep(f)).collect(),
+        })
     }
 }
 

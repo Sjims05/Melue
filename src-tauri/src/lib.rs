@@ -16,10 +16,7 @@ impl SpikeShare {
     }
 }
 
-/// Runs share work on a thread meant for waiting, not one of Tauri's async threads.
-async fn on_share_thread<T: Send + 'static>(work: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(work).await.map_err(|e| e.to_string())?
-}
+use share::commands::on_share_thread;
 
 /// Connects to the share (its root folder) and checks it can be listed.
 #[tauri::command]
@@ -27,7 +24,7 @@ async fn smb_connect(state: tauri::State<'_, SpikeShare>, host: String, user: St
     let connected = on_share_thread(move || {
         let connected = SmbShare::new(SmbConfig { host, share, folder: String::new(), user, password: pass })?;
         connected.check()?;
-        Ok(connected)
+        Ok::<_, String>(connected)
     })
     .await?;
     *state.0.lock().unwrap() = Some(Arc::new(connected));
@@ -83,6 +80,7 @@ pub fn run() {
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SpikeShare::default())
+        .manage(share::commands::SessionPasswords::default())
         // Covers for the UI: cover://localhost/<file>-300.jpg (src/library's coverUrl makes these).
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             use tauri::Manager;
@@ -107,6 +105,12 @@ pub fn run() {
             smb_connect,
             smb_list_dir,
             smb_copy_file,
+            share::commands::share_info,
+            share::commands::share_test,
+            share::commands::share_set_up,
+            share::commands::share_set_password,
+            share::commands::share_remove,
+            share::commands::share_set_shown_in_other_apps,
             library::library_status,
             library::library_setting,
             library::library_set_setting,

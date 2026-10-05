@@ -75,7 +75,9 @@ impl TestLibrary {
     /// A whole scan of one folder, as the scanner does it: list it, read tags, group, bring its linked
     /// playlists in line with their files, clean up covers.
     pub fn scan(&self, folder_id: i64, folder: &MusicFolder) -> super::scan::ScanSummary {
-        let files = super::scan::list_folder(&folder.root).unwrap();
+        let listed = super::scan::list_folder(&folder.root).unwrap();
+        let this = self.library.folder(folder_id).unwrap().unwrap();
+        let files = self.library.skip_nested(&this, listed).unwrap();
         let mut summary = self.library.apply_scan(folder_id, &files.songs).unwrap();
         summary.add(self.library.read_tags(&super::tags::open_local, &mut |_, _| {}).unwrap());
         let grouped = self.library.regroup_after(&summary).unwrap().is_some();

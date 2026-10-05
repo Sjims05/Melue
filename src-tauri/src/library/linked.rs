@@ -83,7 +83,7 @@ pub fn logical_path(kind: FolderKind, location: &str, path: &str) -> String {
 }
 
 /// "primary:Music/Album/01.mp3" from a content:// address in a chosen folder.
-fn document_path(uri: &str) -> String {
+pub(crate) fn document_path(uri: &str) -> String {
     let part = uri
         .rsplit_once("/document/")
         .or_else(|| uri.rsplit_once("/tree/"))

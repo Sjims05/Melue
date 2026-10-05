@@ -68,12 +68,20 @@ pub fn ensure_music_permission(app: &AppHandle) -> Result<()> {
     }
 }
 
+/// A chosen folder's top address, the one Android grants lasting access to: the picker can give the folder
+/// as ".../tree/<id>/document/<id>"; its top is ".../tree/<id>".
+#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+pub(crate) fn top_tree(uri: &str) -> String {
+    uri.split_once("/document/").map_or(uri, |(top, _)| top).to_string()
+}
+
 /// A folder chosen with the storage picker: keeps Melue's access to it after the app restarts.
 pub fn keep_folder_access(app: &AppHandle, uri: &str) -> Result<()> {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        let uri = FsUri { uri: uri.to_string(), document_top_tree_uri: Some(uri.to_string()) };
+        let top = top_tree(uri);
+        let uri = FsUri { uri: top.clone(), document_top_tree_uri: Some(top) };
         app.android_fs().picker().persist_uri_permission(&uri).map_err(|e| format!("can't keep access to that folder: {e}"))
     }
     #[cfg(not(target_os = "android"))]
@@ -88,7 +96,8 @@ pub fn release_folder_access(app: &AppHandle, uri: &str) {
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        let uri = FsUri { uri: uri.to_string(), document_top_tree_uri: Some(uri.to_string()) };
+        let top = top_tree(uri);
+        let uri = FsUri { uri: top.clone(), document_top_tree_uri: Some(top) };
         let _ = app.android_fs().picker().release_persisted_uri_permission(&uri);
     }
     #[cfg(not(target_os = "android"))]
@@ -142,7 +151,7 @@ pub fn list_tree(app: &AppHandle, uri: &str) -> Result<super::scan::Listing> {
     {
         use tauri_plugin_android_fs::{AndroidFsExt, Entry, FsUri};
         let fs = app.android_fs();
-        let root = FsUri { uri: uri.to_string(), document_top_tree_uri: Some(uri.to_string()) };
+        let root = FsUri { uri: uri.to_string(), document_top_tree_uri: Some(top_tree(uri)) };
         let mut found = super::scan::Listing::default();
         let mut stack = vec![root];
         let mut first = true;
@@ -196,7 +205,7 @@ pub fn open_tree_file(app: &AppHandle, location: &str, path: &str) -> Result<std
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        let uri = FsUri { uri: path.to_string(), document_top_tree_uri: Some(location.to_string()) };
+        let uri = FsUri { uri: path.to_string(), document_top_tree_uri: Some(top_tree(location)) };
         app.android_fs().open_file_readable(&uri).map_err(|e| format!("can't open {path}: {e}"))
     }
     #[cfg(not(target_os = "android"))]
@@ -213,7 +222,7 @@ pub fn write_tree_file(app: &AppHandle, location: &str, path: &str, bytes: &[u8]
     {
         use std::io::Write;
         use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
-        let uri = FsUri { uri: path.to_string(), document_top_tree_uri: Some(location.to_string()) };
+        let uri = FsUri { uri: path.to_string(), document_top_tree_uri: Some(top_tree(location)) };
         let fs = app.android_fs();
         let mut file = fs.open_file_writable(&uri).map_err(|e| format!("can't write {path}: {e}"))?;
         file.write_all(bytes).map_err(|e| format!("can't write {path}: {e}"))?;
@@ -225,6 +234,28 @@ pub fn write_tree_file(app: &AppHandle, location: &str, path: &str, bytes: &[u8]
     {
         let _ = (app, location, path, bytes);
         Err("chosen Android folders are only for Android".into())
+    }
+}
+
+/// Hides a chosen folder's music from other apps (a `.nomedia` file in it: Android's music index skips the
+/// folder) or shows it again.
+pub fn set_hidden_from_other_apps(app: &AppHandle, location: &str, hidden: bool) -> Result<()> {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_android_fs::{AndroidFsExt, FsUri};
+        let fs = app.android_fs();
+        let dir = FsUri { uri: location.to_string(), document_top_tree_uri: Some(top_tree(location)) };
+        let existing = fs.resolve_file_uri(&dir, ".nomedia").ok();
+        match (hidden, existing) {
+            (true, None) => fs.create_new_file(&dir, ".nomedia", None).map(|_| ()).map_err(|e| format!("can't hide the folder: {e}")),
+            (false, Some(file)) => fs.remove_file(&file).map_err(|e| format!("can't show the folder: {e}")),
+            _ => Ok(()),
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, location, hidden);
+        Err("hiding a folder from other apps is only for Android".into())
     }
 }
 
@@ -242,4 +273,17 @@ pub fn on_music_changes(app: &AppHandle, handler: impl Fn() + Send + Sync + Clon
     }
     #[cfg(not(target_os = "android"))]
     let _ = (app, handler);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::top_tree;
+
+    #[test]
+    fn a_chosen_folder_s_top_address() {
+        let top = "content://com.android.externalstorage.documents/tree/primary%3AMusic%2FMelue";
+        assert_eq!(top_tree(top), top);
+        assert_eq!(top_tree(&format!("{top}/document/primary%3AMusic%2FMelue")), top);
+        assert_eq!(top_tree(&format!("{top}/document/primary%3AMusic%2FMelue%2FABBA%2F01.mp3")), top);
+    }
 }

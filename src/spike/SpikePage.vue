@@ -27,8 +27,17 @@ import {
   type Track,
 } from '@/library'
 import { playSource, setLiked } from '@/library/playback'
-import { sync } from '@/library/sync'
-import { SHARE_TEST_VALUE } from './spike'
+import {
+  describeSetupError,
+  share,
+  sync,
+  type PasswordStore,
+  type SetupError,
+  type ShareInfo,
+  type ShareSetup,
+  type SyncFolderChoice,
+} from '@/library/sync'
+import { smbTestLogin } from './spike'
 import { isAndroid, storage } from '@/platform'
 
 defineProps<{ title: string }>()
@@ -76,6 +85,7 @@ onMounted(async () => {
   })
   refreshFolders().catch(() => {})
   queueFollow.value = await library.queueFollow().catch(() => null)
+  shareInfo.value = await share.info().catch(() => null)
   if (isAndroid) folderCovers.value = await library.folderCovers().catch(() => null)
 })
 onUnmounted(() => {
@@ -119,8 +129,10 @@ const useAllMusic = () =>
 
 const musicPermission = () =>
   run('Music permission', async () => {
+    logMsg('Music permission: asking…')
     const access = await library.musicAccess(true)
-    logMsg(`Music permission: ${access.permission}${access.songs === null ? '' : `, ${access.songs} songs on the phone`}`)
+    const hint = access.permission === 'denied' ? " (Android won't ask again: Settings → Apps → Melue → Permissions → Music and audio)" : ''
+    logMsg(`Music permission: ${access.permission}${hint}${access.songs === null ? '' : `, ${access.songs} songs on the phone`}`)
   })
 
 const toggleFolder = (folder: MusicFolder) =>
@@ -154,12 +166,78 @@ const toggleLike = (song: Track) =>
     logMsg(`${song.liked ? 'Unliked' : 'Liked'} ${song.title}`)
   })
 
-// Sync: whether a share is set up (Phase 2). The test switch stands in for the share setup until then.
-const toggleTestShare = () =>
-  run('Test share', async () => {
-    const wasAvailable = sync.available
-    await library.setSetting('sync_share', wasAvailable ? '' : SHARE_TEST_VALUE)
-    logMsg(`Test share: ${wasAvailable ? 'removed' : 'set up'} (sync buttons would ${wasAvailable ? 'hide' : 'show'})`)
+// ---- the share (Phase 2): set up from .env's test login, or (desktop) a network drive
+
+const shareForm = ref({ ...smbTestLogin, passwordStore: 'secure' as PasswordStore, drivePath: '', streamDrive: false })
+const shareInfo = ref<ShareInfo | null>(null)
+/** A setup refused for want of a secure store: offers asking each time or a plain file. */
+const noSecureStore = ref(false)
+
+const smbSetup = (): ShareSetup => ({
+  kind: 'smb',
+  host: shareForm.value.host,
+  share: shareForm.value.share,
+  folder: shareForm.value.folder,
+  user: shareForm.value.user,
+  passwordStore: shareForm.value.passwordStore,
+})
+
+async function shareRun(label: string, action: () => Promise<unknown>) {
+  try {
+    await action()
+  } catch (e) {
+    noSecureStore.value = (e as SetupError)?.kind === 'noSecureStore'
+    logMsg(`${label} FAILED: ${describeSetupError(e)}`)
+  }
+  shareInfo.value = await share.info().catch(() => null)
+  await refreshFolders().catch(() => {})
+}
+
+/** Android: the sync folder, chosen with the picker (pick or create Music/Melue). Desktop: Music/Melue. */
+async function chooseSyncFolder(): Promise<SyncFolderChoice | undefined> {
+  if (!isAndroid) return undefined
+  const location = await storage.pickMusicFolder()
+  if (!location) throw { kind: 'other', detail: 'no folder chosen' }
+  return { kind: 'android_tree', location }
+}
+
+const testShare = () =>
+  shareRun('Test connection', async () => {
+    await share.test(smbSetup(), shareForm.value.pass)
+    logMsg('Share: connection OK')
+  })
+
+const setUpShare = (store?: PasswordStore) =>
+  shareRun('Set up share', async () => {
+    if (store) shareForm.value.passwordStore = store
+    noSecureStore.value = false
+    const info = await share.setUp(smbSetup(), shareForm.value.pass, await chooseSyncFolder())
+    logMsg(`Share set up: ${info.settings?.kind} · password kept: ${shareForm.value.passwordStore} · synced folder: ${info.syncFolder?.location}`)
+  })
+
+const setUpDrive = () =>
+  shareRun('Set up drive', async () => {
+    const stream = shareForm.value.streamDrive
+    const info = await share.setUp({ kind: 'drive', path: shareForm.value.drivePath, stream })
+    logMsg(`Network drive set up: ${stream ? 'played straight from it' : `copied to ${info.syncFolder?.location}`}`)
+  })
+
+const giveSharePassword = () =>
+  shareRun('Password', async () => {
+    await share.setPassword(shareForm.value.pass)
+    logMsg('Share: password accepted')
+  })
+
+const removeShare = () =>
+  shareRun('Remove share', async () => {
+    await share.remove()
+    logMsg('Share removed: its synced folder stays as a normal folder, with its songs')
+  })
+
+const showInOtherApps = (shown: boolean) =>
+  shareRun('Show in other apps', async () => {
+    await share.setShownInOtherApps(shown)
+    logMsg(`Synced music ${shown ? 'shown in' : 'hidden from'} other apps`)
   })
 
 const queueFollow = ref<QueueFollow | null>(null)
@@ -371,10 +449,48 @@ async function libraryStatus() {
           Queue follows library: {{ queueFollow?.enabled === false ? 'off' : 'on' }}
         </button>
       </div>
-      <h3 class="text-sm font-medium">Sync</h3>
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="text-sm">Sync available: {{ sync.available ? 'yes (a share is set up)' : 'no (no share set up)' }}</span>
-        <button class="border rounded px-3 py-1" @click="toggleTestShare">{{ sync.available ? 'Remove' : 'Set up' }} test share</button>
+      <h3 class="text-sm font-medium">Share setup</h3>
+      <div class="text-sm">
+        Sync available: {{ sync.available ? 'yes' : 'no' }}
+        <template v-if="shareInfo?.settings">
+          · {{ shareInfo.settings.kind === 'smb' ? `${shareInfo.settings.user}@${shareInfo.settings.host}/${shareInfo.settings.share}` : shareInfo.settings.path }}
+          · synced folder: {{ shareInfo.syncFolder?.location ?? '?' }}
+          <span v-if="shareInfo.needsPassword" class="font-medium">· password needed</span>
+        </template>
+        <template v-else-if="shareInfo?.defaultSyncFolder"> · synced music would go to {{ shareInfo.defaultSyncFolder }}</template>
+      </div>
+      <div class="flex flex-wrap gap-2 text-sm">
+        <input v-model="shareForm.host" class="border rounded px-2 py-1 w-36" placeholder="Host" />
+        <input v-model="shareForm.share" class="border rounded px-2 py-1 w-28" placeholder="Share" />
+        <input v-model="shareForm.folder" class="border rounded px-2 py-1 w-36" placeholder="Music folder in it" />
+        <input v-model="shareForm.user" class="border rounded px-2 py-1 w-28" placeholder="User" />
+        <input v-model="shareForm.pass" type="password" class="border rounded px-2 py-1 w-28" placeholder="Password" />
+        <select v-model="shareForm.passwordStore" class="border rounded px-2 py-1">
+          <option value="secure">Password: secure store</option>
+          <option value="ask">Password: ask each time</option>
+          <option value="file">Password: plain file</option>
+        </select>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button class="border rounded px-3 py-1" @click="testShare">Test connection</button>
+        <button class="border rounded px-3 py-1" @click="setUpShare()">Set up share{{ isAndroid ? ' (choose folder)' : '' }}</button>
+        <button class="border rounded px-3 py-1" @click="giveSharePassword">{{ shareInfo?.needsPassword ? 'Give password' : 'Change password' }}</button>
+        <button class="border rounded px-3 py-1" @click="removeShare">Remove share</button>
+        <template v-if="isAndroid">
+          <button class="border rounded px-3 py-1" @click="showInOtherApps(true)">Show in other apps</button>
+          <button class="border rounded px-3 py-1" @click="showInOtherApps(false)">Hide from other apps</button>
+        </template>
+      </div>
+      <div v-if="noSecureStore" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
+        No secure place for the password on this system.
+        <button class="border rounded px-3 py-1" @click="setUpShare('ask')">Ask each time</button>
+        <button class="border rounded px-3 py-1" @click="setUpShare('file')">Keep it in a plain file</button>
+      </div>
+      <div v-if="!isAndroid" class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-xs text-muted-foreground">Or a network drive Windows has connected (tip: it can be played straight from):</span>
+        <input v-model="shareForm.drivePath" class="border rounded px-2 py-1 w-40" placeholder="Z:\ or \\nas\music" />
+        <label class="flex items-center gap-1"><input v-model="shareForm.streamDrive" type="checkbox" /> play straight from it</label>
+        <button class="border rounded px-3 py-1" @click="setUpDrive">Set up drive</button>
       </div>
       <ul class="text-sm space-y-1">
         <li v-for="folder in folders" :key="folder.id" class="flex flex-wrap items-center gap-2">

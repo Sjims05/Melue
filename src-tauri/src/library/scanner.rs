@@ -130,7 +130,7 @@ fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
         };
         // A folder that can't be listed (unplugged, offline, no permission) is left as it was: its songs
         // aren't marked missing just because the drive is out.
-        let result = listed.and_then(|listing| {
+        let result = listed.and_then(|listing| library.skip_nested(&folder, listing)).and_then(|listing| {
             let summary = library.apply_scan(folder.id, &listing.songs)?;
             playlist_files.push((folder.clone(), listing.playlists));
             Ok(summary)

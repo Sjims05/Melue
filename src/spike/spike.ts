@@ -24,6 +24,8 @@ const SMB_USER = import.meta.env.VITE_SMB_USER
 const SMB_PASS = import.meta.env.VITE_SMB_PASS
 const SMB_SHARE = import.meta.env.VITE_SMB_SHARE
 export const SMB_MUSIC_PATH = import.meta.env.VITE_SMB_MUSIC_PATH
+/** .env's test login, for the share setup's fields. */
+export const smbTestLogin = { host: SMB_HOST, share: SMB_SHARE, folder: SMB_MUSIC_PATH, user: SMB_USER, pass: SMB_PASS }
 // -----------------------------------------------------------------------
 
 /** A file or folder on the share (Phase 2's share access, in Rust: src-tauri/src/share). */
@@ -161,8 +163,3 @@ document.addEventListener('visibilitychange', async () => {
   }
 })
 
-/**
- * The spike's stand-in for a share (the sync_share setting) until Phase 2's share setup: makes sync
- * available, so sync buttons can be tried. Phase 2 replaces it with the real share.
- */
-export const SHARE_TEST_VALUE = 'spike-test-share'

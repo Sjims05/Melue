@@ -1,6 +1,6 @@
 //! Melue's own Android code (see android/): the permissions to read the music (and, opt-in, photos) on
-//! the phone, and Android's music index. Melue's Rust code uses it through [`MelueAndroidExt`]; there are
-//! no JavaScript commands.
+//! the phone, Android's music index, and secrets kept with Android Keystore encryption (the share's
+//! password). Melue's Rust code uses it through [`MelueAndroidExt`]; there are no JavaScript commands.
 //! Elsewhere than Android the plugin does nothing.
 
 use serde::{Deserialize, Serialize};
@@ -75,6 +75,19 @@ mod android {
     }
 
     #[derive(Serialize)]
+    struct Secret<'a> {
+        key: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        value: Option<&'a str>,
+    }
+
+    #[derive(Deserialize)]
+    struct SecretValue {
+        #[serde(default)]
+        value: Option<String>,
+    }
+
+    #[derive(Serialize)]
     struct Listen {
         event: String,
         handler: Channel<serde_json::Value>,
@@ -113,6 +126,28 @@ mod android {
         /// The playlist files (.m3u, .m3u8) in Android's index (possibly none with only the music permission).
         pub fn list_playlists(&self) -> Result<Vec<MusicFile>, String> {
             self.0.run_mobile_plugin::<Files>("listPlaylists", ()).map(|f| f.files).map_err(|e| e.to_string())
+        }
+
+        /// A secret kept with Android Keystore encryption (the share's password), or None.
+        pub fn secret_get(&self, key: &str) -> Result<Option<String>, String> {
+            self.0
+                .run_mobile_plugin::<SecretValue>("secretGet", Secret { key, value: None })
+                .map(|s| s.value)
+                .map_err(|e| e.to_string())
+        }
+
+        pub fn secret_set(&self, key: &str, value: &str) -> Result<(), String> {
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("secretSet", Secret { key, value: Some(value) })
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+
+        pub fn secret_delete(&self, key: &str) -> Result<(), String> {
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("secretDelete", Secret { key, value: None })
+                .map(|_| ())
+                .map_err(|e| e.to_string())
         }
 
         /// Calls `handler` for each of the plugin's `event`s ("musicChanged", "resumed").
