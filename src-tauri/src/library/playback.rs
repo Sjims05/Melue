@@ -21,6 +21,8 @@ use super::tracks::{track_row, Track, TRACK_COLUMNS};
 use super::{err, now_ms, Library, Result};
 
 pub const HISTORY_LIMIT: i64 = 10_000;
+/// A day, for the plays per day (play_days).
+pub const DAY_MS: i64 = 24 * 3600 * 1000;
 /// Left before this: a skip.
 const SKIP_BEFORE_MS: i64 = 30_000;
 /// Left after this (or half the song, if shorter): a play.
@@ -74,7 +76,14 @@ impl Library {
     /// - "artist:<id>": their albums oldest first (each by disc and track), then songs not on an album
     /// - "playlist:<id>": its songs in Melue's version, in order
     /// - "liked": liked songs, most recently liked first
+    /// - "folder:<id>": a music folder's songs, by path (album by album)
+    /// - "top:<period>": the most played songs (auto_playlists.rs)
     pub fn queue_items(&self, source: &str) -> Result<Vec<QueueItem>> {
+        // Auto playlists: the Top songs lists (see auto_playlists.rs).
+        if let Some(period) = source.strip_prefix("top:") {
+            let period = super::auto_playlists::TopPeriod::parse(period).ok_or_else(|| format!("not a list: {source}"))?;
+            return self.queue_items_for(&self.top_songs(period)?);
+        }
         let (kind, id) = match source.split_once(':') {
             Some((kind, id)) => (kind, Some(id.parse::<i64>().map_err(|_| format!("not a list: {source}"))?)),
             None => (source, None),
@@ -107,6 +116,10 @@ impl Library {
                 )
             }
             ("liked", None) => ("JOIN likes l ON l.track_id = t.id", "", "l.liked_at DESC, t.id"),
+            ("folder", Some(id)) => {
+                exists("folders", id)?;
+                ("", "AND t.folder_id = ?1", "t.path")
+            }
             _ => return Err(format!("not a list: {source}")),
         };
         let sql = format!("{ITEM_SELECT} {join} WHERE t.missing_since IS NULL AND f.enabled {filter} ORDER BY {order}");
@@ -197,6 +210,14 @@ impl Library {
                     Outcome::Skip => (0, 1),
                     Outcome::Neither => (0, 0),
                 };
+                if plays > 0 {
+                    tx.execute(
+                        "INSERT INTO play_days (track_id, day, plays) VALUES (?1, ?2, 1)
+                         ON CONFLICT (track_id, day) DO UPDATE SET plays = plays + 1",
+                        params![track, event.at_ms.div_euclid(DAY_MS)],
+                    )
+                    .map_err(err)?;
+                }
                 if plays + skips > 0 {
                     tx.execute(
                         "INSERT INTO track_stats (track_id, play_count, skip_count, last_played_at) VALUES (?1, ?2, ?3, ?4)

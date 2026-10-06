@@ -13,6 +13,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import android.database.ContentObserver
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -165,6 +166,13 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         observer = watcher
         // Cancel on the "Syncing music" notification goes to Melue's Rust code.
         SyncService.onCancel = { trigger("syncCancel", JSObject()) }
+        // The network the app uses changing (Wi-Fi, mobile data, a VPN coming up): Rust tries the share again.
+        val connectivity = activity.getSystemService(ConnectivityManager::class.java)
+        connectivity.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                trigger("networkChanged", JSObject())
+            }
+        })
     }
 
     override fun onResume() {

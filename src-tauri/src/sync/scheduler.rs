@@ -16,11 +16,11 @@ use super::handoff;
 use super::local;
 use super::plan::{make_plan, SyncPlan};
 use super::run::{run, Progress, RunOptions, SyncError, SyncResult};
-use super::schedule::{should_sync, Trigger, SETTLE_MS};
+use super::schedule::{retry_after_ms, should_sync, Trigger, NETWORK_SETTLE_MS, SETTLE_MS};
 use crate::library::{err, now_ms, scanner, Folder, Library, Result};
 use crate::share::commands::with_stores;
 use crate::share::setup::{self, SetupError, ShareSetup};
-use crate::share::{Share, Watch};
+use crate::share::{Share, ShareError, Watch};
 
 pub const STATUS_EVENT: &str = "sync-status";
 const LAST_SYNC: &str = "sync_last";
@@ -64,6 +64,8 @@ pub struct SyncStatus {
     pub last: Option<LastSync>,
     /// Why the last try didn't sync (cleared by the next sync).
     pub problem: Option<SyncFailure>,
+    /// The share couldn't be reached: when it's tried again (and sooner if the network changes).
+    pub retry_at_ms: Option<i64>,
 }
 
 /// The running sync's state, and the scheduler's.
@@ -75,6 +77,15 @@ pub struct Syncing {
     triggers: Mutex<Option<Sender<Trigger>>>,
     /// Watching the share for changes (with the share it runs on).
     watch: Mutex<Option<(Box<dyn Share>, Watch)>>,
+    /// The share couldn't be reached: tries so far, and when the next one is due.
+    retry: Mutex<Option<(u32, Instant)>>,
+}
+
+impl SyncFailure {
+    /// The share couldn't be reached (off, asleep, no network, the VPN not there yet): worth trying again.
+    pub fn unreachable(&self) -> bool {
+        matches!(self, Self::Setup { error: SetupError::Share { error: ShareError::Unreachable { .. } } })
+    }
 }
 
 impl Library {
@@ -192,18 +203,36 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
         Ok((done, share)) => {
             let last = LastSync { at_ms: now_ms(), trigger, result: done.clone() };
             let _ = app.state::<Library>().save_last_sync(&last);
+            *syncing.retry.lock().unwrap() = None;
             set_status(app, |s| {
                 s.syncing = None;
                 s.last = Some(last);
                 s.problem = None;
+                s.retry_at_ms = None;
             });
             keep_watching(app, share);
             Ok(done)
         }
         Err(failure) => {
+            // Couldn't reach the share: try again in a while (a sync already running isn't a failure).
+            let retry_at_ms = match &failure {
+                SyncFailure::Running => status(app).retry_at_ms,
+                f if f.unreachable() => {
+                    let mut retry = syncing.retry.lock().unwrap();
+                    let attempts = retry.map_or(0, |(n, _)| n) + 1;
+                    let wait = retry_after_ms(attempts);
+                    *retry = Some((attempts, Instant::now() + Duration::from_millis(wait as u64)));
+                    Some(now_ms() + wait)
+                }
+                _ => {
+                    *syncing.retry.lock().unwrap() = None;
+                    None
+                }
+            };
             set_status(app, |s| {
                 s.syncing = None;
                 s.problem = Some(failure.clone());
+                s.retry_at_ms = retry_at_ms;
             });
             Err(failure)
         }
@@ -243,6 +272,13 @@ fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
 /// Stops watching the share (it was removed, or the setting switched off).
 pub fn stop_watching(app: &AppHandle) {
     *app.state::<Syncing>().watch.lock().unwrap() = None;
+}
+
+/// The network changed (Android): tries the share again now if it couldn't be reached, and lets synced
+/// playback open the share again.
+pub fn network_changed(app: &AppHandle) {
+    trigger(app, Trigger::Network);
+    handoff::network_changed(app);
 }
 
 /// Asks for a sync (the scheduler decides whether one runs, see schedule.rs).
@@ -288,18 +324,28 @@ pub fn start(app: &AppHandle) {
             std::thread::sleep(Duration::from_secs(3));
             let _ = sender.send(Trigger::Start);
             loop {
-                let next = match triggers.recv_timeout(TICK) {
+                // Wakes up for the periodic check, or sooner when a retry is due.
+                let retry_due = *app.state::<Syncing>().retry.lock().unwrap();
+                let wait = retry_due.map_or(TICK, |(_, due)| due.saturating_duration_since(Instant::now()).min(TICK));
+                let mut next = match triggers.recv_timeout(wait) {
                     Ok(trigger) => trigger,
+                    Err(RecvTimeoutError::Timeout) if retry_due.is_some_and(|(_, due)| due <= Instant::now()) => Trigger::Retry,
                     Err(RecvTimeoutError::Timeout) => Trigger::Periodic,
                     Err(RecvTimeoutError::Disconnected) => return,
                 };
-                // Changes come in bursts (a copy of an album): wait until the share has been quiet.
-                if next == Trigger::Changed {
-                    while let Ok(more) = triggers.recv_timeout(Duration::from_millis(SETTLE_MS as u64)) {
-                        if more != Trigger::Changed {
+                // Changes come in bursts (a copy of an album; Wi-Fi, then the VPN): wait until things are quiet.
+                if matches!(next, Trigger::Changed | Trigger::Network) {
+                    let settle = if next == Trigger::Changed { SETTLE_MS } else { NETWORK_SETTLE_MS };
+                    while let Ok(more) = triggers.recv_timeout(Duration::from_millis(settle as u64)) {
+                        if more != next {
+                            next = more;
                             break;
                         }
                     }
+                }
+                // A network change only matters while the share couldn't be reached.
+                if next == Trigger::Network && app.state::<Syncing>().retry.lock().unwrap().is_none() {
+                    continue;
                 }
                 let library = app.state::<Library>();
                 let Ok(settings) = library.sync_settings() else { continue };
@@ -313,10 +359,25 @@ pub fn start(app: &AppHandle) {
                         Ok(r) => eprintln!("melue: sync ({next:?}): {} copied, {} moved, {} waiting for Wi-Fi", r.copied, r.moved, r.waiting_for_wifi),
                         Err(e) => eprintln!("melue: sync ({next:?}): didn't sync: {e:?}"),
                     }
-                } else if next != Trigger::Periodic {
+                } else if !matches!(next, Trigger::Periodic | Trigger::Network) {
                     eprintln!("melue: sync ({next:?}): not now (the settings, or the last sync is recent)");
                 }
             }
         })
         .expect("the sync scheduler thread");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_an_unreachable_share_is_tried_again() {
+        let share = |error| SyncFailure::Setup { error: SetupError::Share { error } };
+        assert!(share(ShareError::Unreachable { detail: "timed out".into() }).unreachable());
+        // A wrong password or a full disk doesn't fix itself by waiting.
+        assert!(!share(ShareError::Login { detail: "no".into() }).unreachable());
+        assert!(!SyncFailure::NotEnoughSpace { needed: 2, free: 1 }.unreachable());
+        assert!(!SyncFailure::Running.unreachable());
+    }
 }

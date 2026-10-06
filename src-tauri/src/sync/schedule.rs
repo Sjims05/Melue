@@ -1,6 +1,8 @@
 //! When Melue syncs by itself: at start-up, when the user comes back to the app (Android: opening it again;
 //! desktop: back into the window) and the last sync is a while ago, when the share says its music changed
-//! (SMB change notifications, settled for a moment), and optionally every N minutes. The rules are here, as
+//! (SMB change notifications, settled for a moment), and optionally every N minutes. When the share can't be
+//! reached, it tries again after 30 seconds, 1, 2 and 5 minutes, then every 5 minutes, and right away when
+//! the network changes (Android: Wi-Fi to mobile data, the VPN coming back). The rules are here, as
 //! plain functions; scheduler.rs runs them.
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +23,24 @@ pub enum Trigger {
     Periodic,
     /// The Sync now button.
     Button,
+    /// Trying again: the share couldn't be reached.
+    Retry,
+    /// The network changed (Android): tried again now when the share couldn't be reached.
+    Network,
 }
+
+/// How long to wait before trying again, after `attempts` tries that couldn't reach the share.
+pub fn retry_after_ms(attempts: u32) -> i64 {
+    match attempts {
+        0 | 1 => 30_000,
+        2 => 60_000,
+        3 => 120_000,
+        _ => 300_000,
+    }
+}
+
+/// How long the network has to be quiet after a change before trying (a VPN reconnects a moment after Wi-Fi).
+pub const NETWORK_SETTLE_MS: i64 = 3_000;
 
 /// How long the share has to be quiet after a change notification before syncing (a copy of an album sends
 /// one per song).
@@ -36,6 +55,8 @@ pub fn should_sync(trigger: Trigger, now_ms: i64, last_ms: Option<i64>, settings
         Trigger::Return => settings.on_return_after_minutes.is_some_and(since),
         Trigger::Changed => settings.on_change,
         Trigger::Periodic => settings.every_minutes.is_some_and(since),
+        // Only sent while a retry is waiting (see scheduler.rs).
+        Trigger::Retry | Trigger::Network => true,
     }
 }
 
@@ -57,6 +78,12 @@ mod tests {
         assert!(should_sync(Trigger::Return, 0, None, &s), "never synced");
         // No periodic check by default.
         assert!(!should_sync(Trigger::Periodic, 1000 * MINUTE, Some(0), &s));
+    }
+
+    #[test]
+    fn trying_again_waits_longer_each_time() {
+        let waits: Vec<i64> = (1..=6).map(retry_after_ms).collect();
+        assert_eq!(waits, vec![30_000, MINUTE, 2 * MINUTE, 5 * MINUTE, 5 * MINUTE, 5 * MINUTE]);
     }
 
     #[test]

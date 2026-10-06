@@ -113,6 +113,10 @@ pub fn run() {
                     sync::handoff::check(&app);
                 }
             });
+            library::android::on_network_change(app.handle(), {
+                let app = app.handle().clone();
+                move || sync::scheduler::network_changed(&app)
+            });
             library::android::on_sync_cancel(app.handle(), {
                 let app = app.handle().clone();
                 move || sync::scheduler::cancel(&app)
@@ -187,6 +191,8 @@ pub fn run() {
             library::library_liked_ids,
             library::library_recently_played,
             library::library_most_played,
+            library::library_auto_playlists,
+            library::library_set_auto_playlist,
             library::library_queue_follow,
             library::library_set_queue_follow,
             library::library_folder_covers,

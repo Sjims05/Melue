@@ -175,7 +175,7 @@ export interface SyncSettings {
 }
 
 /** What started a sync. */
-export type SyncTrigger = 'start' | 'return' | 'changed' | 'periodic' | 'button'
+export type SyncTrigger = 'start' | 'return' | 'changed' | 'periodic' | 'button' | 'retry' | 'network'
 
 export interface LastSync {
   atMs: number
@@ -189,6 +189,8 @@ export interface SyncStatus {
   last: LastSync | null
   /** Why the last try didn't sync (cleared by the next sync). */
   problem: SyncFailure | null
+  /** The share couldn't be reached: when it's tried again (sooner if the network changes). */
+  retryAtMs: number | null
 }
 
 /** How far a running sync is. */
@@ -282,6 +284,11 @@ export interface PlaybackSettings {
   mode: PlaybackMode
   /** This device's name for the others (the computer's name or the phone's unless changed). */
   deviceName: string | null
+  /**
+   * Ask: continue without asking when the other device's playback is at most this many minutes old (most
+   * likely a switch from it to this one). null: always ask. Default 10.
+   */
+  continueWithinMinutes: number | null
 }
 
 export const playbackSync = {
@@ -291,7 +298,7 @@ export const playbackSync = {
   offer: () => invoke<PlaybackFile | null>('playback_offer'),
   /** Calls `listener` when another device's playback is offered. Resolves to a function that stops listening. */
   onOffer: (listener: (offer: PlaybackFile) => void) => listen<PlaybackFile>('playback-offer', (e) => listener(e.payload)),
-  /** Calls `listener` when another device's playback was loaded without asking (the "follow" setting). */
+  /** Calls `listener` when another device's playback was loaded without asking ("follow", or recent enough). */
   onFollowed: (listener: (other: PlaybackFile) => void) => listen<PlaybackFile>('playback-followed', (e) => listener(e.payload)),
   /** Continue: the other device's queue, loaded paused at its position. */
   continue: () => invoke<void>('playback_continue'),

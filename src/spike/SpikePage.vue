@@ -23,6 +23,8 @@ import {
   type Playlist,
   type PlaylistEntry,
   type QueueFollow,
+  type AutoPlaylist,
+  AUTO_PLAYLIST_SIZES,
   type ScanSummary,
   type Source,
   type Track,
@@ -102,7 +104,7 @@ onMounted(async () => {
     playbackOffer.value = offer
     logMsg(`Playback: offered ${describeOffer(offer)}`)
   })
-  stopFollowed = await playbackSync.onFollowed((other) => logMsg(`Playback: continued ${describeOffer(other)} (follow)`))
+  stopFollowed = await playbackSync.onFollowed((other) => logMsg(`Playback: continued from ${describeOffer(other)}, without asking`))
 })
 onUnmounted(() => {
   stopScanLog?.()
@@ -364,6 +366,7 @@ const syncStatusText = computed(() => {
     if (r.removalsWaiting) parts.push(`${r.removalsWaiting} removals waiting for your OK`)
   }
   if (s.problem) parts.push(`problem: ${describeSyncFailure(s.problem)}`)
+  if (s.retryAtMs) parts.push(`trying again at ${new Date(s.retryAtMs).toLocaleTimeString()}`)
   return parts.join(' · ')
 })
 
@@ -432,7 +435,20 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 async function showPlaylists() {
   playlists.value = await library.playlists()
+  autoPlaylists.value = await library.autoPlaylists()
 }
+
+// ---- auto playlists (apart from the user's; hidden ones can be shown again)
+
+const autoPlaylists = ref<AutoPlaylist[] | null>(null)
+
+const changeAutoPlaylist = (list: AutoPlaylist, change: { hidden?: boolean; size?: number }) =>
+  run('Auto playlist', async () => {
+    autoPlaylists.value = await library.setAutoPlaylist(list.source, change)
+    if (change.hidden === true) logMsg(`Hidden: ${list.name}. You can show it again in the settings (Hidden auto playlists)`)
+    if (change.hidden === false) logMsg(`Shown again: ${list.name}`)
+    if (change.size) logMsg(`${list.name}: ${change.size} songs`)
+  })
 
 async function refreshPlaylist() {
   const open = openPlaylist.value
@@ -724,6 +740,20 @@ async function libraryStatus() {
           </select>
         </label>
         <label class="flex items-center gap-1">
+          Continue without asking if played within:
+          <select
+            class="border rounded px-1"
+            :value="playbackSettings?.continueWithinMinutes ?? 0"
+            @change="changePlaybackSettings({ continueWithinMinutes: Number(($event.target as HTMLSelectElement).value) || null })"
+          >
+            <option :value="0">never (always ask)</option>
+            <option :value="5">5 min</option>
+            <option :value="10">10 min</option>
+            <option :value="30">30 min</option>
+            <option :value="60">60 min</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1">
           This device:
           <input
             class="border rounded px-1 w-36"
@@ -795,6 +825,35 @@ async function libraryStatus() {
         </div>
       </div>
       <div class="space-y-2 border-t pt-2">
+        <template v-if="autoPlaylists">
+          <div class="text-sm font-medium">Auto playlists</div>
+          <div v-for="list in autoPlaylists.filter((l) => !l.hidden)" :key="list.source" class="flex flex-wrap items-center gap-2 text-sm">
+            <button class="border rounded px-2 text-xs" title="Play" @click="play(list.source)">▶</button>
+            <span>{{ list.name }}</span>
+            <span class="text-xs text-muted-foreground">{{ plural(list.songs, 'song') }}</span>
+            <select
+              v-if="list.size"
+              class="border rounded px-1 text-xs"
+              :value="list.size"
+              @change="changeAutoPlaylist(list, { size: Number(($event.target as HTMLSelectElement).value) })"
+            >
+              <option v-for="size in AUTO_PLAYLIST_SIZES" :key="size" :value="size">top {{ size }}</option>
+            </select>
+            <button class="border rounded px-2 text-xs" @click="changeAutoPlaylist(list, { hidden: true })">Hide</button>
+          </div>
+          <div v-if="autoPlaylists.some((l) => l.hidden)" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            Hidden auto playlists (settings):
+            <button
+              v-for="list in autoPlaylists.filter((l) => l.hidden)"
+              :key="list.source"
+              class="border rounded px-2"
+              @click="changeAutoPlaylist(list, { hidden: false })"
+            >
+              Show {{ list.name }} again
+            </button>
+          </div>
+          <div class="text-sm font-medium">Your playlists</div>
+        </template>
         <div class="flex flex-wrap gap-2">
           <input v-model="playlistName" class="border rounded px-2 py-1 text-sm" placeholder="Playlist name" />
           <button class="border rounded px-3 py-1" @click="createPlaylist">Create playlist</button>

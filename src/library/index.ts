@@ -190,9 +190,36 @@ export interface QueueItem {
 
 /**
  * A list to play: 'songs' (all, by title), 'album:<id>', 'artist:<id>' (albums oldest first, then songs
- * not on an album), 'playlist:<id>', 'liked' (most recently liked first).
+ * not on an album), 'playlist:<id>', 'liked' (most recently liked first), 'folder:<id>' (a music folder, by
+ * path), 'top:<period>' (the most played songs).
  */
-export type Source = 'songs' | 'liked' | `album:${number}` | `artist:${number}` | `playlist:${number}`
+export type Source =
+  | 'songs'
+  | 'liked'
+  | `album:${number}`
+  | `artist:${number}`
+  | `playlist:${number}`
+  | `folder:${number}`
+  | `top:${TopPeriod}`
+
+/** The Top songs lists: the last 30 days, 6 months, year (rolling), and all time. */
+export type TopPeriod = 'month' | 'half-year' | 'year' | 'all-time'
+
+/** An auto playlist: All songs, Liked songs, the Top songs lists, and one per music folder (when there are two or more). */
+export interface AutoPlaylist {
+  source: Source
+  name: string
+  kind: 'songs' | 'liked' | 'top' | 'folder'
+  /** Songs in it now. */
+  songs: number
+  /** Top songs: how many it holds (25, 50, 100 or 200). */
+  size: number | null
+  /** Hidden: shown only in the settings, to show it again. */
+  hidden: boolean
+}
+
+/** The sizes a Top songs list can have. */
+export const AUTO_PLAYLIST_SIZES = [25, 50, 100, 200] as const
 
 /** What leaving a song counted as: a play (to the end, or after half or 4 minutes), a skip (in its first 30 s), or neither. */
 export type PlaybackOutcome = 'play' | 'skip' | 'neither'
@@ -310,6 +337,11 @@ export const library = {
   recentlyPlayed: (limit = 50) => invoke<Track[]>('library_recently_played', { limit }),
   /** Songs by play count, most first. */
   mostPlayed: (limit = 50) => invoke<Track[]>('library_most_played', { limit }),
+  /** Every auto playlist, in order, hidden ones too (marked). */
+  autoPlaylists: () => invoke<AutoPlaylist[]>('library_auto_playlists'),
+  /** Hides an auto playlist or shows it again, and (Top songs) changes its size. Resolves with them all. */
+  setAutoPlaylist: (source: Source, change: { hidden?: boolean; size?: number }) =>
+    invoke<AutoPlaylist[]>('library_set_auto_playlist', { source, ...change }),
 
   /** A list's songs that can be played, in its order, ready for the player (see playSource). */
   queueItems: (source: Source) => invoke<QueueItem[]>('library_queue_items', { source }),

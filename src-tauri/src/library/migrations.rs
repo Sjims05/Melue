@@ -17,6 +17,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/006_linked_playlists.sql"),
     include_str!("sql/007_playback.sql"),
     include_str!("sql/008_synced_files.sql"),
+    include_str!("sql/009_play_days.sql"),
 ];
 
 /// The newest schema version.

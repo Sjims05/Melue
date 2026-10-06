@@ -53,7 +53,7 @@ fn the_first_scan_reports_everything_and_a_quiet_one_nothing() {
     m.add("A/02.wav", &song("Two", "Adele", "25", 2));
     let change = scan(&t, f, &m).unwrap();
     assert_eq!(change.tracks, vec![track(&t, "A/01.wav"), track(&t, "A/02.wav")]);
-    assert_eq!(change.sources, vec!["songs".to_string(), album(&t, "25"), artist(&t, "Adele")]);
+    assert_eq!(change.sources, vec!["songs".to_string(), album(&t, "25"), artist(&t, "Adele"), format!("folder:{f}")]);
     assert_eq!(scan(&t, f, &m), None);
 }
 
@@ -66,7 +66,7 @@ fn a_new_song_reports_itself_and_its_album_and_artist_only() {
     m.add("A/02.wav", &song("Two", "Adele", "25", 2));
     let change = scan(&t, f, &m).unwrap();
     assert_eq!(change.tracks, vec![track(&t, "A/02.wav")]);
-    assert_eq!(change.sources, vec!["songs".to_string(), album(&t, "25"), artist(&t, "Adele")]);
+    assert_eq!(change.sources, vec!["songs".to_string(), album(&t, "25"), artist(&t, "Adele"), format!("folder:{f}")]);
 }
 
 #[test]

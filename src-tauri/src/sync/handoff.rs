@@ -3,6 +3,11 @@
 //! the song, where in it, playing or not, shuffle and repeat), saved when the song or the queue changes, on
 //! pause, on closing, and every 30 seconds while playing.
 //!
+//! Which is newest goes by the share's clock (the time the share gave each file when it was written), not
+//! the devices' own clocks, which can be a little apart. A device's own clock difference from the share's
+//! (its file's time on the share minus its own time in it) turns "now" into the share's time, to tell how
+//! long ago another device played.
+//!
 //! At start-up, on coming back to the app, and when the share says a playback file changed, the newest other
 //! device's playback is looked at. When it's newer than what this device last played (and than the last one
 //! answered), it's offered: "Continue where you left off on <device>?" (the `playback-offer` event). Continue
@@ -15,7 +20,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -30,13 +35,11 @@ use crate::share::Share;
 /// Where the playback files are on the share.
 pub const DIR: &str = ".melue/playback";
 pub const OFFER_EVENT: &str = "playback-offer";
-/// Sent when another device's playback was loaded without asking (the "follow" setting).
+/// Sent when another device's playback was loaded without asking ("follow", or recent enough).
 pub const FOLLOWED_EVENT: &str = "playback-followed";
 const SETTINGS: &str = "playback_sync";
 const DEVICE_ID: &str = "device_id";
-/// When this device's playback last changed (was saved).
-const SAVED_AT: &str = "playback_saved_at";
-/// The newest other device's playback answered (Continue or Not now): its time.
+/// The newest other device's playback answered (Continue or Not now): its time on the share.
 const ANSWERED: &str = "playback_answered";
 /// How often the player is looked at.
 const POLL: Duration = Duration::from_secs(5);
@@ -44,6 +47,8 @@ const POLL: Duration = Duration::from_secs(5);
 pub const SAVE_PLAYING_MS: i64 = 30_000;
 /// Paused, moving more than this (seconds) is saved.
 const MOVED_S: f64 = 2.0;
+/// After the share couldn't be used, it's left alone this long (unless the network changes).
+const REST_AFTER_FAILURE: Duration = Duration::from_secs(30);
 
 /// One device's playback, as kept on the share.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -51,8 +56,11 @@ const MOVED_S: f64 = 2.0;
 pub struct PlaybackFile {
     pub device_id: String,
     pub device_name: String,
-    /// When it changed.
+    /// When it changed (the device's own clock).
     pub saved_at_ms: i64,
+    /// When the share wrote it (the share's clock, the same for every device). Not in the file: read with it.
+    #[serde(skip)]
+    pub share_ms: i64,
     #[serde(flatten)]
     pub state: Playback,
     /// The song's title and artist (to say what it is, even on a device that doesn't have it).
@@ -89,12 +97,21 @@ pub enum Mode {
     Off,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PlaybackSettings {
     pub mode: Mode,
     /// This device's name for the others (None: the computer's name or the phone's).
     pub device_name: Option<String>,
+    /// Ask: continue without asking when the other device's playback is at most this many minutes old (it's
+    /// most likely a switch from that device to this one). None: always ask. Default 10.
+    pub continue_within_minutes: Option<u32>,
+}
+
+impl Default for PlaybackSettings {
+    fn default() -> Self {
+        Self { mode: Mode::Ask, device_name: None, continue_within_minutes: Some(10) }
+    }
 }
 
 /// Synced playback's state while Melue runs.
@@ -106,6 +123,8 @@ pub struct Handoff {
     offer: Mutex<Option<PlaybackFile>>,
     /// The share, kept open between saves (opened again after a problem).
     share: Mutex<Option<Box<dyn Share>>>,
+    /// When the share last couldn't be used.
+    failed_at: Mutex<Option<Instant>>,
     checks: Mutex<Option<Sender<()>>>,
 }
 
@@ -163,13 +182,31 @@ pub fn needs_saving(last: Option<&(Playback, i64)>, now: &Playback, now_ms: i64)
         || (!now.playing && (now.position_s - last.position_s).abs() > MOVED_S)
 }
 
-/// The other device's playback to offer: the newest, if it's newer than `after_ms` (this device's own
-/// playback, and the last one answered).
-pub fn newest_other(files: Vec<PlaybackFile>, me: &str, after_ms: i64) -> Option<PlaybackFile> {
+/// Whether another device's playback (written at `share_ms`, the share's clock) is loaded without asking:
+/// "follow", or "ask" with playback recent enough. `now_ms`: now, on the share's clock.
+pub fn continues_by_itself(settings: &PlaybackSettings, share_ms: i64, now_ms: i64) -> bool {
+    match settings.mode {
+        Mode::Follow => true,
+        Mode::Ask => settings.continue_within_minutes.is_some_and(|m| now_ms - share_ms <= i64::from(m) * 60_000),
+        Mode::Off => false,
+    }
+}
+
+/// How far the share's clock is ahead of this device's (from this device's own file: the share's time for it
+/// minus the device's). 0 before this device has saved anything.
+pub fn share_clock_ahead(files: &[PlaybackFile], me: &str) -> i64 {
+    files.iter().find(|f| f.device_id == me).map_or(0, |f| f.share_ms - f.saved_at_ms)
+}
+
+/// The other device's playback to offer: the newest on the share's clock, if it's newer than this device's
+/// own and than `answered_ms` (the last one answered).
+pub fn newest_other(files: Vec<PlaybackFile>, me: &str, answered_ms: i64) -> Option<PlaybackFile> {
+    let mine = files.iter().find(|f| f.device_id == me).map_or(0, |f| f.share_ms);
+    let after = mine.max(answered_ms);
     files
         .into_iter()
-        .filter(|f| f.device_id != me && !f.state.queue.is_empty() && f.saved_at_ms > after_ms)
-        .max_by_key(|f| f.saved_at_ms)
+        .filter(|f| f.device_id != me && !f.state.queue.is_empty() && f.share_ms > after)
+        .max_by_key(|f| f.share_ms)
 }
 
 // ---- this device
@@ -216,7 +253,7 @@ pub fn settings(app: &AppHandle) -> Result<PlaybackSettings> {
 
 pub fn set_settings(app: &AppHandle, settings: &PlaybackSettings) -> Result<()> {
     let name = settings.device_name.as_deref().map(str::trim).filter(|n| !n.is_empty() && *n != system_name(app));
-    let saved = PlaybackSettings { mode: settings.mode, device_name: name.map(str::to_string) };
+    let saved = PlaybackSettings { device_name: name.map(str::to_string), ..settings.clone() };
     app.state::<Library>().set_setting(SETTINGS, &serde_json::to_string(&saved).map_err(err)?)
 }
 
@@ -242,18 +279,36 @@ impl Library {
 /// Runs `work` with the share (opened when needed; a failure closes it, to be opened again next time).
 fn with_share<T>(app: &AppHandle, work: impl FnOnce(&dyn Share) -> Result<T>) -> Result<T> {
     let handoff = app.state::<Handoff>();
+    if handoff.failed_at.lock().unwrap().is_some_and(|at| at.elapsed() < REST_AFTER_FAILURE) {
+        return Err("the share couldn't be reached a moment ago: trying again soon".into());
+    }
     let mut share = handoff.share.lock().unwrap();
     if share.is_none() {
-        let (_, opened) = with_stores(app, |library, stores| setup::current(library, stores, &setup::open))
-            .and_then(|r| r)
-            .map_err(|e| format!("{e:?}"))?;
-        *share = Some(opened);
+        let opened = with_stores(app, |library, stores| setup::current(library, stores, &setup::open)).and_then(|r| r);
+        match opened {
+            Ok((_, opened)) => *share = Some(opened),
+            Err(e) => {
+                *handoff.failed_at.lock().unwrap() = Some(Instant::now());
+                return Err(format!("{e:?}"));
+            }
+        }
     }
     let result = work(share.as_deref().expect("opened"));
     if result.is_err() {
         *share = None;
+        *handoff.failed_at.lock().unwrap() = Some(Instant::now());
+    } else {
+        *handoff.failed_at.lock().unwrap() = None;
     }
     result
+}
+
+/// The network changed: the share is opened again (on the new network), and the others are looked at.
+pub fn network_changed(app: &AppHandle) {
+    let handoff = app.state::<Handoff>();
+    *handoff.share.lock().unwrap() = None;
+    *handoff.failed_at.lock().unwrap() = None;
+    check(app);
 }
 
 /// What plays here now, on the share's terms, and the song's (title, artist).
@@ -308,6 +363,7 @@ fn save(app: &AppHandle, force: bool) -> Result<()> {
         device_id: device_id(&library)?,
         device_name: settings(app)?.device_name.unwrap_or_default(),
         saved_at_ms: now,
+        share_ms: 0,
         state: playback,
         title,
         artist,
@@ -319,7 +375,7 @@ fn save(app: &AppHandle, force: bool) -> Result<()> {
     })?;
     // Only once it's on the share (otherwise it's tried again on the next look at the player).
     *handoff.last.lock().unwrap() = Some((file.state, now));
-    library.set_setting(SAVED_AT, &now.to_string())
+    Ok(())
 }
 
 /// Saves what plays here now (closing the app).
@@ -329,7 +385,8 @@ pub fn save_now(app: &AppHandle) {
     }
 }
 
-/// Every device's playback on the share (files that can't be read are left out).
+/// Every device's playback on the share, with the share's time for each (files that can't be read are left
+/// out).
 fn read_all(app: &AppHandle) -> Result<Vec<PlaybackFile>> {
     with_share(app, |share| {
         let entries = match share.list(DIR) {
@@ -340,8 +397,10 @@ fn read_all(app: &AppHandle) -> Result<Vec<PlaybackFile>> {
         Ok(entries
             .iter()
             .filter(|e| !e.is_dir && e.name.ends_with(".json"))
-            .filter_map(|e| share.read(&e.path).ok())
-            .filter_map(|bytes| serde_json::from_slice(&bytes).ok())
+            .filter_map(|e| {
+                let file: PlaybackFile = serde_json::from_slice(&share.read(&e.path).ok()?).ok()?;
+                Some(PlaybackFile { share_ms: e.modified_ms, ..file })
+            })
             .collect())
     })
 }
@@ -353,12 +412,14 @@ fn setting_ms(library: &Library, key: &str) -> i64 {
 /// Looks at the other devices' playback: offers the newest (or loads it, with "follow").
 fn look(app: &AppHandle) -> Result<()> {
     let library = app.state::<Library>();
-    let mode = settings(app)?.mode;
-    if mode == Mode::Off || !library.sync_available()? {
+    let settings = settings(app)?;
+    if settings.mode == Mode::Off || !library.sync_available()? {
         return Ok(());
     }
-    let after = setting_ms(&library, SAVED_AT).max(setting_ms(&library, ANSWERED));
-    let Some(other) = newest_other(read_all(app)?, &device_id(&library)?, after) else { return Ok(()) };
+    let files = read_all(app)?;
+    let me = device_id(&library)?;
+    let now_on_share = now_ms() + share_clock_ahead(&files, &me);
+    let Some(other) = newest_other(files, &me, setting_ms(&library, ANSWERED)) else { return Ok(()) };
     // Never interrupt: playing here wins (and soon saves, which makes it the newest).
     if app.native_audio().get_state()?.is_playing {
         return Ok(());
@@ -370,19 +431,17 @@ fn look(app: &AppHandle) -> Result<()> {
         return Ok(());
     }
     let handoff = app.state::<Handoff>();
-    match mode {
-        Mode::Follow => {
-            load(app, &other)?;
-            let _ = app.emit(FOLLOWED_EVENT, &other);
+    if continues_by_itself(&settings, other.share_ms, now_on_share) {
+        load(app, &other)?;
+        *handoff.offer.lock().unwrap() = None;
+        let _ = app.emit(FOLLOWED_EVENT, &other);
+    } else {
+        let mut offer = handoff.offer.lock().unwrap();
+        if offer.as_ref().is_some_and(|o| o.share_ms >= other.share_ms) {
+            return Ok(());
         }
-        _ => {
-            let mut offer = handoff.offer.lock().unwrap();
-            if offer.as_ref().is_some_and(|o| o.saved_at_ms >= other.saved_at_ms) {
-                return Ok(());
-            }
-            *offer = Some(other.clone());
-            let _ = app.emit(OFFER_EVENT, &other);
-        }
+        *offer = Some(other.clone());
+        let _ = app.emit(OFFER_EVENT, &other);
     }
     Ok(())
 }
@@ -398,7 +457,7 @@ fn load(app: &AppHandle, other: &PlaybackFile) -> Result<()> {
     player.set_queue(items, index, other.state.position_s, None)?;
     player.set_shuffle(other.state.shuffle)?;
     player.set_repeat_mode(&other.state.repeat)?;
-    library.set_setting(ANSWERED, &other.saved_at_ms.to_string())?;
+    library.set_setting(ANSWERED, &other.share_ms.to_string())?;
     // Not something new to tell the others: it's theirs (saved once it changes here).
     let loaded = playing_here(app, &library, &folder)?.map(|(p, ..)| p).unwrap_or_else(|| Playback { playing: false, ..other.state.clone() });
     *app.state::<Handoff>().last.lock().unwrap() = Some((loaded, now_ms()));
@@ -416,7 +475,7 @@ pub fn answer(app: &AppHandle, continue_here: bool) -> Result<()> {
     if continue_here {
         load(app, &other)
     } else {
-        app.state::<Library>().set_setting(ANSWERED, &other.saved_at_ms.to_string())
+        app.state::<Library>().set_setting(ANSWERED, &other.share_ms.to_string())
     }
 }
 

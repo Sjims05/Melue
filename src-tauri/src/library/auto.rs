@@ -2,10 +2,10 @@
 //! Android Auto can browse and play it with Melue closed. Sent at start-up and after library changes, once
 //! things have been quiet for a moment (a burst of changes sends the library once, with all of them).
 //!
-//! Tabs: Recently played (the player's own list of lists played, which updates by itself), Playlists (Liked
-//! songs first), Albums, Artists (each one list of their songs, album by album). Folder ids are the list ids
-//! ("album:12"), so a list played in the car is one the queue can follow (follow.rs). No "All songs" tab:
-//! search and voice find single songs. Only songs that can be played are in it. No section headers: in the
+//! Tabs: Recently played (the player's own list of lists played, which updates by itself), Playlists (the auto
+//! playlists first, see auto_playlists.rs; empty and hidden ones left out), Albums, Artists (each one list of their songs, album by album). Folder ids are the list ids
+//! ("album:12"), so a list played in the car is one the queue can follow (follow.rs). No "All songs" tab
+//! (it's an auto playlist): search and voice find single songs. Only songs that can be played are in it. No section headers: in the
 //! car a plain ordered list is easier to follow (no lines shifting).
 
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -67,10 +67,13 @@ impl Library {
             .collect();
 
         let mut playlists = Vec::new();
-        let liked = self.auto_children("liked")?;
-        if !liked.is_empty() {
-            let n = liked.len() as i64;
-            playlists.push(LibraryChild::Folder(folder("liked".into(), "Liked songs".into(), Some(plural(n, "song")), liked)));
+        for list in self.auto_playlists()?.into_iter().filter(|l| !l.hidden) {
+            let children = self.auto_children(&list.source)?;
+            if children.is_empty() {
+                continue;
+            }
+            let subtitle = plural(children.len() as i64, "song");
+            playlists.push(LibraryChild::Folder(folder(list.source, list.name, Some(subtitle), children)));
         }
         for playlist in self.playlists()? {
             let children = self.auto_children(&format!("playlist:{}", playlist.id))?;

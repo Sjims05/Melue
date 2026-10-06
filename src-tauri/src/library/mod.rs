@@ -3,6 +3,9 @@
 
 pub mod android;
 pub mod auto;
+pub mod auto_playlists;
+#[cfg(test)]
+mod auto_playlists_tests;
 #[cfg(test)]
 mod auto_tests;
 pub mod changes;

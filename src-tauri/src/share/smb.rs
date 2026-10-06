@@ -21,7 +21,8 @@ use tokio::sync::{mpsc, Mutex};
 
 use super::{clean_path, is_hidden, join, part_path, Entry, Share, ShareError, ShareResult, CHUNK};
 
-pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// A VPN that has just (re)connected can need several seconds before the NAS answers.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// Without any answer for this long, an operation gives up.
 pub const OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 

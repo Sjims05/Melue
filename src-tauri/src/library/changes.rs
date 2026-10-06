@@ -37,7 +37,7 @@ pub struct LibraryChange {
     /// Songs added, changed, gone (missing, removed, hidden) or back, by id.
     pub tracks: Vec<i64>,
     /// The playable lists whose songs changed: "songs" (all songs), "album:<id>", "artist:<id>",
-    /// "playlist:<id>", "liked".
+    /// "playlist:<id>", "liked", "folder:<id>".
     pub sources: Vec<String>,
 }
 
@@ -74,6 +74,7 @@ impl LibraryChange {
 struct TrackState {
     /// There: not missing, in a switched-on folder.
     present: bool,
+    folder_id: i64,
     album_id: Option<i64>,
     artists: Vec<i64>,
     /// The playlists it's in.
@@ -119,7 +120,7 @@ impl Library {
         let mut stmt = conn
             .prepare(
                 "SELECT t.id, t.missing_since IS NULL AND f.enabled, t.album_id, t.path, t.size, t.modified_at, t.title,
-                        t.artist_credit, t.cover_id, t.track_no, t.disc_no, t.duration_ms
+                        t.artist_credit, t.cover_id, t.track_no, t.disc_no, t.duration_ms, t.folder_id
                  FROM tracks t JOIN folders f ON f.id = t.folder_id",
             )
             .map_err(err)?;
@@ -128,6 +129,7 @@ impl Library {
                 let id: i64 = r.get(0)?;
                 let state = TrackState {
                     present: r.get(1)?,
+                    folder_id: r.get(12)?,
                     album_id: r.get(2)?,
                     artists: Vec::new(),
                     playlists: Vec::new(),
@@ -161,7 +163,8 @@ impl Snapshot {
     /// What changed from this snapshot to `after`; None when nothing did.
     pub fn changes(&self, after: &Snapshot, reason: ChangeReason) -> Option<LibraryChange> {
         let mut tracks = BTreeSet::new();
-        // (0, 0): all songs; (1, id): an album; (2, id): an artist; (3, id): a playlist. Sorted that way.
+        // (0, 0): all songs; (1, id): an album; (2, id): an artist; (3, id): a playlist; (4, id): a folder.
+        // Sorted that way.
         let mut sources: BTreeSet<(u8, i64)> = BTreeSet::new();
         let ids: BTreeSet<i64> = self.0.keys().chain(after.0.keys()).copied().collect();
         for id in ids {
@@ -182,6 +185,7 @@ impl Snapshot {
                 sources.extend(state.album_id.map(|album| (1, album)));
                 sources.extend(state.artists.iter().map(|artist| (2, *artist)));
                 sources.extend(state.playlists.iter().map(|playlist| (3, *playlist)));
+                sources.insert((4, state.folder_id));
             }
         }
         if tracks.is_empty() {
@@ -193,7 +197,8 @@ impl Snapshot {
                 0 => "songs".to_string(),
                 1 => format!("album:{id}"),
                 2 => format!("artist:{id}"),
-                _ => format!("playlist:{id}"),
+                3 => format!("playlist:{id}"),
+                _ => format!("folder:{id}"),
             })
             .collect();
         Some(LibraryChange { reason, tracks: tracks.into_iter().collect(), sources })

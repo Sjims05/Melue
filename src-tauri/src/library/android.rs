@@ -273,6 +273,20 @@ pub fn on_resume(app: &AppHandle, handler: impl Fn() + Send + Sync + 'static) {
     let _ = (app, handler);
 }
 
+/// Android: calls `handler` when the network the app uses changes (Wi-Fi, mobile data, a VPN coming up).
+/// Elsewhere: nothing.
+pub fn on_network_change(app: &AppHandle, handler: impl Fn() + Send + Sync + 'static) {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_melue_android::MelueAndroidExt;
+        if let Err(e) = app.melue_android().listen("networkChanged", handler) {
+            eprintln!("melue: can't follow the network: {e}");
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    let _ = (app, handler);
+}
+
 /// Android: calls `handler` when Cancel is pressed on the "Syncing music" notification.
 pub fn on_sync_cancel(app: &AppHandle, handler: impl Fn() + Send + Sync + 'static) {
     #[cfg(target_os = "android")]

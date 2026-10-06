@@ -1,6 +1,7 @@
 //! The library's commands for the UI. They run off the main thread (`async`), so a slow query never
 //! freezes the window.
 
+use super::auto_playlists::AutoPlaylist;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
@@ -301,8 +302,38 @@ pub fn library_queue_items(library: State<'_, Library>, source: String) -> Resul
 /// Counts one of the player's playback events (once, however often it's handed over): "play", "skip" or
 /// "neither" for a song being left, null otherwise.
 #[tauri::command(async)]
-pub fn library_record_playback(library: State<'_, Library>, event: PlaybackEvent) -> Result<Option<Outcome>> {
-    library.record_playback(&event)
+pub fn library_record_playback(app: AppHandle, library: State<'_, Library>, event: PlaybackEvent) -> Result<Option<Outcome>> {
+    let outcome = library.record_playback(&event)?;
+    // A play can change the Top songs lists (Android Auto shows them).
+    if outcome == Some(Outcome::Play) {
+        super::auto::send_soon(&app);
+    }
+    Ok(outcome)
+}
+
+/// Every auto playlist (All songs, Liked, Top songs, one per folder), in order, hidden ones too.
+#[tauri::command(async)]
+pub fn library_auto_playlists(library: State<'_, Library>) -> Result<Vec<AutoPlaylist>> {
+    library.auto_playlists()
+}
+
+/// Hides an auto playlist or shows it again, and (Top songs) changes its size. Returns them all.
+#[tauri::command(async)]
+pub fn library_set_auto_playlist(
+    app: AppHandle,
+    library: State<'_, Library>,
+    source: String,
+    hidden: Option<bool>,
+    size: Option<u32>,
+) -> Result<Vec<AutoPlaylist>> {
+    if let Some(size) = size {
+        library.set_auto_playlist_size(&source, size)?;
+    }
+    if let Some(hidden) = hidden {
+        library.set_auto_playlist_hidden(&source, hidden)?;
+    }
+    super::auto::send_soon(&app);
+    library.auto_playlists()
 }
 
 #[tauri::command(async)]

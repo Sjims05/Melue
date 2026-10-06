@@ -13,8 +13,17 @@ fn playback(queue: &[&str], index: usize) -> Playback {
     Playback { queue: queue.iter().map(|s| s.to_string()).collect(), index, repeat: "off".into(), ..Default::default() }
 }
 
-fn file(device: &str, saved_at_ms: i64, queue: &[&str]) -> PlaybackFile {
-    PlaybackFile { device_id: device.into(), device_name: device.into(), saved_at_ms, state: playback(queue, 0), title: None, artist: None }
+/// A device's file, written at `share_ms` on the share's clock (its own clock the same).
+fn file(device: &str, share_ms: i64, queue: &[&str]) -> PlaybackFile {
+    PlaybackFile {
+        device_id: device.into(),
+        device_name: device.into(),
+        saved_at_ms: share_ms,
+        share_ms,
+        state: playback(queue, 0),
+        title: None,
+        artist: None,
+    }
 }
 
 #[test]
@@ -80,13 +89,32 @@ fn what_gets_saved() {
 
 #[test]
 fn the_newest_other_device_is_offered() {
-    let files = || vec![file("me", 900, &["a"]), file("phone", 500, &["a"]), file("laptop", 700, &["b"]), file("empty", 800, &[])];
+    let files = || vec![file("me", 400, &["a"]), file("phone", 500, &["a"]), file("laptop", 700, &["b"]), file("empty", 800, &[])];
     // Mine and empty ones don't count.
     assert_eq!(newest_other(files(), "me", 0).map(|f| f.device_id), Some("laptop".into()));
-    // Only when newer than what was played here (or answered) last.
+    // Only when newer than the last one answered...
     assert_eq!(newest_other(files(), "me", 600).map(|f| f.device_id), Some("laptop".into()));
     assert_eq!(newest_other(files(), "me", 700), None);
+    // ...and than what was played here.
+    let mut played_here = files();
+    played_here[0].share_ms = 750;
+    assert_eq!(newest_other(played_here, "me", 0), None);
     assert_eq!(newest_other(Vec::new(), "me", 0), None);
+}
+
+#[test]
+fn the_shares_clock_decides_not_the_devices() {
+    // The desktop's clock is 40 s ahead: its playback looks newer by its own clock, but the share wrote the
+    // phone's later.
+    let desktop = PlaybackFile { saved_at_ms: 1_040_000, share_ms: 1_000_000, ..file("desktop", 0, &["a"]) };
+    let phone = PlaybackFile { saved_at_ms: 1_010_000, share_ms: 1_010_000, ..file("phone", 0, &["b"]) };
+    assert_eq!(newest_other(vec![desktop.clone(), phone.clone()], "desktop", 0).map(|f| f.device_id), Some("phone".into()));
+    assert_eq!(newest_other(vec![desktop.clone(), phone.clone()], "phone", 0), None, "the phone's is newer");
+    // The desktop's "now" on the share's clock: its own clock minus 40 s.
+    let files = vec![desktop, phone];
+    assert_eq!(share_clock_ahead(&files, "desktop"), -40_000);
+    assert_eq!(share_clock_ahead(&files, "phone"), 0);
+    assert_eq!(share_clock_ahead(&files, "new device"), 0, "nothing saved yet");
 }
 
 #[test]
@@ -95,7 +123,8 @@ fn playback_files_are_kept_as_json() {
     let json = serde_json::to_value(&f).unwrap();
     assert_eq!(json["deviceName"], "phone");
     assert_eq!(json["queue"][0], "Band/Song.mp3", "the playback's fields are at the top");
-    assert_eq!(serde_json::from_value::<PlaybackFile>(json).unwrap(), f);
+    assert!(json.get("shareMs").is_none(), "the share's time comes from the share, not the file");
+    assert_eq!(serde_json::from_value::<PlaybackFile>(json).unwrap(), PlaybackFile { share_ms: 0, ..f });
 }
 
 #[test]
@@ -104,4 +133,19 @@ fn the_default_settings_ask() {
     assert_eq!((s.mode, s.device_name), (Mode::Ask, None));
     let s: PlaybackSettings = serde_json::from_str(r#"{"mode":"follow","deviceName":"Kitchen"}"#).unwrap();
     assert_eq!((s.mode, s.device_name.as_deref()), (Mode::Follow, Some("Kitchen")));
+}
+
+#[test]
+fn recent_playback_continues_without_asking() {
+    const MINUTE: i64 = 60_000;
+    let ask = PlaybackSettings::default();
+    assert_eq!(ask.continue_within_minutes, Some(10), "the default");
+    // Ask: within 10 minutes it continues by itself (a switch between devices), older ones are asked about.
+    assert!(continues_by_itself(&ask, 0, 10 * MINUTE));
+    assert!(!continues_by_itself(&ask, 0, 10 * MINUTE + 1));
+    let always_ask = PlaybackSettings { continue_within_minutes: None, ..ask.clone() };
+    assert!(!continues_by_itself(&always_ask, 0, 0));
+    // Follow: always; off: never.
+    assert!(continues_by_itself(&PlaybackSettings { mode: Mode::Follow, ..always_ask.clone() }, 0, 1000 * MINUTE));
+    assert!(!continues_by_itself(&PlaybackSettings { mode: Mode::Off, ..ask }, 0, 0));
 }
