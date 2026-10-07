@@ -179,6 +179,8 @@ pub fn run() {
             sync::commands::sync_clear_copies,
             sync::commands::sync_keep_copies,
             sync::commands::sync_check_copies,
+            sync::commands::sync_layout_status,
+            sync::commands::sync_reorganise,
             sync::commands::playlist_conflicts,
             sync::commands::playlist_answer_conflict,
             sync::commands::deleted_playlists,

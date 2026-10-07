@@ -45,6 +45,9 @@ import {
   librarySync,
   moving,
   playbackSync,
+  shareLayout,
+  type LayoutStatus,
+  type ShareLayout,
   type Copies,
   type LocalSong,
   type MoveResult,
@@ -423,6 +426,34 @@ const checkCopies = () =>
       `Copies: ${r.syncedSongs} synced songs, ${r.otherSongs} elsewhere; ${r.hiddenNow} found now, ${r.hidden} hidden in all, ` +
         `${r.waiting.songs} waiting for a choice${r.nearMisses.length ? `; not taken as copies: ${r.nearMisses.join(' | ')}` : ''}`,
     )
+  })
+
+// ---- the share's layout
+
+const layoutStatus = ref<LayoutStatus | null>(null)
+
+const checkLayout = () =>
+  run('Layout', async () => {
+    layoutStatus.value = await shareLayout.status()
+    const s = layoutStatus.value
+    logMsg(
+      `Layout ${s.layout}: ${s.toMove} songs not in it${s.applied ? '; the share is in this layout (new songs are put in place)' : ''}` +
+        (s.examples.length ? ` (${s.examples.map((m) => `${m.from} → ${m.to}`).join('; ')})` : ''),
+    )
+  })
+
+const changeLayout = (layout: ShareLayout) =>
+  run('Layout', async () => {
+    await changeSyncSettings({ shareLayout: layout })
+    await checkLayout()
+  })
+
+const reorganise = () =>
+  run('Reorganise', async () => {
+    logMsg('Reorganising the share…')
+    const r = await shareLayout.reorganise()
+    logMsg(`Reorganised: ${r.moved} moved, ${r.playlistsUpdated} playlists updated${r.failed.length ? `, ${r.failed.length} failed (${r.failed.map(([p, why]) => `${p}: ${why}`).join('; ')})` : ''}`)
+    await checkLayout()
   })
 
 const keepCopies = () =>
@@ -837,6 +868,23 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="changeSyncSettings({ moveNewSongs: !syncSettings?.moveNewSongs })">
           Move new songs to sync automatically: {{ syncSettings?.moveNewSongs ? 'yes' : 'no' }}
         </button>
+        <label class="flex items-center gap-1">
+          Folders on the share:
+          <select
+            class="border rounded px-1"
+            :value="syncSettings?.shareLayout ?? 'artistAlbum'"
+            @change="changeLayout(($event.target as HTMLSelectElement).value as ShareLayout)"
+          >
+            <option value="artistAlbum">Artist/Album/</option>
+            <option value="oneFolder">All in one folder</option>
+          </select>
+        </label>
+        <button class="border rounded px-3 py-1" @click="checkLayout">Check layout</button>
+      </div>
+      <div v-if="layoutStatus?.toMove" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
+        {{ plural(layoutStatus.toMove, 'song') }} on the share {{ layoutStatus.toMove === 1 ? "isn't" : "aren't" }} in this layout
+        (e.g. {{ layoutStatus.examples[0]?.from }} → {{ layoutStatus.examples[0]?.to }}).
+        <button class="border rounded px-3 py-1" @click="reorganise">Reorganise now</button>
       </div>
       <div v-if="copies?.songs" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
         {{ plural(copies.songs, 'song') }} on this device {{ copies.songs === 1 ? 'is' : 'are' }} also in your synced music ({{ megabytes(copies.bytes) }}).

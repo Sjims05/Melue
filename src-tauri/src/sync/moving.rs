@@ -18,6 +18,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::handoff::{self, share_path};
 use super::local;
 use super::run::Progress;
+use super::layout::{layout_path, Layout};
 use super::same_song::Songs;
 use super::scheduler::{self, SyncFailure};
 use crate::library::changes::{self, ChangeReason};
@@ -348,6 +349,7 @@ pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>) -> std::result::Result<
         _ => Some(local::target(app, &folder)?),
     };
     let songs = library.songs_here(&folder, &handoff::device_id(&library)?)?;
+    let layout = library.sync_settings()?.share_layout;
     let result = scheduler::exclusive(app, |report| {
         let mut result = MoveResult::default();
         let total = items.len() as u32;
@@ -361,7 +363,7 @@ pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>) -> std::result::Result<
                 ToMove::File { path } => file_name_of(&path.replace('\\', "/")),
             };
             report(&Progress { files_done: done as u32, files_total: total, current: Some(label.clone()), ..Default::default() });
-            match move_one(app, &library, share.as_ref(), target.as_deref(), &songs, item) {
+            match move_one(app, &library, share.as_ref(), target.as_deref(), &songs, layout, item) {
                 Ok(true) => result.moved += 1,
                 Ok(false) => result.already_there += 1,
                 Err(e) => result.failed.push((label, e)),
@@ -378,7 +380,9 @@ pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>) -> std::result::Result<
 type OpenFile = dyn Fn() -> Result<std::fs::File>;
 
 /// Moves one: returns whether it was put on the share (false: the same song was there already).
-fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Option<&dyn Share>, songs: &Songs, item: &ToMove) -> Result<bool> {
+fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Option<&dyn Share>, songs: &Songs, layout: Layout, item: &ToMove) -> Result<bool> {
+    // A song on this computer's disk can be moved into the synced folder itself (no second copy).
+    let mut original: Option<std::path::PathBuf> = None;
     let (open, dest, song): (Box<OpenFile>, String, Option<i64>) = match item {
         ToMove::Song { id } => {
             // A copy of a synced song: nothing to put on the share, only the original goes.
@@ -390,7 +394,10 @@ fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Optio
                 return Ok(false);
             }
             let file = library.song_file(*id)?;
-            let dest = upload_path(file.album_artist.as_deref(), file.artist.as_deref(), file.album.as_deref(), &file.file_name());
+            let dest = layout_path(layout, file.album_artist.as_deref(), file.artist.as_deref(), file.album.as_deref(), &file.file_name());
+            if file.kind == FolderKind::Path {
+                original = Some(std::path::Path::new(&file.location).join(&file.path));
+            }
             let job = TagJob { track_id: *id, kind: file.kind, location: file.location.clone(), path: file.path.clone(), folder_cover: None };
             let app = app.clone();
             (Box::new(move || scanner::open_file(&app, &job, &job.path)), dest, Some(*id))
@@ -399,7 +406,7 @@ fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Optio
             let mut file = std::fs::File::open(path).map_err(|e| format!("can't open {path}: {e}"))?;
             let tags = crate::library::tags::read_file(&mut file).unwrap_or_default();
             let name = file_name_of(&path.replace('\\', "/"));
-            let dest = upload_path(tags.album_artist.as_deref(), tags.artist.as_deref(), tags.album.as_deref(), &name);
+            let dest = layout_path(layout, tags.album_artist.as_deref(), tags.artist.as_deref(), tags.album.as_deref(), &name);
             let path = path.clone();
             (Box::new(move || std::fs::File::open(&path).map_err(|e| format!("can't open {path}: {e}"))), dest, None)
         }
@@ -415,7 +422,10 @@ fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Optio
             if let Some(parent) = dest.rfind('/').map(|i| &dest[..i]) {
                 target.create_dir_all(parent)?;
             }
-            target.write_from(&dest, &mut open()?, &mut |_| {})?;
+            // On the same drive: moved (instant, no second copy, nothing for the Recycle Bin); else copied.
+            if !original.is_some_and(|from| move_into(library, &from, &dest)) {
+                target.write_from(&dest, &mut open()?, &mut |_| {})?;
+            }
             let here = target.stat(&dest)?.ok_or("the synced folder lost the song right after it was written")?;
             library.record_synced(&on_share, &here)?;
         }
@@ -425,6 +435,16 @@ fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Optio
         library.record_move(song, &dest)?;
     }
     Ok(true)
+}
+
+/// Moves a song's file on this computer into the synced folder (a disk folder), when they're on the same drive.
+pub(crate) fn move_into(library: &Library, from: &std::path::Path, dest: &str) -> bool {
+    let Ok(Some(folder)) = library.synced_folder() else { return false };
+    if folder.kind != FolderKind::Path {
+        return false;
+    }
+    let to = std::path::Path::new(&folder.location).join(dest);
+    to.parent().is_some_and(|dir| std::fs::create_dir_all(dir).is_ok()) && std::fs::rename(from, &to).is_ok()
 }
 
 /// Removes songs' files (originals moved to sync, or copies the user cleared): to the Recycle Bin on a
@@ -444,6 +464,10 @@ pub fn remove_files(app: &AppHandle, tracks: &[i64]) -> Result<usize> {
             FolderKind::Path => {
                 for file in &files {
                     let full = std::path::Path::new(&folder.location).join(&file.path);
+                    // Moved into the synced folder already (the same drive): nothing left to remove.
+                    if !full.exists() {
+                        continue;
+                    }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     let gone = trash::delete(&full).map_err(|e| e.to_string());
                     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -502,6 +526,7 @@ pub fn after_scan(app: &AppHandle) {
             if let Err(e) = songs.and_then(|songs| move_new_songs(app, &folder, &songs)) {
                 eprintln!("melue: can't move new songs to sync: {e}");
             }
+            super::layout::tidy_new_songs(app);
         }
         Err(e) => eprintln!("melue: can't look for copies of synced songs: {e}"),
     }

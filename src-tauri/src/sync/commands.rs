@@ -185,3 +185,15 @@ pub fn sync_keep_copies(app: AppHandle, library: tauri::State<'_, Library>) -> R
 pub async fn sync_check_copies(app: AppHandle) -> Result<CopyCheck, String> {
     on_share_thread(move || moving::check_copies(&app)).await
 }
+
+/// The share's layout, and how many songs aren't in it.
+#[tauri::command]
+pub async fn sync_layout_status(app: AppHandle) -> Result<super::layout::LayoutStatus, String> {
+    on_share_thread(move || super::layout::status(&app)).await
+}
+
+/// Reorganise now: puts the share in the chosen layout (songs, playlists; the copies here move too).
+#[tauri::command]
+pub async fn sync_reorganise(app: AppHandle) -> Result<super::layout::ReorganiseResult, SyncFailure> {
+    on_share_thread(move || super::layout::reorganise(&app, false)).await
+}

@@ -174,7 +174,11 @@ export interface SyncSettings {
   copyOnMetered: boolean
   /** Move songs new in the other music folders to sync by themselves (default off). */
   moveNewSongs: boolean
+  /** How songs are laid out on the share: Artist/Album/ (default) or all in one folder. */
+  shareLayout: ShareLayout
 }
+
+export type ShareLayout = 'artistAlbum' | 'oneFolder'
 
 /** What started a sync. */
 export type SyncTrigger = 'start' | 'return' | 'changed' | 'periodic' | 'button' | 'retry' | 'network'
@@ -419,4 +423,33 @@ export const moving = {
     ),
   /** Keeps the hidden copies (not asked about again). */
   keepCopies: () => invoke<void>('sync_keep_copies'),
+}
+
+// ---- the share's layout
+
+export interface LayoutMove {
+  from: string
+  to: string
+}
+
+export interface LayoutStatus {
+  layout: ShareLayout
+  /** The share is in this layout: new songs are put in place by themselves. */
+  applied: boolean
+  /** Songs that would move. */
+  toMove: number
+  examples: LayoutMove[]
+}
+
+export interface ReorganiseResult {
+  moved: number
+  /** Playlist files (.m3u) and Melue playlists updated to the new paths. */
+  playlistsUpdated: number
+  failed: [string, string][]
+}
+
+export const shareLayout = {
+  status: () => invoke<LayoutStatus>('sync_layout_status'),
+  /** Puts the share in the chosen layout (the copies here move too; nothing is downloaded). Rejects with a SyncFailure. */
+  reorganise: () => invoke<ReorganiseResult>('sync_reorganise'),
 }

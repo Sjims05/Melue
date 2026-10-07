@@ -117,3 +117,12 @@ fn a_copy_is_shown_again_when_its_synced_song_is_gone() {
     assert_eq!(titles, vec!["A", "B"]);
     assert_eq!(t.library.tracks(0, 10).unwrap()[0].id, track(&t, other, "A"), "the copy");
 }
+
+#[test]
+fn on_the_same_drive_a_song_is_moved_into_the_synced_folder() {
+    let (t, synced, other_music, _) = setup("moving-real-move");
+    let original = other_music.path("B.wav");
+    assert!(move_into(&t.library, &original, "Band/B.wav"));
+    assert!(!original.exists(), "moved, not copied");
+    assert!(std::path::Path::new(&synced.location).join("Band/B.wav").exists());
+}

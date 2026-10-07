@@ -16,6 +16,9 @@ pub mod data;
 #[cfg(test)]
 mod data_tests;
 pub mod handoff;
+pub mod layout;
+#[cfg(test)]
+mod layout_tests;
 pub mod playlist_merge;
 #[cfg(test)]
 mod playlist_merge_tests;
@@ -68,6 +71,8 @@ pub struct SyncSettings {
     pub copy_on_metered: bool,
     /// Move songs new in the other music folders to sync by themselves (default off; moving.rs).
     pub move_new_songs: bool,
+    /// How songs are laid out on the share (layout.rs; default Artist/Album/).
+    pub share_layout: layout::Layout,
 }
 
 impl Default for SyncSettings {
@@ -81,6 +86,7 @@ impl Default for SyncSettings {
             every_minutes: None,
             copy_on_metered: false,
             move_new_songs: false,
+            share_layout: layout::Layout::default(),
         }
     }
 }
