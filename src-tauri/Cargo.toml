@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.4.8"
+version = "0.4.9"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -41,6 +41,10 @@ tokio = { version = "1", features = ["fs", "io-util", "rt-multi-thread", "sync",
 futures-executor = "0.3"
 # Free space on this device, before a sync copies (sync/run.rs).
 fs4 = "0.13"
+
+# Removing the originals of songs moved to sync: to the Recycle Bin (desktop; Android has its own trash).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+trash = "5"
 
 # The share's password in the system's secure store (share/secrets.rs; Android uses Melue's Android plugin).
 [target.'cfg(windows)'.dependencies]

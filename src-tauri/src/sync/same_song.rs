@@ -57,6 +57,54 @@ impl Songs {
             .unwrap_or_else(|| format!("local:{}/{track}", self.me))
     }
 
+    /// The synced folder's song a song is a copy of (None: it's the synced song itself, or there's none).
+    pub fn synced_copy(&self, track: i64) -> Option<i64> {
+        let song = self.songs.get(&track)?;
+        if song.share_path.is_some() {
+            return None;
+        }
+        self.same_as(&song.artist, &song.title, song.duration_ms).filter(|id| self.songs[id].share_path.is_some()).min()
+    }
+
+    /// Local songs that are almost a synced song (the same title, but another artist or length), described:
+    /// why a copy wasn't recognised.
+    pub fn near_misses(&self) -> Vec<String> {
+        let mut synced_by_title: HashMap<String, Vec<&Song>> = HashMap::new();
+        for song in self.songs.values().filter(|s| s.share_path.is_some()) {
+            synced_by_title.entry(plain(&song.title)).or_default().push(song);
+        }
+        let seconds = |ms: Option<i64>| ms.map_or("?".to_string(), |ms| format!("{:.1} s", ms as f64 / 1000.0));
+        let mut misses = Vec::new();
+        for (&id, song) in self.songs.iter().filter(|(_, s)| s.share_path.is_none()) {
+            if self.synced_copy(id).is_some() {
+                continue;
+            }
+            for synced in synced_by_title.get(&plain(&song.title)).into_iter().flatten() {
+                misses.push(format!(
+                    "\"{}\": here by \"{}\", {}; synced by \"{}\", {}",
+                    song.title,
+                    song.artist,
+                    seconds(song.duration_ms),
+                    synced.artist,
+                    seconds(synced.duration_ms)
+                ));
+            }
+        }
+        misses.sort();
+        misses
+    }
+
+    /// How many songs there are: (in the synced folder, elsewhere).
+    pub fn counts(&self) -> (usize, usize) {
+        let synced = self.songs.values().filter(|s| s.share_path.is_some()).count();
+        (synced, self.songs.len() - synced)
+    }
+
+    /// The synced folder's song at a path on the share.
+    pub fn at_path(&self, path: &str) -> Option<i64> {
+        self.by_path.get(&key(path)).copied()
+    }
+
     /// The song here for a playlist song: by its path on the share, as this device's own, or the same song
     /// (by artist, title and length; the synced folder's first). Also whether it's the song itself (not a copy).
     pub fn find(&self, entry: &SyncEntry) -> Option<(i64, bool)> {

@@ -157,7 +157,7 @@ impl Library {
     /// [`top_songs`](Self::top_songs) as of the day `today`.
     pub fn top_songs_on(&self, period: TopPeriod, size: u32, today: i64) -> Result<Vec<i64>> {
         let present = "JOIN tracks t ON t.id = s.track_id JOIN folders f ON f.id = t.folder_id
-                       WHERE t.missing_since IS NULL AND f.enabled";
+                       WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled";
         // All time: the per-song counts. A period: the plays per day since its first day (?2).
         let sql = match period.days() {
             None => format!(
@@ -191,7 +191,7 @@ impl Library {
             .conn()
             .query_row(
                 "SELECT count(*) FROM likes l JOIN tracks t ON t.id = l.track_id JOIN folders f ON f.id = t.folder_id
-                 WHERE t.missing_since IS NULL AND f.enabled",
+                 WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled",
                 [],
                 |r| r.get(0),
             )

@@ -104,6 +104,9 @@ pub fn scan_all(app: &AppHandle) -> Result<Option<ScanSummary>> {
         }
     };
     scanner.running.store(false, Ordering::SeqCst);
+    if result.is_ok() {
+        crate::sync::moving::after_scan(app);
+    }
     // Asked for between the last check and now: run once more.
     if scanner.again.swap(false, Ordering::SeqCst) {
         scan_soon(app);
@@ -208,7 +211,7 @@ impl PlaylistFiles for AppFiles<'_> {
 }
 
 /// Opens a song's file (or a folder cover) wherever its folder is.
-fn open_file(app: &AppHandle, job: &TagJob, path: &str) -> Result<File> {
+pub fn open_file(app: &AppHandle, job: &TagJob, path: &str) -> Result<File> {
     match job.kind {
         FolderKind::AndroidTree => android::open_tree_file(app, &job.location, path),
         _ => tags::open_local(job, path),

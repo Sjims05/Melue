@@ -243,6 +243,34 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
     result
 }
 
+/// Runs `work` as the one sync of the moment (moving songs to sync), its progress shown like a sync's (the
+/// status, and Android's notification). Cancel stops it after the file it's on (see [`cancelled`]).
+pub fn exclusive<T>(
+    app: &AppHandle,
+    work: impl FnOnce(&mut dyn FnMut(&Progress)) -> std::result::Result<T, SyncFailure>,
+) -> std::result::Result<T, SyncFailure> {
+    let syncing = app.state::<Syncing>();
+    if syncing.running.swap(true, Ordering::SeqCst) {
+        return Err(SyncFailure::Running);
+    }
+    syncing.cancel.store(false, Ordering::SeqCst);
+    set_status(app, |s| s.syncing = Some(Progress::default()));
+    let mut report = |progress: &Progress| {
+        notify(app, Some(progress));
+        set_status(app, |s| s.syncing = Some(progress.clone()));
+    };
+    let result = work(&mut report);
+    notify(app, None);
+    syncing.running.store(false, Ordering::SeqCst);
+    set_status(app, |s| s.syncing = None);
+    result
+}
+
+/// Whether Cancel was pressed during [`exclusive`] work.
+pub fn cancelled(app: &AppHandle) -> bool {
+    app.state::<Syncing>().cancel.load(Ordering::SeqCst)
+}
+
 /// Asks the share to say when its music changes (when that's on and it isn't being watched already). A
 /// change in Melue's playback files is for synced playback (handoff.rs), not a sync.
 fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {

@@ -17,6 +17,9 @@ pub mod playlist_merge;
 #[cfg(test)]
 mod playlist_merge_tests;
 pub mod playlist_sync;
+pub mod moving;
+#[cfg(test)]
+mod moving_tests;
 pub mod same_song;
 #[cfg(test)]
 mod playlist_sync_tests;
@@ -60,6 +63,8 @@ pub struct SyncSettings {
     /// Copy songs on metered connections (mobile data, a phone's hotspot). Off: they wait for Wi-Fi; moves,
     /// renames and removals still happen.
     pub copy_on_metered: bool,
+    /// Move songs new in the other music folders to sync by themselves (default off; moving.rs).
+    pub move_new_songs: bool,
 }
 
 impl Default for SyncSettings {
@@ -72,6 +77,7 @@ impl Default for SyncSettings {
             on_change: true,
             every_minutes: None,
             copy_on_metered: false,
+            move_new_songs: false,
         }
     }
 }

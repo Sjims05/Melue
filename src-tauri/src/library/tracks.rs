@@ -41,7 +41,7 @@ pub struct Track {
 /// A song's columns, for [`track_row`]: `t` is the track, `f` its folder, `c` its cover.
 pub(crate) const TRACK_COLUMNS: &str = "t.id, t.folder_id, t.title, t.artist_credit, t.tag_album, t.tag_album_artist, t.track_no,
     t.disc_no, t.year, t.genre, t.duration_ms, t.format, t.bitrate_kbps, t.sample_rate, c.file, t.tags_read_at IS NOT NULL,
-    t.tags_error, t.missing_since IS NULL AND f.enabled, EXISTS (SELECT 1 FROM likes l WHERE l.track_id = t.id),
+    t.tags_error, t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled, EXISTS (SELECT 1 FROM likes l WHERE l.track_id = t.id),
     coalesce((SELECT s.play_count FROM all_track_stats s WHERE s.track_id = t.id), 0)";
 
 /// How many columns [`TRACK_COLUMNS`] is: a query's own columns after it start there.
@@ -80,7 +80,7 @@ impl Library {
         let sql = format!(
             "SELECT {TRACK_COLUMNS}
              FROM tracks t JOIN folders f ON f.id = t.folder_id LEFT JOIN covers c ON c.id = t.cover_id
-             WHERE t.missing_since IS NULL AND f.enabled
+             WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled
              ORDER BY t.sort_title, t.id LIMIT ?1 OFFSET ?2"
         );
         let mut stmt = conn.prepare(&sql).map_err(err)?;
@@ -119,7 +119,8 @@ pub struct Artist {
 }
 
 /// Songs that are there: not missing, in a switched-on folder.
-const PRESENT: &str = "t.missing_since IS NULL AND t.folder_id IN (SELECT id FROM folders WHERE enabled)";
+/// A song that's there and shown (not a hidden copy of a synced song).
+const PRESENT: &str = "t.missing_since IS NULL AND t.copy_of IS NULL AND t.folder_id IN (SELECT id FROM folders WHERE enabled)";
 
 impl Library {
     /// Albums with songs that are there, by title.

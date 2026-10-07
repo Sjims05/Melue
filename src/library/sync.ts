@@ -172,6 +172,8 @@ export interface SyncSettings {
   everyMinutes: number | null
   /** Copy songs on metered connections (mobile data, a hotspot); off: they wait for Wi-Fi (default off). */
   copyOnMetered: boolean
+  /** Move songs new in the other music folders to sync by themselves (default off). */
+  moveNewSongs: boolean
 }
 
 /** What started a sync. */
@@ -362,4 +364,59 @@ export const librarySync = {
   restorePlaylist: (syncId: string) => invoke<number>('restore_playlist', { syncId }),
   /** "Only on this device": not synced (the other devices keep theirs), or synced again. */
   setPlaylistLocalOnly: (id: number, localOnly: boolean) => invoke<void>('set_playlist_local_only', { id, localOnly }),
+}
+
+// ---- moving songs to sync
+
+/** A local song that isn't on the share. */
+export interface LocalSong {
+  id: number
+  title: string
+  artist: string | null
+  album: string | null
+  /** Its music folder's name. */
+  folder: string
+  size: number
+}
+
+/** What to move: a song in the library (its original goes after), or a file (copied: it stays where it is). */
+export type ToMove = { kind: 'song'; id: number } | { kind: 'file'; path: string }
+
+export interface MoveResult {
+  /** Put on the share (and in the synced folder). */
+  moved: number
+  /** On the share already (the same song): only the original goes. */
+  alreadyThere: number
+  /** Couldn't be moved (left as they were): [title or file, why]. */
+  failed: [string, string][]
+  cancelled: boolean
+}
+
+/** Local copies of synced songs, hidden, waiting for a choice: clear the space, or keep them. */
+export interface Copies {
+  songs: number
+  bytes: number
+}
+
+export const moving = {
+  /** Local songs that aren't on the share (the "Not on your share" list). */
+  notOnShare: () => invoke<LocalSong[]>('sync_not_on_share'),
+  /**
+   * Moves songs to sync: to the share (Artist/Album/), and into the synced folder here; a song's original goes
+   * once its synced copy is in the library (Recycle Bin; on Android its trash, after Android asks). Its likes,
+   * plays and playlist entries go with it. Progress shows in sync.status. Rejects with a SyncFailure.
+   */
+  moveToSync: (items: ToMove[]) => invoke<MoveResult>('sync_move_to_sync', { items }),
+  copies: () => invoke<Copies>('sync_copies'),
+  /** Calls `listener` when hidden copies wait for a choice. Resolves to a function that stops listening. */
+  onCopies: (listener: (copies: Copies) => void) => listen<Copies>('song-copies', (e) => listener(e.payload)),
+  /** Clear space: removes the hidden copies. Resolves with how many were removed (or handed to Android). */
+  clearCopies: () => invoke<number>('sync_clear_copies'),
+  /** Spike: looks for copies now, and says what it found (near misses: why a copy wasn't recognised). */
+  check: () =>
+    invoke<{ syncedSongs: number; otherSongs: number; hiddenNow: number; hidden: number; waiting: Copies; nearMisses: string[] }>(
+      'sync_check_copies',
+    ),
+  /** Keeps the hidden copies (not asked about again). */
+  keepCopies: () => invoke<void>('sync_keep_copies'),
 }

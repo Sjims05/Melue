@@ -337,6 +337,35 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
 
     // ---- syncing
 
+    /**
+     * Moves songs from the music index (by file path) to Android's trash, after Android asks the user (its own
+     * dialog; trashed files can be restored for 30 days in the Files app). Android 10 and older: deleted, as far
+     * as Android lets Melue. Resolves with how many songs were found (the dialog decides the rest).
+     */
+    @Command
+    fun trashMusic(invoke: Invoke) {
+        val paths = invoke.getArgs().getJSONArray("paths")
+        val uris = mutableListOf<Uri>()
+        val collection = audioCollection()
+        for (i in 0 until paths.length()) {
+            val path = paths.getString(i)
+            activity.contentResolver.query(
+                collection, arrayOf(MediaStore.Audio.Media._ID), "${MediaStore.Audio.Media.DATA} = ?", arrayOf(path), null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) uris.add(android.content.ContentUris.withAppendedId(collection, cursor.getLong(0)))
+            }
+        }
+        if (uris.isNotEmpty()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val request = MediaStore.createTrashRequest(activity.contentResolver, uris, true)
+                activity.startIntentSenderForResult(request.intentSender, 4711, null, 0, 0, 0)
+            } else {
+                for (uri in uris) runCatching { activity.contentResolver.delete(uri, null, null) }
+            }
+        }
+        invoke.resolve(JSObject().put("found", uris.size))
+    }
+
     /** The phone's name, as set in its settings (About phone), or its model. */
     @Command
     fun deviceName(invoke: Invoke) {

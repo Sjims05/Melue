@@ -108,16 +108,16 @@ impl Library {
             schema_version,
             folders: count("SELECT count(*) FROM folders")?,
             tracks: count(
-                "SELECT count(*) FROM tracks t JOIN folders f ON f.id = t.folder_id WHERE t.missing_since IS NULL AND f.enabled",
+                "SELECT count(*) FROM tracks t JOIN folders f ON f.id = t.folder_id WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled",
             )?,
             // Those with songs that are there (missing songs keep their album and artists until they're back).
             albums: count(
                 "SELECT count(DISTINCT t.album_id) FROM tracks t JOIN folders f ON f.id = t.folder_id
-                 WHERE t.missing_since IS NULL AND f.enabled",
+                 WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled",
             )?,
             artists: count(
                 "SELECT count(DISTINCT x.artist_id) FROM track_artists x JOIN tracks t ON t.id = x.track_id
-                 JOIN folders f ON f.id = t.folder_id WHERE t.missing_since IS NULL AND f.enabled",
+                 JOIN folders f ON f.id = t.folder_id WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled",
             )?,
             playlists: count("SELECT count(*) FROM playlists")?,
         })

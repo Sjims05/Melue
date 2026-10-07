@@ -119,7 +119,7 @@ impl Library {
         )?;
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, t.missing_since IS NULL AND f.enabled, t.album_id, t.path, t.size, t.modified_at, t.title,
+                "SELECT t.id, t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled, t.album_id, t.path, t.size, t.modified_at, t.title,
                         t.artist_credit, t.cover_id, t.track_no, t.disc_no, t.duration_ms, t.folder_id
                  FROM tracks t JOIN folders f ON f.id = t.folder_id",
             )

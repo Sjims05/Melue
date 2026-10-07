@@ -122,7 +122,7 @@ impl Library {
             }
             _ => return Err(format!("not a list: {source}")),
         };
-        let sql = format!("{ITEM_SELECT} {join} WHERE t.missing_since IS NULL AND f.enabled {filter} ORDER BY {order}");
+        let sql = format!("{ITEM_SELECT} {join} WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled {filter} ORDER BY {order}");
         let conn = self.conn();
         let mut stmt = conn.prepare(&sql).map_err(err)?;
         let to_item = |r: &rusqlite::Row| self.queue_item(r);
@@ -137,7 +137,7 @@ impl Library {
 
     /// Queue items for songs, in the order given (songs not there left out).
     pub fn queue_items_for(&self, ids: &[i64]) -> Result<Vec<QueueItem>> {
-        let sql = format!("{ITEM_SELECT} WHERE t.missing_since IS NULL AND f.enabled AND t.id IN (SELECT value FROM json_each(?1))");
+        let sql = format!("{ITEM_SELECT} WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled AND t.id IN (SELECT value FROM json_each(?1))");
         let conn = self.conn();
         let mut stmt = conn.prepare(&sql).map_err(err)?;
         let found: std::collections::HashMap<i64, QueueItem> = stmt
@@ -298,7 +298,7 @@ impl Library {
         let sql = format!(
             "SELECT {TRACK_COLUMNS}
              FROM tracks t JOIN folders f ON f.id = t.folder_id LEFT JOIN covers c ON c.id = t.cover_id {join}
-             WHERE t.missing_since IS NULL AND f.enabled ORDER BY {order}, t.id LIMIT ?1"
+             WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled ORDER BY {order}, t.id LIMIT ?1"
         );
         let conn = self.conn();
         let mut stmt = conn.prepare(&sql).map_err(err)?;

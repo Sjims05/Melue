@@ -43,7 +43,11 @@ import {
   describeSyncFailure,
   minutesAndSeconds,
   librarySync,
+  moving,
   playbackSync,
+  type Copies,
+  type LocalSong,
+  type MoveResult,
   type DeletedPlaylist,
   type PlaylistConflict,
   type ConflictChoice,
@@ -108,6 +112,11 @@ onMounted(async () => {
     playbackOffer.value = offer
     logMsg(`Playback: offered ${describeOffer(offer)}`)
   })
+  copies.value = await moving.copies().catch(() => null)
+  stopCopies = await moving.onCopies((found) => {
+    copies.value = found
+    if (found.songs) logMsg(`${plural(found.songs, 'song')} on this device ${found.songs === 1 ? 'is' : 'are'} also in your synced music (${megabytes(found.bytes)})`)
+  })
   stopConflicts = await librarySync.onConflicts((list) => {
     conflicts.value = list
     if (list.length) logMsg(`Playlists: ${plural(list.length, 'conflict')} waiting for your choice`)
@@ -120,6 +129,7 @@ onUnmounted(() => {
   stopOffers?.()
   stopFollowed?.()
   stopConflicts?.()
+  stopCopies?.()
 })
 
 // ---- synced playback
@@ -361,6 +371,65 @@ const simulateSyncNotification = () =>
   run('Simulate sync notification', async () => {
     await invoke('sync_simulate_notification')
     logMsg('Sync notification: a pretend sync of 20 files, one a second (look at the notification)')
+  })
+
+// ---- moving songs to sync
+
+const notOnShare = ref<LocalSong[] | null>(null)
+const picked = ref<number[]>([])
+const copies = ref<Copies | null>(null)
+let stopCopies: (() => void) | null = null
+
+const showNotOnShare = () =>
+  run('Not on your share', async () => {
+    notOnShare.value = await moving.notOnShare()
+    picked.value = []
+    logMsg(`Not on your share: ${plural(notOnShare.value.length, 'song')}`)
+  })
+
+const describeMove = (r: MoveResult) =>
+  `${r.moved} moved, ${r.alreadyThere} already on the share${r.failed.length ? `, ${r.failed.length} failed (${r.failed.map(([s, why]) => `${s}: ${why}`).join('; ')})` : ''}${r.cancelled ? ', cancelled' : ''}`
+
+const moveToSync = () =>
+  run('Move to sync', async () => {
+    const started = performance.now()
+    logMsg(`Moving ${plural(picked.value.length, 'song')} to sync…`)
+    const r = await moving.moveToSync(picked.value.map((id) => ({ kind: 'song', id })))
+    logMsg(`Move to sync done in ${((performance.now() - started) / 1000).toFixed(1)} s: ${describeMove(r)}. The originals go once the synced copies are in.`)
+    await showNotOnShare()
+  })
+
+const copyFilesToSync = () =>
+  run('Copy files to sync', async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const files = await open({ multiple: true, filters: [{ name: 'Music', extensions: ['mp3', 'flac', 'm4a', 'ogg', 'opus', 'wav', 'aac'] }] })
+    if (!files || !files.length) return
+    const r = await moving.moveToSync(files.map((path) => ({ kind: 'file', path })))
+    logMsg(`Copy files to sync: ${describeMove(r)} (the files stay where they are)`)
+  })
+
+const clearCopies = () =>
+  run('Clear space', async () => {
+    const removed = await moving.clearCopies()
+    logMsg(`Clear space: ${removed} removed${isAndroid ? " (Android asks first; they're in its trash for 30 days)" : ' (to the Recycle Bin)'}`)
+    copies.value = await moving.copies()
+  })
+
+const checkCopies = () =>
+  run('Look for copies', async () => {
+    const r = await moving.check()
+    copies.value = r.waiting
+    logMsg(
+      `Copies: ${r.syncedSongs} synced songs, ${r.otherSongs} elsewhere; ${r.hiddenNow} found now, ${r.hidden} hidden in all, ` +
+        `${r.waiting.songs} waiting for a choice${r.nearMisses.length ? `; not taken as copies: ${r.nearMisses.join(' | ')}` : ''}`,
+    )
+  })
+
+const keepCopies = () =>
+  run('Keep hidden copies', async () => {
+    await moving.keepCopies()
+    copies.value = await moving.copies()
+    logMsg('Hidden copies kept (not asked about again)')
   })
 
 /** The sync status in words. */
@@ -765,6 +834,37 @@ async function libraryStatus() {
           <button class="border rounded px-3 py-1" @click="showInOtherApps(true)">Show in other apps</button>
           <button class="border rounded px-3 py-1" @click="showInOtherApps(false)">Hide from other apps</button>
         </template>
+        <button class="border rounded px-3 py-1" @click="changeSyncSettings({ moveNewSongs: !syncSettings?.moveNewSongs })">
+          Move new songs to sync automatically: {{ syncSettings?.moveNewSongs ? 'yes' : 'no' }}
+        </button>
+      </div>
+      <div v-if="copies?.songs" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
+        {{ plural(copies.songs, 'song') }} on this device {{ copies.songs === 1 ? 'is' : 'are' }} also in your synced music ({{ megabytes(copies.bytes) }}).
+        <button class="border rounded px-3 py-1" @click="clearCopies">Clear space</button>
+        <button class="border rounded px-3 py-1" @click="keepCopies">Keep hidden copies</button>
+      </div>
+      <div v-if="sync.available" class="flex flex-wrap items-center gap-2">
+        <button class="border rounded px-3 py-1" @click="showNotOnShare">Not on your share</button>
+        <template v-if="notOnShare">
+          <button class="border rounded px-3 py-1" :disabled="!picked.length" @click="moveToSync">
+            Move {{ plural(picked.length, 'song') }} to sync
+          </button>
+          <button class="border rounded px-2 text-xs" @click="picked = picked.length ? [] : notOnShare.map((s) => s.id)">
+            {{ picked.length ? 'Select none' : 'Select all' }}
+          </button>
+        </template>
+        <button v-if="!isAndroid" class="border rounded px-3 py-1" @click="copyFilesToSync">Copy files to sync…</button>
+        <button class="border rounded px-3 py-1" @click="checkCopies">Look for copies now</button>
+      </div>
+      <div v-if="notOnShare" class="space-y-1 max-h-64 overflow-y-auto">
+        <div v-if="!notOnShare.length" class="text-sm text-muted-foreground">Everything here is on your share.</div>
+        <label v-for="song in notOnShare" :key="song.id" class="flex items-center gap-2 text-sm">
+          <input v-model="picked" type="checkbox" :value="song.id" />
+          <span class="truncate">{{ song.title }}</span>
+          <span class="text-xs text-muted-foreground truncate">
+            {{ song.artist ?? '' }}{{ song.album ? ` · ${song.album}` : '' }} · {{ song.folder }} · {{ megabytes(song.size) }}
+          </span>
+        </label>
       </div>
       <div v-if="playbackOffer" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
         Continue where you left off on {{ playbackOffer.deviceName }}?

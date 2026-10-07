@@ -1,6 +1,6 @@
 //! The sync's commands for the UI. Share work runs on a thread meant for waiting.
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use super::plan::SyncPlan;
 use super::run::SyncResult;
@@ -9,6 +9,7 @@ use super::scheduler::{self, SyncFailure, SyncStatus};
 use super::handoff::{self, PlaybackFile, PlaybackSettings};
 use super::playlist_sync::{self, Choice, DeletedPlaylist, PlaylistConflict};
 use crate::library::changes::{self, LibraryChange};
+use super::moving::{self, Copies, CopyCheck, LocalSong, MoveResult, ToMove};
 use super::SyncSettings;
 use crate::library::Library;
 use crate::share::commands::on_share_thread;
@@ -57,6 +58,7 @@ pub fn sync_settings(library: tauri::State<'_, Library>) -> Result<SyncSettings,
 #[tauri::command(async)]
 pub fn sync_set_settings(app: AppHandle, library: tauri::State<'_, Library>, settings: SyncSettings) -> Result<SyncSettings, String> {
     library.set_sync_settings(&settings)?;
+    super::moving::moving_new_songs(&library, settings.move_new_songs)?;
     if !settings.on_change {
         scheduler::stop_watching(&app);
     }
@@ -137,4 +139,49 @@ pub fn set_playlist_local_only(app: AppHandle, library: tauri::State<'_, Library
     library.set_playlist_local_only(id, local_only)?;
     changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
     Ok(())
+}
+
+/// Local songs that aren't on the share (the "Not on your share" list).
+#[tauri::command]
+pub async fn sync_not_on_share(app: AppHandle) -> Result<Vec<LocalSong>, String> {
+    on_share_thread(move || {
+        let library = app.state::<Library>();
+        let folder = library.synced_folder()?.ok_or("no share is set up")?;
+        let songs = library.songs_here(&folder, &handoff::device_id(&library)?)?;
+        library.not_on_share(&folder, &songs)
+    })
+    .await
+}
+
+/// Moves songs (or copies files) to sync: to the share and into the synced folder; a song's original goes
+/// once its synced copy is in the library.
+#[tauri::command]
+pub async fn sync_move_to_sync(app: AppHandle, items: Vec<ToMove>) -> Result<MoveResult, SyncFailure> {
+    on_share_thread(move || moving::move_to_sync(&app, items)).await
+}
+
+/// Hidden copies of synced songs waiting for a choice (also sent as `song-copies` events).
+#[tauri::command(async)]
+pub fn sync_copies(library: tauri::State<'_, Library>) -> Result<Copies, String> {
+    library.copies_waiting()
+}
+
+/// Clear space: removes the hidden copies (Recycle Bin; Android's trash, after Android asks).
+#[tauri::command]
+pub async fn sync_clear_copies(app: AppHandle) -> Result<usize, String> {
+    on_share_thread(move || moving::clear_copies(&app)).await
+}
+
+/// Keeps the hidden copies (not asked about again).
+#[tauri::command(async)]
+pub fn sync_keep_copies(app: AppHandle, library: tauri::State<'_, Library>) -> Result<(), String> {
+    library.keep_copies()?;
+    moving::emit_copies(&app);
+    Ok(())
+}
+
+/// Spike: looks for copies of synced songs now, and says what it found (near misses too).
+#[tauri::command]
+pub async fn sync_check_copies(app: AppHandle) -> Result<CopyCheck, String> {
+    on_share_thread(move || moving::check_copies(&app)).await
 }

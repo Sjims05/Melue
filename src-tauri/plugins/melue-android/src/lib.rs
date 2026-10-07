@@ -99,6 +99,16 @@ mod android {
         uri: String,
     }
 
+    #[derive(Serialize)]
+    struct Paths<'a> {
+        paths: &'a [String],
+    }
+
+    #[derive(Deserialize)]
+    struct Found {
+        found: u32,
+    }
+
     #[derive(Deserialize)]
     struct DeviceName {
         name: String,
@@ -186,6 +196,12 @@ mod android {
                 .run_mobile_plugin::<Moved>("moveDocument", Move { document, from, to })
                 .map(|m| m.uri)
                 .map_err(|e| e.to_string())
+        }
+
+        /// Moves songs of the music index (by file path) to Android's trash, after Android asks the user. Returns
+        /// how many were found.
+        pub fn trash_music(&self, paths: &[String]) -> Result<u32, String> {
+            self.0.run_mobile_plugin::<Found>("trashMusic", Paths { paths }).map(|f| f.found).map_err(|e| e.to_string())
         }
 
         /// The phone's name, as set in its settings, or its model.
