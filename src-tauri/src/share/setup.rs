@@ -23,7 +23,16 @@ use crate::library::{Folder, FolderKind, Library};
 pub enum ShareSetup {
     /// An SMB share Melue logs in to.
     #[serde(rename_all = "camelCase")]
-    Smb { host: String, share: String, folder: String, user: String, password_store: PasswordStore },
+    Smb {
+        host: String,
+        share: String,
+        folder: String,
+        user: String,
+        password_store: PasswordStore,
+        /// The share's address on the home network (an address or a name), tried first at home.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        home_host: Option<String>,
+    },
     /// A network drive the system has connected (desktop: `Z:\`, `\\nas\music`). `stream`: played straight
     /// from the drive instead of copied.
     #[serde(rename_all = "camelCase")]
@@ -135,12 +144,14 @@ pub type Opener<'a> = dyn Fn(&ShareSetup, Option<&str>) -> Result<Box<dyn Share>
 /// The real shares: SMB, or a folder (a network drive).
 pub fn open(setup: &ShareSetup, password: Option<&str>) -> Result<Box<dyn Share>, SetupError> {
     Ok(match setup {
-        ShareSetup::Smb { host, share, folder, user, .. } => Box::new(SmbShare::new(SmbConfig {
+        ShareSetup::Smb { host, share, folder, user, home_host, .. } => Box::new(SmbShare::new(SmbConfig {
             host: host.clone(),
+            home_host: home_host.clone(),
             share: share.clone(),
             folder: folder.clone(),
             user: user.clone(),
             password: password.unwrap_or_default().to_string(),
+            ..Default::default()
         })?),
         ShareSetup::Drive { path, .. } => Box::new(FolderShare::new(path)),
     })
@@ -250,6 +261,17 @@ fn same_place(a: &ShareSetup, b: &ShareSetup) -> bool {
         (ShareSetup::Drive { path: p1, .. }, ShareSetup::Drive { path: p2, .. }) => p1 == p2,
         _ => false,
     }
+}
+
+/// The share's home address (an address or a name; None: none). Nothing else changes (the sync's records stay).
+pub fn set_home_host(library: &Library, home_host: Option<&str>) -> Result<ShareSettings, String> {
+    let mut settings = library.share_settings()?.ok_or("no share is set up")?;
+    match &mut settings.setup {
+        ShareSetup::Smb { home_host: h, .. } => *h = home_host.map(str::trim).filter(|h| !h.is_empty()).map(str::to_string),
+        ShareSetup::Drive { .. } => return Err("a network drive is reached by the system: it has no home address".into()),
+    }
+    library.set_setting(SHARE_SETTING, &serde_json::to_string(&settings).map_err(|e| e.to_string())?)?;
+    Ok(settings)
 }
 
 /// The share, ready to use (with its password from where it's kept), and its setup.

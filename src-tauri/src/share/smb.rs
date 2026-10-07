@@ -26,11 +26,21 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// Without any answer for this long, an operation gives up.
 pub const OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long the home address gets to answer before the main one is used.
+const HOME_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long looking up a home address given by name may take (away from home it may not answer at all).
+const HOME_LOOKUP_TIMEOUT: Duration = Duration::from_secs(1);
+
 /// Where the share is and how to log in.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SmbConfig {
     /// "nas.local", "192.168.1.10" or with a port ("nas:445").
     pub host: String,
+    /// The share's address on the home network (an address or a name), tried first when this device is on
+    /// that network: reliable at home even when the VPN isn't (see [`home_address`]).
+    pub home_host: Option<String>,
+    /// Set when the home address was tried at home and didn't answer (the main one was used).
+    pub home_note: Arc<std::sync::Mutex<Option<String>>>,
     /// The share's name ("music").
     pub share: String,
     /// The music folder inside the share ("" for the share itself, "Media/Music").
@@ -44,6 +54,7 @@ impl std::fmt::Debug for SmbConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SmbConfig")
             .field("host", &self.host)
+            .field("home_host", &self.home_host)
             .field("share", &self.share)
             .field("folder", &self.folder)
             .field("user", &self.user)
@@ -100,10 +111,58 @@ fn host_with_port(host: &str) -> String {
     if host.contains(':') && !host.starts_with('[') { host.to_string() } else { format!("{host}:445") }
 }
 
+/// Whether two addresses are on the same home network (the same /24 range, as home routers hand out).
+pub fn same_network(a: std::net::Ipv4Addr, b: std::net::Ipv4Addr) -> bool {
+    a.octets()[..3] == b.octets()[..3]
+}
+
+/// The home address to try first: when it's a home-network address (given, or looked up from a name) and this
+/// device's own address on the way there is in the same range (it's at home). None: go straight to the main
+/// address.
+async fn home_address(home: &str) -> Option<String> {
+    use std::net::{IpAddr, SocketAddr};
+    let with_port = host_with_port(home);
+    let ip = match with_port.parse::<SocketAddr>() {
+        Ok(addr) => addr,
+        Err(_) => tokio::time::timeout(HOME_LOOKUP_TIMEOUT, tokio::net::lookup_host(with_port.clone()))
+            .await
+            .ok()?
+            .ok()?
+            .find(|a| a.is_ipv4())?,
+    };
+    let IpAddr::V4(nas) = ip.ip() else { return None };
+    if !nas.is_private() {
+        return None;
+    }
+    // The address this device would send from (no packet is sent): on the home network, it's in the same range.
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    probe.connect(SocketAddr::new(IpAddr::V4(nas), 445)).ok()?;
+    let IpAddr::V4(own) = probe.local_addr().ok()?.ip() else { return None };
+    same_network(own, nas).then(|| ip.to_string())
+}
+
 async fn connect(config: &SmbConfig) -> ShareResult<Conn> {
+    if let Some(home) = config.home_host.as_deref().map(str::trim).filter(|h| !h.is_empty()) {
+        if let Some(addr) = home_address(home).await {
+            match connect_to(config, &addr, HOME_TIMEOUT).await {
+                Ok(conn) => {
+                    *config.home_note.lock().unwrap() = None;
+                    return Ok(conn);
+                }
+                Err(e) => {
+                    let note = format!("the home address ({home}) didn't answer, so the main one was used: it may have changed ({e})");
+                    *config.home_note.lock().unwrap() = Some(note);
+                }
+            }
+        }
+    }
+    connect_to(config, &host_with_port(&config.host), CONNECT_TIMEOUT).await
+}
+
+async fn connect_to(config: &SmbConfig, addr: &str, timeout: Duration) -> ShareResult<Conn> {
     let client_config = ClientConfig {
-        addr: host_with_port(&config.host),
-        timeout: CONNECT_TIMEOUT,
+        addr: addr.to_string(),
+        timeout,
         username: config.user.clone(),
         password: config.password.clone(),
         domain: String::new(),
@@ -117,7 +176,7 @@ async fn connect(config: &SmbConfig) -> ShareResult<Conn> {
         let tree = client.connect_share(&config.share).await.map_err(|e| classify(e, &config.share))?;
         Ok(Conn { client, tree })
     };
-    match tokio::time::timeout(CONNECT_TIMEOUT * 2, attempt).await {
+    match tokio::time::timeout(timeout * 2, attempt).await {
         Ok(result) => result,
         Err(_) => Err(ShareError::Unreachable { detail: format!("no answer from {} in time", config.host) }),
     }
@@ -143,6 +202,11 @@ impl SmbShare {
     }
 
     /// Connects and lists the music folder: what a "Test connection" button does.
+    /// Why the home address wasn't used at home (None: it was, or this device isn't at home).
+    pub fn home_note(&self) -> Option<String> {
+        self.config.home_note.lock().unwrap().clone()
+    }
+
     pub fn check(&self) -> ShareResult<()> {
         self.list("").map(|_| ())
     }
@@ -476,6 +540,10 @@ impl Share for SmbShare {
         Ok(Some(super::Watch::new(alive, move || task.abort())))
     }
 
+    fn note(&self) -> Option<String> {
+        self.home_note()
+    }
+
     fn free_space(&self) -> ShareResult<Option<u64>> {
         let info = self.quick(self.config.share.clone(), |c| Box::pin(async move { c.client.fs_info(&mut c.tree).await }))?;
         Ok(Some(info.free_bytes))
@@ -508,8 +576,21 @@ mod tests {
 
     #[test]
     fn the_password_never_shows() {
-        let config = SmbConfig { host: "nas".into(), share: "music".into(), folder: String::new(), user: "simon".into(), password: "hunter2".into() };
+        let config = SmbConfig { host: "nas".into(), share: "music".into(), user: "simon".into(), password: "hunter2".into(), ..Default::default() };
         let shown = format!("{config:?}");
         assert!(shown.contains("simon") && !shown.contains("hunter2"), "{shown}");
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::same_network;
+
+    #[test]
+    fn the_same_home_network() {
+        let ip = |s: &str| s.parse().unwrap();
+        assert!(same_network(ip("192.168.0.198"), ip("192.168.0.20")));
+        assert!(!same_network(ip("192.168.1.5"), ip("192.168.0.20")), "another network");
+        assert!(!same_network(ip("100.66.71.88"), ip("192.168.0.20")), "away: the VPN's or the phone network's address");
     }
 }

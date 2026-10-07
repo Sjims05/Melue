@@ -45,7 +45,16 @@ export type PasswordStore = 'secure' | 'ask' | 'file'
 
 /** Where the share is: an SMB share Melue logs in to, or (desktop) a network drive the system has connected. */
 export type ShareSetup =
-  | { kind: 'smb'; host: string; share: string; folder: string; user: string; passwordStore: PasswordStore }
+  | {
+      kind: 'smb'
+      host: string
+      share: string
+      folder: string
+      user: string
+      passwordStore: PasswordStore
+      /** The share's address on the home network (an address or a name), tried first at home. */
+      homeHost?: string
+    }
   /** `stream`: played straight from the drive (it becomes the synced library folder), not copied. */
   | { kind: 'drive'; path: string; stream: boolean }
 
@@ -120,6 +129,11 @@ export const share = {
   remove: () => invoke<ShareInfo>('share_remove'),
   /** Android: shows the synced music in other apps (default) or hides it (a .nomedia file). */
   setShownInOtherApps: (shown: boolean) => invoke<void>('share_set_shown_in_other_apps', { shown }),
+  /**
+   * The share's address on the home network (an address like 192.168.0.20, or a name like nas.local; empty:
+   * none). Tried first when this device is on that network; the main address otherwise, or when it doesn't answer.
+   */
+  setHomeHost: (homeHost: string) => invoke<ShareInfo>('share_set_home_host', { homeHost: homeHost.trim() || null }),
 }
 
 // ---- the sync (src-tauri/src/sync)
@@ -197,6 +211,8 @@ export interface SyncStatus {
   problem: SyncFailure | null
   /** The share couldn't be reached: when it's tried again (sooner if the network changes). */
   retryAtMs: number | null
+  /** Something about the connection (the home address didn't answer at home, so the main one was used). */
+  note: string | null
 }
 
 /** How far a running sync is. */

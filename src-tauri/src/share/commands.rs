@@ -150,3 +150,15 @@ pub async fn share_set_shown_in_other_apps(app: AppHandle, shown: bool) -> Resul
     })
     .await
 }
+
+/// The share's home address (an address or a name; empty: none): tried first at home.
+#[tauri::command]
+pub async fn share_set_home_host(app: AppHandle, home_host: Option<String>) -> Result<ShareInfo, SetupError> {
+    on_share_thread(move || {
+        setup::set_home_host(&app.state::<Library>(), home_host.as_deref())?;
+        // Opened again with it.
+        crate::sync::shared::reset(&app);
+        info(&app)
+    })
+    .await
+}

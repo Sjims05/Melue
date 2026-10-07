@@ -118,6 +118,11 @@ pub trait Share: Send + Sync {
         Ok(None)
     }
 
+    /// Something to tell the user about the connection (an SMB share's home address that didn't answer).
+    fn note(&self) -> Option<String> {
+        None
+    }
+
     /// A whole small file (state files, playlists).
     fn read(&self, path: &str) -> ShareResult<Vec<u8>> {
         let mut bytes = Vec::new();

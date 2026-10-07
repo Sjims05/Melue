@@ -151,6 +151,7 @@ fn nas() -> Option<(SmbConfig, String)> {
         folder: value("VITE_SMB_MUSIC_PATH").unwrap_or_default(),
         user: value("VITE_SMB_USER")?,
         password: value("VITE_SMB_PASS")?,
+        ..Default::default()
     };
     let folder = format!("melue-test-{}-{}", std::process::id(), crate::library::testkit::unique());
     Some((config, folder))

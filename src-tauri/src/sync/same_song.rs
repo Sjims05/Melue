@@ -12,9 +12,64 @@ use crate::library::{err, Folder, Library, Result};
 /// Lengths closer than this are the same song.
 const SAME_LENGTH_MS: i64 = 2_000;
 
-/// A song's name for comparing: lower case, spaces tidied.
+/// A name for comparing: lower case, spaces tidied.
 fn plain(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// Words that mark a version of the same recording, not another song: "(Remastered 2009)", "- Radio Edit".
+/// ("Live", "Acoustic" or "Remix" are left: those are other recordings; the length tells versions apart too.)
+const VERSION_WORDS: [&str; 9] = ["remaster", "radio edit", "single version", "album version", "mono", "stereo", "explicit", "clean", "deluxe"];
+
+/// Featured artists: "feat. X", "ft. X", "featuring X".
+const FEATURING: [&str; 4] = ["feat.", "feat ", "ft.", "featuring "];
+
+fn is_version_note(note: &str) -> bool {
+    let lower = note.to_lowercase();
+    if FEATURING.iter().any(|f| lower.trim_start().starts_with(f)) {
+        return true;
+    }
+    // Whole words ("mono", not "Monologue"); "remaster" also as "remastered".
+    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let spaced = format!(" {} ", words.join(" "));
+    VERSION_WORDS.iter().any(|w| if *w == "remaster" { words.iter().any(|x| x.starts_with(w)) } else { spaced.contains(&format!(" {w} ")) })
+}
+
+/// A title for comparing: without version notes ("Karma Chameleon - Remastered 2002" and "Karma Chameleon
+/// (Radio Edit)" are "karma chameleon") and featured artists.
+pub fn plain_title(title: &str) -> String {
+    let mut t = title.trim().to_string();
+    // Notes in brackets: "(Remastered 2009)", "[Radio Edit]", "(feat. X)".
+    loop {
+        let found = t.char_indices().filter(|(_, c)| matches!(c, '(' | '[')).find_map(|(open, c)| {
+            let close = if c == '(' { ')' } else { ']' };
+            let end = open + t[open..].find(close)?;
+            is_version_note(&t[open + 1..end]).then_some((open, end + 1))
+        });
+        match found {
+            Some((from, to)) => t.replace_range(from..to, " "),
+            None => break,
+        }
+    }
+    // A note after a dash: "- Remastered 2002", "- Single Version".
+    if let Some(dash) = t.rfind(" - ") {
+        if is_version_note(&t[dash + 3..]) {
+            t.truncate(dash);
+        }
+    }
+    // A featured artist in the title: "Song feat. X".
+    let lower = t.to_lowercase();
+    if let Some(at) = FEATURING.iter().filter_map(|f| lower.find(&format!(" {f}"))).min() {
+        t.truncate(at);
+    }
+    plain(&t)
+}
+
+/// An artist for comparing: the main artist ("Band feat. X" is "band").
+pub fn plain_artist(artist: &str) -> String {
+    let lower = artist.to_lowercase();
+    let main = FEATURING.iter().filter_map(|f| lower.find(&format!(" {f}"))).min().map_or(artist, |at| &artist[..at]);
+    plain(main)
 }
 
 /// Whether two songs are the same, by artist, title and length (an unknown length doesn't count against it).
@@ -23,7 +78,7 @@ pub fn same_song(a: (&str, &str, Option<i64>), b: (&str, &str, Option<i64>)) -> 
         (Some(x), Some(y)) => (x - y).abs() <= SAME_LENGTH_MS,
         _ => true,
     };
-    !a.1.trim().is_empty() && plain(a.0) == plain(b.0) && plain(a.1) == plain(b.1) && lengths_match
+    !plain_title(a.1).is_empty() && plain_artist(a.0) == plain_artist(b.0) && plain_title(a.1) == plain_title(b.1) && lengths_match
 }
 
 struct Song {
@@ -71,7 +126,7 @@ impl Songs {
     pub fn near_misses(&self) -> Vec<String> {
         let mut synced_by_title: HashMap<String, Vec<&Song>> = HashMap::new();
         for song in self.songs.values().filter(|s| s.share_path.is_some()) {
-            synced_by_title.entry(plain(&song.title)).or_default().push(song);
+            synced_by_title.entry(plain_title(&song.title)).or_default().push(song);
         }
         let seconds = |ms: Option<i64>| ms.map_or("?".to_string(), |ms| format!("{:.1} s", ms as f64 / 1000.0));
         let mut misses = Vec::new();
@@ -79,7 +134,7 @@ impl Songs {
             if self.synced_copy(id).is_some() {
                 continue;
             }
-            for synced in synced_by_title.get(&plain(&song.title)).into_iter().flatten() {
+            for synced in synced_by_title.get(&plain_title(&song.title)).into_iter().flatten() {
                 misses.push(format!(
                     "\"{}\": here by \"{}\", {}; synced by \"{}\", {}",
                     song.title,
@@ -125,7 +180,7 @@ impl Songs {
     /// Songs with this artist, title and length.
     fn same_as<'a>(&'a self, artist: &str, title: &str, duration_ms: Option<i64>) -> impl Iterator<Item = i64> + 'a {
         let wanted = (artist.to_string(), title.to_string(), duration_ms);
-        self.by_name.get(&(plain(artist), plain(title))).into_iter().flatten().copied().filter(move |id| {
+        self.by_name.get(&(plain_artist(artist), plain_title(title))).into_iter().flatten().copied().filter(move |id| {
             let s = &self.songs[id];
             same_song((&wanted.0, &wanted.1, wanted.2), (&s.artist, &s.title, s.duration_ms))
         })
@@ -154,7 +209,7 @@ impl Library {
             if let Some(p) = &share_path {
                 songs.by_path.insert(key(p), id);
             }
-            songs.by_name.entry((plain(&artist), plain(&title))).or_default().push(id);
+            songs.by_name.entry((plain_artist(&artist), plain_title(&title))).or_default().push(id);
             songs.songs.insert(id, Song { artist, title, duration_ms, share_path });
         }
         Ok(songs)
@@ -174,5 +229,23 @@ mod tests {
         assert!(!same_song(song, ("Other", "Waterloo", Some(165_000))));
         assert!(same_song(song, ("ABBA", "Waterloo", None)), "a length not known");
         assert!(!same_song(("ABBA", "", None), ("ABBA", "", None)), "no title: nothing to go by");
+    }
+
+    #[test]
+    fn version_notes_and_featured_artists_dont_count() {
+        let same = |a: (&str, &str), b: (&str, &str)| same_song((a.0, a.1, Some(200_000)), (b.0, b.1, Some(200_000)));
+        assert!(same(("Culture Club", "Karma Chameleon - Remastered 2002"), ("Culture Club", "Karma Chameleon")));
+        assert!(same(("Culture Club", "Karma Chameleon (2002 Remaster)"), ("Culture Club", "Karma Chameleon [Radio Edit]")));
+        assert!(same(("Calvin Harris feat. Rihanna", "This Is What You Came For"), ("Calvin Harris", "This Is What You Came For (feat. Rihanna)")));
+        assert!(same(("Band", "Song ft. Someone"), ("Band", "Song")));
+        // Other recordings stay apart (and the length does its part).
+        assert!(!same(("Band", "Song (Live)"), ("Band", "Song")));
+        assert!(!same(("Band", "Song - Acoustic"), ("Band", "Song")));
+        assert!(!same(("Band", "Song (Remix)"), ("Band", "Song")));
+        // Brackets that are part of the title stay.
+        assert!(!same(("Elton John", "Rocket Man (I Think It's Going To Be A Long, Long Time)"), ("Elton John", "Rocket Man")));
+        assert_eq!(plain_title("Rocket Man (I Think It's Going To Be A Long, Long Time)"), "rocket man (i think it's going to be a long, long time)");
+        assert_eq!(plain_title("Should I Stay or Should I Go - Remastered"), "should i stay or should i go");
+        assert_eq!(plain_title("Intro (Monologue)"), "intro (monologue)", "whole words only");
     }
 }

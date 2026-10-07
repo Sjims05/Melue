@@ -23,7 +23,7 @@ use share::commands::on_share_thread;
 #[tauri::command]
 async fn smb_connect(state: tauri::State<'_, SpikeShare>, host: String, user: String, pass: String, share: String) -> Result<(), String> {
     let connected = on_share_thread(move || {
-        let connected = SmbShare::new(SmbConfig { host, share, folder: String::new(), user, password: pass })?;
+        let connected = SmbShare::new(SmbConfig { host, share, user, password: pass, ..Default::default() })?;
         connected.check()?;
         Ok::<_, String>(connected)
     })
@@ -159,6 +159,7 @@ pub fn run() {
             share::commands::share_set_password,
             share::commands::share_remove,
             share::commands::share_set_shown_in_other_apps,
+            share::commands::share_set_home_host,
             sync::commands::sync_plan,
             sync::commands::sync_now,
             sync::commands::sync_cancel,

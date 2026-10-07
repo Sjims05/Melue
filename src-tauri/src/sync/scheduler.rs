@@ -66,6 +66,8 @@ pub struct SyncStatus {
     pub problem: Option<SyncFailure>,
     /// The share couldn't be reached: when it's tried again (and sooner if the network changes).
     pub retry_at_ms: Option<i64>,
+    /// Something about the connection (the home address didn't answer at home, so the main one was used).
+    pub note: Option<String>,
 }
 
 /// The running sync's state, and the scheduler's.
@@ -204,11 +206,13 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
             let last = LastSync { at_ms: now_ms(), trigger, result: done.clone() };
             let _ = app.state::<Library>().save_last_sync(&last);
             *syncing.retry.lock().unwrap() = None;
+            let note = share.note();
             set_status(app, |s| {
                 s.syncing = None;
                 s.last = Some(last);
                 s.problem = None;
                 s.retry_at_ms = None;
+                s.note = note;
             });
             // The share's layout, as the share says (another device may have changed it).
             if let Err(e) = super::layout::agree(&app.state::<Library>(), share.as_ref()) {

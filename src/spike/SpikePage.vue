@@ -247,6 +247,19 @@ const toggleLike = (song: Track) =>
 
 const shareForm = ref({ ...smbTestLogin, passwordStore: 'secure' as PasswordStore, drivePath: '', streamDrive: false })
 const shareInfo = ref<ShareInfo | null>(null)
+const homeHost = ref('')
+watch(
+  () => shareInfo.value?.settings,
+  (settings) => {
+    if (settings?.kind === 'smb') homeHost.value = settings.homeHost ?? ''
+  },
+)
+
+const saveHomeHost = () =>
+  run('Address at home', async () => {
+    shareInfo.value = await share.setHomeHost(homeHost.value)
+    logMsg(homeHost.value.trim() ? `Address at home: ${homeHost.value.trim()} (tried first at home)` : 'No address at home')
+  })
 /** A setup refused for want of a secure store: offers asking each time or a plain file. */
 const noSecureStore = ref(false)
 
@@ -495,6 +508,7 @@ const syncStatusText = computed(() => {
   }
   if (s.problem) parts.push(`problem: ${describeSyncFailure(s.problem)}`)
   if (s.retryAtMs) parts.push(`trying again at ${new Date(s.retryAtMs).toLocaleTimeString()}`)
+  if (s.note) parts.push(s.note)
   return parts.join(' · ')
 })
 
@@ -826,6 +840,17 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="setUpShare()">Set up share{{ isAndroid ? ' (choose folder)' : '' }}</button>
         <button class="border rounded px-3 py-1" @click="giveSharePassword">{{ shareInfo?.needsPassword ? 'Give password' : 'Change password' }}</button>
         <button class="border rounded px-3 py-1" @click="removeShare">Remove share</button>
+      </div>
+      <div v-if="shareInfo?.settings?.kind === 'smb'" class="flex flex-wrap items-center gap-2 text-sm">
+        <label class="flex items-center gap-1">
+          Address at home:
+          <input v-model="homeHost" class="border rounded px-2 py-1 w-40" placeholder="192.168.0.20 or nas.local" />
+        </label>
+        <button class="border rounded px-3 py-1" @click="saveHomeHost">Save</button>
+        <span class="text-xs text-muted-foreground">
+          Tried first at home (reliable without the VPN). Tip: give your NAS a fixed address in your router (DHCP
+          reservation), or use its name.
+        </span>
       </div>
       <div v-if="noSecureStore" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
         No secure place for the password on this system.
