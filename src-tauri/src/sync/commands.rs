@@ -7,6 +7,8 @@ use super::run::SyncResult;
 use super::schedule::Trigger;
 use super::scheduler::{self, SyncFailure, SyncStatus};
 use super::handoff::{self, PlaybackFile, PlaybackSettings};
+use super::playlist_sync::{self, Choice, DeletedPlaylist, PlaylistConflict};
+use crate::library::changes::{self, LibraryChange};
 use super::SyncSettings;
 use crate::library::Library;
 use crate::share::commands::on_share_thread;
@@ -95,4 +97,44 @@ pub async fn playback_not_now(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn playback_check(app: AppHandle) {
     handoff::check(&app);
+}
+
+/// Spike: syncs the library data (likes, plays, playlists) with the share now.
+#[tauri::command]
+pub async fn library_sync_now(app: AppHandle) -> Result<(), String> {
+    on_share_thread(move || super::data::run(&app)).await
+}
+
+/// Playlists changed on two devices in ways that don't merge, waiting for a choice.
+#[tauri::command(async)]
+pub fn playlist_conflicts(library: tauri::State<'_, Library>) -> Result<Vec<PlaylistConflict>, String> {
+    library.playlist_conflicts()
+}
+
+/// A choice for a conflict: "mine", "theirs" or "both" (see playlist_sync.rs).
+#[tauri::command]
+pub async fn playlist_answer_conflict(app: AppHandle, sync_id: String, choice: Choice) -> Result<(), String> {
+    on_share_thread(move || playlist_sync::answer(&app, &sync_id, choice)).await
+}
+
+/// Synced playlists deleted in the last 30 days, which can be restored.
+#[tauri::command(async)]
+pub fn deleted_playlists(library: tauri::State<'_, Library>) -> Result<Vec<DeletedPlaylist>, String> {
+    library.deleted_playlists()
+}
+
+/// Restores a deleted playlist (everywhere, at the next sync). Returns its id.
+#[tauri::command(async)]
+pub fn restore_playlist(app: AppHandle, library: tauri::State<'_, Library>, sync_id: String) -> Result<i64, String> {
+    let id = library.restore_playlist(&sync_id)?;
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    Ok(id)
+}
+
+/// "Only on this device": the playlist isn't synced (the other devices keep theirs), or is again.
+#[tauri::command(async)]
+pub fn set_playlist_local_only(app: AppHandle, library: tauri::State<'_, Library>, id: i64, local_only: bool) -> Result<(), String> {
+    library.set_playlist_local_only(id, local_only)?;
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    Ok(())
 }

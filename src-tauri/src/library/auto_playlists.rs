@@ -3,7 +3,7 @@
 //! - "songs": All songs;
 //! - "liked": Liked songs;
 //! - "top:<period>": Top songs of the last month, half year, year (rolling: the last 30, 182, 365 days, from the
-//!   plays per day) and all time (from track_stats), each with its own size (25, 50, 100 or 200; default 50);
+//!   plays per day) and all time (from track_stats), with the other devices' plays (sync/data.rs), each with its own size (25, 50, 100 or 200; default 50);
 //! - "folder:<id>": one per music folder, by path (none when there's only one folder: All songs is the same).
 //!
 //! Any of them can be hidden, and shown again in the settings.
@@ -161,11 +161,11 @@ impl Library {
         // All time: the per-song counts. A period: the plays per day since its first day (?2).
         let sql = match period.days() {
             None => format!(
-                "SELECT s.track_id FROM track_stats s {present} AND s.play_count > 0 AND ?2 IS NOT NULL
+                "SELECT s.track_id FROM all_track_stats s {present} AND s.play_count > 0 AND ?2 IS NOT NULL
                  ORDER BY s.play_count DESC, s.last_played_at DESC, s.track_id LIMIT ?1"
             ),
             Some(_) => format!(
-                "SELECT s.track_id FROM play_days s {present} AND s.day > ?2
+                "SELECT s.track_id FROM all_play_days s {present} AND s.day > ?2
                  GROUP BY s.track_id ORDER BY sum(s.plays) DESC, max(s.day) DESC, s.track_id LIMIT ?1"
             ),
         };

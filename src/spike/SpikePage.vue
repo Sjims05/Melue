@@ -42,7 +42,11 @@ import {
   type SyncSettings,
   describeSyncFailure,
   minutesAndSeconds,
+  librarySync,
   playbackSync,
+  type DeletedPlaylist,
+  type PlaylistConflict,
+  type ConflictChoice,
   syncing,
   type PlaybackFile,
   type PlaybackSettings,
@@ -104,6 +108,10 @@ onMounted(async () => {
     playbackOffer.value = offer
     logMsg(`Playback: offered ${describeOffer(offer)}`)
   })
+  stopConflicts = await librarySync.onConflicts((list) => {
+    conflicts.value = list
+    if (list.length) logMsg(`Playlists: ${plural(list.length, 'conflict')} waiting for your choice`)
+  })
   stopFollowed = await playbackSync.onFollowed((other) => logMsg(`Playback: continued from ${describeOffer(other)}, without asking`))
 })
 onUnmounted(() => {
@@ -111,6 +119,7 @@ onUnmounted(() => {
   stopChangeLog?.()
   stopOffers?.()
   stopFollowed?.()
+  stopConflicts?.()
 })
 
 // ---- synced playback
@@ -118,6 +127,7 @@ const playbackSettings = ref<PlaybackSettings | null>(null)
 const playbackOffer = ref<PlaybackFile | null>(null)
 let stopOffers: (() => void) | null = null
 let stopFollowed: (() => void) | null = null
+let stopConflicts: (() => void) | null = null
 
 const describeOffer = (o: PlaybackFile) =>
   `${o.deviceName}: ${o.title ?? o.queue[o.index]}${o.artist ? ` — ${o.artist}` : ''} at ${minutesAndSeconds(o.positionS)}` +
@@ -436,7 +446,43 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 async function showPlaylists() {
   playlists.value = await library.playlists()
   autoPlaylists.value = await library.autoPlaylists()
+  conflicts.value = await librarySync.conflicts().catch(() => [])
+  deletedPlaylists.value = await librarySync.deletedPlaylists().catch(() => [])
 }
+
+// ---- library data across devices (likes, plays, playlists)
+
+const conflicts = ref<PlaylistConflict[]>([])
+const deletedPlaylists = ref<DeletedPlaylist[]>([])
+
+const syncLibraryNow = () =>
+  run('Sync likes, plays and playlists', async () => {
+    const started = performance.now()
+    await librarySync.now()
+    logMsg(`Likes, plays and playlists synced in ${Math.round(performance.now() - started)} ms`)
+    await showPlaylists()
+  })
+
+const answerConflict = (c: PlaylistConflict, choice: ConflictChoice) =>
+  run('Playlist conflict', async () => {
+    await librarySync.answer(c.syncId, choice)
+    logMsg(`"${c.name}": ${choice === 'mine' ? "this device's version" : choice === 'theirs' ? `${c.deviceName}'s version` : 'kept both'}`)
+    await showPlaylists()
+  })
+
+const restorePlaylist = (d: DeletedPlaylist) =>
+  run('Restore playlist', async () => {
+    await librarySync.restorePlaylist(d.syncId)
+    logMsg(`Restored "${d.name}" (everywhere, at the next sync)`)
+    await showPlaylists()
+  })
+
+const toggleLocalOnly = (playlist: Playlist) =>
+  run('Only on this device', async () => {
+    await librarySync.setPlaylistLocalOnly(playlist.id, !playlist.localOnly)
+    logMsg(`"${playlist.name}": ${playlist.localOnly ? 'synced again' : 'only on this device now'}`)
+    await showPlaylists()
+  })
 
 // ---- auto playlists (apart from the user's; hidden ones can be shown again)
 
@@ -503,7 +549,8 @@ const removeEntry = (entry: PlaylistEntry) =>
   })
 
 // Linked playlists: greyed songs, settings, unlinking.
-const greyed = (entry: PlaylistEntry) => entry.state === 'removed_here' || entry.state === 'suggested' || !entry.track?.available
+const greyed = (entry: PlaylistEntry) =>
+  entry.state === 'removed_here' || entry.state === 'suggested' || !entry.track?.available
 const stateLabel: Record<string, string> = {
   both: '',
   here_only: 'only here',
@@ -762,6 +809,7 @@ async function libraryStatus() {
           />
         </label>
         <button class="border rounded px-3 py-1" @click="checkPlayback">Check other devices</button>
+        <button class="border rounded px-3 py-1" @click="syncLibraryNow">Sync likes, plays and playlists now</button>
       </div>
       <div v-if="noSecureStore" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
         No secure place for the password on this system.
@@ -853,6 +901,30 @@ async function libraryStatus() {
             </button>
           </div>
           <div class="text-sm font-medium">Your playlists</div>
+          <div v-for="c in conflicts" :key="c.syncId" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
+            <template v-if="c.kind === 'changed'">
+              "{{ c.name }}" was changed on both this device and {{ c.deviceName }} while they couldn't sync.
+              <button class="border rounded px-2 text-xs" @click="answerConflict(c, 'mine')">Keep this device's version</button>
+              <button class="border rounded px-2 text-xs" @click="answerConflict(c, 'theirs')">Keep {{ c.deviceName }}'s version</button>
+              <button class="border rounded px-2 text-xs" @click="answerConflict(c, 'both')">Keep both</button>
+            </template>
+            <template v-else-if="c.kind === 'deletedThere'">
+              "{{ c.name }}" was deleted on {{ c.deviceName }}, but changed on this device since.
+              <button class="border rounded px-2 text-xs" @click="answerConflict(c, 'mine')">Keep it, with this device's changes</button>
+              <button class="border rounded px-2 text-xs" @click="answerConflict(c, 'theirs')">Delete it</button>
+            </template>
+            <template v-else>
+              "{{ c.name }}" was deleted on this device, but changed on {{ c.deviceName }} since.
+              <button class="border rounded px-2 text-xs" @click="answerConflict(c, 'theirs')">Keep it, with {{ c.deviceName }}'s changes</button>
+              <button class="border rounded px-2 text-xs" @click="answerConflict(c, 'mine')">Delete it</button>
+            </template>
+          </div>
+          <div v-if="deletedPlaylists.length" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            Recently deleted playlists (settings, 30 days):
+            <button v-for="d in deletedPlaylists" :key="d.syncId" class="border rounded px-2" @click="restorePlaylist(d)">
+              Restore {{ d.name }} ({{ plural(d.songs, 'song') }}, deleted {{ new Date(d.deletedAt).toLocaleDateString() }})
+            </button>
+          </div>
         </template>
         <div class="flex flex-wrap gap-2">
           <input v-model="playlistName" class="border rounded px-2 py-1 text-sm" placeholder="Playlist name" />
@@ -864,6 +936,14 @@ async function libraryStatus() {
             <img v-for="cover in playlist.covers" :key="cover" :src="coverUrl(cover)" class="w-5 h-5 object-cover" alt="" />
           </div>
           <span>{{ playlist.name }}</span>
+          <span v-if="playlist.kind === 'app'" class="text-xs text-muted-foreground">
+            {{ playlist.localOnly ? 'only on this device' : playlist.synced ? 'synced' : 'not synced yet' }}{{
+              playlist.notHere ? ` · ${playlist.notHere} not on this device yet` : ''
+            }}
+          </span>
+          <button v-if="playlist.kind === 'app' && sync.available" class="border rounded px-2 text-xs" @click="toggleLocalOnly(playlist)">
+            {{ playlist.localOnly ? 'Sync it' : 'Only on this device' }}
+          </button>
           <span class="text-xs text-muted-foreground">
             {{ plural(playlist.entries, 'song') }}{{ playlist.available < playlist.entries ? ` (${playlist.available} available)` : '' }}
             · {{ duration(playlist.durationMs) }}
@@ -897,6 +977,11 @@ async function libraryStatus() {
               <span class="truncate">{{ entry.track.title }}</span>
               <span class="text-xs text-muted-foreground truncate">{{ entry.track.artist }}</span>
               <span v-if="!entry.track.available" class="text-xs">(unavailable)</span>
+            </template>
+            <template v-else-if="entry.syncTitle !== null || entry.syncArtist !== null">
+              <span class="truncate">{{ entry.syncTitle ?? entry.fileEntry }}</span>
+              <span class="text-xs text-muted-foreground truncate">{{ entry.syncArtist }}</span>
+              <span class="text-xs">(not on this device yet)</span>
             </template>
             <span v-else class="truncate text-xs">not found: {{ entry.fileEntry }}</span>
             <span v-if="stateLabel[entry.state]" class="text-xs italic">{{ stateLabel[entry.state] }}</span>

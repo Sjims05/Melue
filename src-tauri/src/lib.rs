@@ -104,8 +104,12 @@ pub fn run() {
             // Syncing with the share by itself (start-up, coming back, the share's changes; see sync/schedule.rs).
             sync::scheduler::start(app.handle());
             // Synced playback: what plays here goes to the share; another device's is offered (see sync/handoff.rs).
+            app.manage(sync::shared::OpenShare::default());
             app.manage(sync::handoff::Handoff::default());
             sync::handoff::start(app.handle());
+            // Library data across devices: likes, plays and playlists (see sync/data.rs).
+            app.manage(sync::data::LibrarySync::default());
+            sync::data::start(app.handle());
             library::android::on_resume(app.handle(), {
                 let app = app.handle().clone();
                 move || {
@@ -159,6 +163,12 @@ pub fn run() {
             sync::commands::playback_continue,
             sync::commands::playback_not_now,
             sync::commands::playback_check,
+            sync::commands::library_sync_now,
+            sync::commands::playlist_conflicts,
+            sync::commands::playlist_answer_conflict,
+            sync::commands::deleted_playlists,
+            sync::commands::restore_playlist,
+            sync::commands::set_playlist_local_only,
             library::library_status,
             library::library_setting,
             library::library_set_setting,

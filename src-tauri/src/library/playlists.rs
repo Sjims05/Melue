@@ -40,6 +40,12 @@ pub struct Playlist {
     pub write_back: bool,
     /// How long its available songs play.
     pub duration_ms: i64,
+    /// Synced to the share (Melue's own playlists, once synced).
+    pub synced: bool,
+    /// "Only on this device": not synced.
+    pub local_only: bool,
+    /// Synced: songs another device added that aren't on this device yet (greyed).
+    pub not_here: i64,
     /// The first different covers of its songs, in order, for its picture.
     pub covers: Vec<String>,
     pub created_at: i64,
@@ -56,8 +62,11 @@ pub struct PlaylistEntry {
     pub added_at: i64,
     /// "both" (app playlists: always), "here_only", "removed_here", "suggested" or "file_removed".
     pub state: String,
-    /// Linked: its line in the file.
+    /// Linked: its line in the file. Synced, not on this device yet: its path on the share.
     pub file_entry: Option<String>,
+    /// Synced, not on this device yet: its title and artist (from the device that added it).
+    pub sync_title: Option<String>,
+    pub sync_artist: Option<String>,
     /// None: a line of the file that matches no song in the library ("not found").
     pub track: Option<Track>,
 }
@@ -127,6 +136,8 @@ impl Library {
     /// Deletes a playlist (its songs stay in the library). A linked playlist's file is left alone, and not
     /// linked again.
     pub fn delete_playlist(&self, id: i64) -> Result<()> {
+        // A synced playlist can be restored for a while (and is deleted everywhere at the next sync).
+        self.archive_before_delete(id)?;
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
         super::linked::ignore_file(&tx, id)?;
@@ -157,7 +168,9 @@ impl Library {
                     coalesce(sum(t.duration_ms) FILTER (WHERE e.state IN {IN_MELUE}), 0),
                     count(e.id) FILTER (WHERE e.state = 'suggested'),
                     count(e.id) FILTER (WHERE e.state = 'removed_here'),
-                    p.file_path, p.file_missing_since IS NOT NULL, p.new_in_file, p.removed_from_file, p.write_back
+                    p.file_path, p.file_missing_since IS NOT NULL, p.new_in_file, p.removed_from_file, p.write_back,
+                    p.sync_id IS NOT NULL, p.local_only,
+                    count(e.id) FILTER (WHERE p.kind = 'app' AND e.track_id IS NULL)
              FROM playlists p
              LEFT JOIN playlist_entries e ON e.playlist_id = p.id
              LEFT JOIN tracks t ON t.id = e.track_id AND t.missing_since IS NULL
@@ -182,6 +195,9 @@ impl Library {
                     new_in_file: r.get(12)?,
                     removed_from_file: r.get(13)?,
                     write_back: r.get(14)?,
+                    synced: r.get(15)?,
+                    local_only: r.get(16)?,
+                    not_here: r.get(17)?,
                     covers: Vec::new(),
                 })
             })
@@ -210,7 +226,7 @@ impl Library {
     pub fn playlist_entries(&self, id: i64) -> Result<Vec<PlaylistEntry>> {
         let conn = self.conn();
         let sql = format!(
-            "SELECT {TRACK_COLUMNS}, e.id, e.position, e.added_at, e.state, e.file_entry
+            "SELECT {TRACK_COLUMNS}, e.id, e.position, e.added_at, e.state, e.file_entry, e.sync_title, e.sync_artist
              FROM playlist_entries e LEFT JOIN tracks t ON t.id = e.track_id LEFT JOIN folders f ON f.id = t.folder_id
              LEFT JOIN covers c ON c.id = t.cover_id
              WHERE e.playlist_id = ?1 ORDER BY e.position, e.id"
@@ -226,6 +242,8 @@ impl Library {
                     added_at: r.get(TRACK_COLUMN_COUNT + 2)?,
                     state: r.get(TRACK_COLUMN_COUNT + 3)?,
                     file_entry: r.get(TRACK_COLUMN_COUNT + 4)?,
+                    sync_title: r.get(TRACK_COLUMN_COUNT + 5)?,
+                    sync_artist: r.get(TRACK_COLUMN_COUNT + 6)?,
                 })
             })
             .map_err(err)?;

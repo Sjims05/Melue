@@ -211,6 +211,7 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
                 s.retry_at_ms = None;
             });
             keep_watching(app, share);
+            super::data::soon(app);
             Ok(done)
         }
         Err(failure) => {
@@ -259,6 +260,8 @@ fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
     let on_change = move |path: &str| {
         if handoff::is_playback_file(path) {
             handoff::check(&handle);
+        } else if super::data::is_library_file(path) {
+            super::data::soon(&handle);
         } else if !path.split('/').any(crate::share::is_hidden) {
             trigger(&handle, Trigger::Changed);
         }
@@ -279,6 +282,7 @@ pub fn stop_watching(app: &AppHandle) {
 pub fn network_changed(app: &AppHandle) {
     trigger(app, Trigger::Network);
     handoff::network_changed(app);
+    super::data::soon(app);
 }
 
 /// Asks for a sync (the scheduler decides whether one runs, see schedule.rs).

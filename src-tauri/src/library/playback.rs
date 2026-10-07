@@ -243,12 +243,27 @@ impl Library {
 
     /// Likes or unlikes a song.
     pub fn set_liked(&self, track: i64, liked: bool) -> Result<()> {
+        self.set_liked_at(track, liked, now_ms())
+    }
+
+    /// Likes or unlikes a song, as of `at` (when it was done, maybe on another device). An unlike is kept with
+    /// its time, so the newest change wins across devices.
+    pub fn set_liked_at(&self, track: i64, liked: bool, at: i64) -> Result<()> {
         let conn = self.conn();
+        let no_song = |e: rusqlite::Error| if e.to_string().contains("FOREIGN KEY") { format!("no song {track}") } else { err(e) };
         if liked {
-            conn.execute("INSERT INTO likes (track_id, liked_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING", params![track, now_ms()])
-                .map_err(|e| if e.to_string().contains("FOREIGN KEY") { format!("no song {track}") } else { err(e) })?;
+            conn.execute("DELETE FROM unlikes WHERE track_id = ?1", [track]).map_err(err)?;
+            conn.execute("INSERT INTO likes (track_id, liked_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING", params![track, at])
+                .map_err(no_song)?;
         } else {
-            conn.execute("DELETE FROM likes WHERE track_id = ?1", [track]).map_err(err)?;
+            let was_liked = conn.execute("DELETE FROM likes WHERE track_id = ?1", [track]).map_err(err)? > 0;
+            if was_liked {
+                conn.execute(
+                    "INSERT INTO unlikes (track_id, unliked_at) VALUES (?1, ?2) ON CONFLICT DO UPDATE SET unliked_at = ?2",
+                    params![track, at],
+                )
+                .map_err(no_song)?;
+            }
         }
         Ok(())
     }
@@ -264,7 +279,7 @@ impl Library {
     /// Songs that are there, by when they were last started (latest first).
     pub fn recently_played(&self, limit: u32) -> Result<Vec<Track>> {
         self.track_list(
-            "JOIN (SELECT track_id, max(started_at) AS last FROM plays GROUP BY track_id) p ON p.track_id = t.id",
+            "JOIN (SELECT track_id, max(started_at) AS last FROM all_plays GROUP BY track_id) p ON p.track_id = t.id",
             "p.last DESC",
             limit,
         )
@@ -273,7 +288,7 @@ impl Library {
     /// Songs that are there and were played, by play count (most first).
     pub fn most_played(&self, limit: u32) -> Result<Vec<Track>> {
         self.track_list(
-            "JOIN track_stats s ON s.track_id = t.id AND s.play_count > 0",
+            "JOIN all_track_stats s ON s.track_id = t.id AND s.play_count > 0",
             "s.play_count DESC, s.last_played_at DESC",
             limit,
         )

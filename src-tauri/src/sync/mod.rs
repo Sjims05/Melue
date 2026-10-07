@@ -9,7 +9,18 @@
 //! (synced playback, playlists, likes...) is in its own hidden folder, synced by its own steps.
 
 pub mod commands;
+pub mod data;
+#[cfg(test)]
+mod data_tests;
 pub mod handoff;
+pub mod playlist_merge;
+#[cfg(test)]
+mod playlist_merge_tests;
+pub mod playlist_sync;
+pub mod same_song;
+#[cfg(test)]
+mod playlist_sync_tests;
+pub mod shared;
 #[cfg(test)]
 mod handoff_tests;
 pub mod local;

@@ -71,10 +71,12 @@ fn the_history_fills_the_plays_per_day_when_the_library_is_updated() {
             )
             .unwrap();
         }
-        conn.execute("DROP TABLE play_days", []).unwrap();
-        conn.pragma_update(None, "user_version", 8).unwrap();
+        // Migration 9 again, on this history (later migrations use play_days: it's emptied, not dropped).
+        let sql = include_str!("sql/009_play_days.sql");
+        let fill = &sql[sql.find("INSERT INTO play_days").unwrap()..];
+        conn.execute("DELETE FROM play_days", []).unwrap();
+        conn.execute_batch(fill).unwrap();
     }
-    let t = t.reopen();
     let days: Vec<(i64, i64)> = {
         let conn = t.library.conn();
         let mut stmt = conn.prepare("SELECT day, plays FROM play_days ORDER BY day").unwrap();

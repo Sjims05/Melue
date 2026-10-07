@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -28,9 +28,7 @@ use tauri_plugin_native_audio::NativeAudioExt;
 
 use crate::library::linked::document_path;
 use crate::library::{err, now_ms, Folder, FolderKind, Library, Result};
-use crate::share::commands::with_stores;
-use crate::share::setup;
-use crate::share::Share;
+use super::shared::with_share;
 
 /// Where the playback files are on the share.
 pub const DIR: &str = ".melue/playback";
@@ -47,8 +45,6 @@ const POLL: Duration = Duration::from_secs(5);
 pub const SAVE_PLAYING_MS: i64 = 30_000;
 /// Paused, moving more than this (seconds) is saved.
 const MOVED_S: f64 = 2.0;
-/// After the share couldn't be used, it's left alone this long (unless the network changes).
-const REST_AFTER_FAILURE: Duration = Duration::from_secs(30);
 
 /// One device's playback, as kept on the share.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -121,10 +117,6 @@ pub struct Handoff {
     last: Mutex<Option<(Playback, i64)>>,
     /// Another device's playback waiting for an answer.
     offer: Mutex<Option<PlaybackFile>>,
-    /// The share, kept open between saves (opened again after a problem).
-    share: Mutex<Option<Box<dyn Share>>>,
-    /// When the share last couldn't be used.
-    failed_at: Mutex<Option<Instant>>,
     checks: Mutex<Option<Sender<()>>>,
 }
 
@@ -149,7 +141,7 @@ pub fn share_path(folder: &Folder, track_path: &str) -> Option<String> {
 }
 
 /// Paths compare without case (like the sync's).
-fn key(path: &str) -> String {
+pub(crate) fn key(path: &str) -> String {
     path.to_lowercase()
 }
 
@@ -259,7 +251,7 @@ pub fn set_settings(app: &AppHandle, settings: &PlaybackSettings) -> Result<()> 
 
 impl Library {
     /// The synced folder's songs: (track id, path on the share).
-    fn synced_songs(&self, folder: &Folder) -> Result<Vec<(i64, String)>> {
+    pub(crate) fn synced_songs(&self, folder: &Folder) -> Result<Vec<(i64, String)>> {
         let conn = self.conn();
         let mut stmt = conn.prepare("SELECT id, path FROM tracks WHERE folder_id = ?1 AND missing_since IS NULL").map_err(err)?;
         let rows = stmt.query_map([folder.id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
@@ -268,7 +260,7 @@ impl Library {
     }
 
     /// The synced folder (None: no share set up).
-    fn synced_folder(&self) -> Result<Option<Folder>> {
+    pub(crate) fn synced_folder(&self) -> Result<Option<Folder>> {
         match self.share_settings()? {
             Some(settings) => self.folder(settings.sync_folder_id),
             None => Ok(None),
@@ -276,38 +268,9 @@ impl Library {
     }
 }
 
-/// Runs `work` with the share (opened when needed; a failure closes it, to be opened again next time).
-fn with_share<T>(app: &AppHandle, work: impl FnOnce(&dyn Share) -> Result<T>) -> Result<T> {
-    let handoff = app.state::<Handoff>();
-    if handoff.failed_at.lock().unwrap().is_some_and(|at| at.elapsed() < REST_AFTER_FAILURE) {
-        return Err("the share couldn't be reached a moment ago: trying again soon".into());
-    }
-    let mut share = handoff.share.lock().unwrap();
-    if share.is_none() {
-        let opened = with_stores(app, |library, stores| setup::current(library, stores, &setup::open)).and_then(|r| r);
-        match opened {
-            Ok((_, opened)) => *share = Some(opened),
-            Err(e) => {
-                *handoff.failed_at.lock().unwrap() = Some(Instant::now());
-                return Err(format!("{e:?}"));
-            }
-        }
-    }
-    let result = work(share.as_deref().expect("opened"));
-    if result.is_err() {
-        *share = None;
-        *handoff.failed_at.lock().unwrap() = Some(Instant::now());
-    } else {
-        *handoff.failed_at.lock().unwrap() = None;
-    }
-    result
-}
-
 /// The network changed: the share is opened again (on the new network), and the others are looked at.
 pub fn network_changed(app: &AppHandle) {
-    let handoff = app.state::<Handoff>();
-    *handoff.share.lock().unwrap() = None;
-    *handoff.failed_at.lock().unwrap() = None;
+    super::shared::reset(app);
     check(app);
 }
 

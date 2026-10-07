@@ -210,6 +210,10 @@ impl Snapshot {
 pub fn emit(app: &AppHandle, change: LibraryChange) {
     let _ = app.emit(CHANGE_EVENT, &change);
     super::auto::send_soon(app);
+    // Likes and playlists go to the share; songs arriving can fill in synced playlists' greyed songs.
+    if matches!(change.reason, ChangeReason::Likes | ChangeReason::Playlists | ChangeReason::Scan) {
+        crate::sync::data::soon(app);
+    }
     let app = app.clone();
     std::thread::spawn(move || super::follow::follow(&app, &change));
 }

@@ -112,6 +112,12 @@ export interface Playlist {
   writeBack: boolean
   /** How long its available songs play. */
   durationMs: number
+  /** Synced to the share (Melue's own playlists, once synced). */
+  synced: boolean
+  /** "Only on this device": not synced (setPlaylistLocalOnly in sync.ts). */
+  localOnly: boolean
+  /** Synced: songs another device added that aren't on this device yet (greyed, play once synced). */
+  notHere: number
   /** The first (up to 4) different covers of its songs, for its picture (coverUrl). */
   covers: string[]
   createdAt: number
@@ -134,8 +140,11 @@ export interface PlaylistEntry {
   position: number
   addedAt: number
   state: PlaylistEntryState
-  /** Linked: its line in the file. */
+  /** Linked: its line in the file. Synced, not on this device yet: its path on the share. */
   fileEntry: string | null
+  /** Synced, not on this device yet: its title and artist (shown greyed). */
+  syncTitle: string | null
+  syncArtist: string | null
   /** Unavailable songs (missing files, folder switched off) stay, shown greyed. Null: a line of the file that matches no song. */
   track: Track | null
 }

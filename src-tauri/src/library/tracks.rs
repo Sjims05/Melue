@@ -42,7 +42,7 @@ pub struct Track {
 pub(crate) const TRACK_COLUMNS: &str = "t.id, t.folder_id, t.title, t.artist_credit, t.tag_album, t.tag_album_artist, t.track_no,
     t.disc_no, t.year, t.genre, t.duration_ms, t.format, t.bitrate_kbps, t.sample_rate, c.file, t.tags_read_at IS NOT NULL,
     t.tags_error, t.missing_since IS NULL AND f.enabled, EXISTS (SELECT 1 FROM likes l WHERE l.track_id = t.id),
-    coalesce((SELECT s.play_count FROM track_stats s WHERE s.track_id = t.id), 0)";
+    coalesce((SELECT s.play_count FROM all_track_stats s WHERE s.track_id = t.id), 0)";
 
 /// How many columns [`TRACK_COLUMNS`] is: a query's own columns after it start there.
 pub(crate) const TRACK_COLUMN_COUNT: usize = 20;

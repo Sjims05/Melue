@@ -65,6 +65,15 @@ export async function startPlayback(): Promise<void> {
   // The like button shows the library's likes (it remembers them on the device, for Android Auto).
   const liked = await library.likedIds()
   if (liked.length > 0) await setControlActive(LIKE_BUTTON, liked, true)
+  // Likes from other devices (and anything else that changes them): the button follows.
+  await library.onChange(async (change) => {
+    if (change.reason !== 'likes' || change.tracks.length === 0) return
+    const now = new Set(await library.likedIds())
+    const liked = change.tracks.filter((id) => now.has(id))
+    const unliked = change.tracks.filter((id) => !now.has(id))
+    if (liked.length > 0) await setControlActive(LIKE_BUTTON, liked, true).catch(() => {})
+    if (unliked.length > 0) await setControlActive(LIKE_BUTTON, unliked, false).catch(() => {})
+  })
   await onControlPressed(async (press) => {
     if (press.buttonId === LIKE_BUTTON && press.itemId != null && press.active != null) {
       await library.setLikedOnly(press.itemId, press.active)

@@ -304,9 +304,10 @@ pub fn library_queue_items(library: State<'_, Library>, source: String) -> Resul
 #[tauri::command(async)]
 pub fn library_record_playback(app: AppHandle, library: State<'_, Library>, event: PlaybackEvent) -> Result<Option<Outcome>> {
     let outcome = library.record_playback(&event)?;
-    // A play can change the Top songs lists (Android Auto shows them).
+    // A play can change the Top songs lists (Android Auto shows them), and goes to the other devices.
     if outcome == Some(Outcome::Play) {
         super::auto::send_soon(&app);
+        crate::sync::data::soon(&app);
     }
     Ok(outcome)
 }

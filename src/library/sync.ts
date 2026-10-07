@@ -313,3 +313,53 @@ export function minutesAndSeconds(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
+
+// ---- library data across devices: likes, plays and playlists
+
+/** A playlist changed on two devices in ways that don't merge, waiting for a choice. */
+export interface PlaylistConflict {
+  syncId: string
+  /**
+   * - changed: both changed it (reordered, or renamed differently)
+   * - deletedThere: deleted on the other device, changed here
+   * - deletedHere: deleted here, changed on the other device
+   */
+  kind: 'changed' | 'deletedThere' | 'deletedHere'
+  name: string
+  /** The device whose change it conflicts with. */
+  deviceName: string
+  /** The playlist here (null: deleted here). */
+  playlistId: number | null
+  foundAt: number
+}
+
+/**
+ * The choice for a conflict:
+ * - mine: this device's version (deleted here: deleted everywhere; deleted there: kept with this device's changes)
+ * - theirs: the other device's (deleted there: deleted here too; deleted here: brought back with their changes)
+ * - both (changed): this device's is kept as a copy, "<name> (<this device>)"
+ */
+export type ConflictChoice = 'mine' | 'theirs' | 'both'
+
+/** A synced playlist deleted in the last 30 days. */
+export interface DeletedPlaylist {
+  syncId: string
+  name: string
+  songs: number
+  deletedAt: number
+}
+
+export const librarySync = {
+  /** Syncs likes, plays and playlists with the share now (it also runs by itself after changes). */
+  now: () => invoke<void>('library_sync_now'),
+  conflicts: () => invoke<PlaylistConflict[]>('playlist_conflicts'),
+  /** Calls `listener` with the conflicts waiting whenever they change. Resolves to a function that stops listening. */
+  onConflicts: (listener: (conflicts: PlaylistConflict[]) => void) =>
+    listen<PlaylistConflict[]>('playlist-conflicts', (e) => listener(e.payload)),
+  answer: (syncId: string, choice: ConflictChoice) => invoke<void>('playlist_answer_conflict', { syncId, choice }),
+  deletedPlaylists: () => invoke<DeletedPlaylist[]>('deleted_playlists'),
+  /** Restores a deleted playlist, everywhere. Resolves with its id. */
+  restorePlaylist: (syncId: string) => invoke<number>('restore_playlist', { syncId }),
+  /** "Only on this device": not synced (the other devices keep theirs), or synced again. */
+  setPlaylistLocalOnly: (id: number, localOnly: boolean) => invoke<void>('set_playlist_local_only', { id, localOnly }),
+}
