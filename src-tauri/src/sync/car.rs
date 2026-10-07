@@ -5,7 +5,9 @@
 //! - the player starts with nothing loaded: another device's newer playback is loaded (paused) when it's at
 //!   most the setting's minutes old (10; "follow": always, "off": never), else the player keeps its own;
 //! - the "Recently played" tab starts with "Continue from <device>" when another device has newer playback;
-//! - what the car plays is saved to the share like the app does (on changes; every 30 s while playing).
+//! - what the car plays is saved to the share like the app does (on changes; every 30 s while playing);
+//! - likes and plays in the car go into the library and to the share right away (data.rs), not only once the
+//!   app opens.
 //!
 //! The share's password: Android's secure store (handed over by the Kotlin side), or the plain file next to
 //! the library; asked each time: no share in the car.
@@ -23,6 +25,7 @@ use super::handoff::{
     self, continues_by_itself, mark_answered, needs_saving, newest_other, playback_on_share, queue_here, read_playback_files,
     share_clock_ahead, stored_settings, write_playback_file, Mode, Playback, PlaybackFile,
 };
+use crate::library::playback::{Outcome, PlaybackEvent};
 use crate::library::{now_ms, Library, Result};
 use crate::share::secrets::{FileSecrets, PasswordStore, Secrets};
 use crate::share::setup::{self, PASSWORD_KEY};
@@ -190,6 +193,30 @@ impl Car {
         self.take(&other)
     }
 
+    /// A like (or unlike) pressed in the car: saved here and shared with the other devices.
+    pub fn like(&mut self, password: Option<&str>, name: &str, track: i64, liked: bool) -> Result<()> {
+        self.library.set_liked(track, liked)?;
+        self.publish(password, name)
+    }
+
+    /// A playback event in the car: counted (once, whoever hands it over: the app gets it later too), and a
+    /// play is shared with the other devices. Returns whether it counted as a play.
+    pub fn playback_event(&mut self, password: Option<&str>, name: &str, event: &PlaybackEvent) -> Result<bool> {
+        if self.library.record_playback(event)? != Some(Outcome::Play) {
+            return Ok(false);
+        }
+        self.publish(password, name)?;
+        Ok(true)
+    }
+
+    /// This device's likes and plays to the share (and the other devices' taken in).
+    fn publish(&mut self, password: Option<&str>, name: &str) -> Result<()> {
+        let Some(folder) = self.library.synced_folder()? else { return Ok(()) };
+        let me = handoff::device_id(&self.library)?;
+        let name = stored_settings(&self.library)?.device_name.unwrap_or_else(|| name.to_string());
+        self.with_share(password, |library, share| super::data::sync_device_data(library, share, &folder, &me, &name).map(|_| ()))
+    }
+
     /// What the car plays: saved to the share when it changed (like the app does). `name`: this phone's name.
     pub fn playback(&mut self, password: Option<&str>, name: &str, car: &CarPlayback) -> Result<bool> {
         let settings = stored_settings(&self.library)?;
@@ -334,6 +361,46 @@ mod android {
             let saved = with_car(Path::new(&dir), |car| car.playback(password.as_deref(), &name, &playback))?;
             if saved {
                 log("playback saved to the share");
+            }
+            Ok(None::<()>)
+        })
+    }
+
+    /// A like pressed in the car. Answers "ok" when it's saved (then the app doesn't get the press again).
+    #[no_mangle]
+    pub extern "system" fn Java_com_simon_melue_android_CarQueue_nativeLike<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        data_dir: JString<'l>,
+        password: JString<'l>,
+        name: JString<'l>,
+        track: jni::sys::jlong,
+        liked: jni::sys::jboolean,
+    ) -> jstring {
+        let (dir, password, name) = (text(&mut env, &data_dir).unwrap_or_default(), text(&mut env, &password), text(&mut env, &name).unwrap_or_default());
+        answer(&mut env, "like", || {
+            with_car(Path::new(&dir), |car| car.like(password.as_deref(), &name, track, liked != 0))?;
+            log(&format!("{} in the car, shared", if liked != 0 { "liked" } else { "unliked" }));
+            Ok(Some("ok"))
+        })
+    }
+
+    /// A playback event in the car (JSON, as the player logs it).
+    #[no_mangle]
+    pub extern "system" fn Java_com_simon_melue_android_CarQueue_nativePlaybackEvent<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        data_dir: JString<'l>,
+        password: JString<'l>,
+        name: JString<'l>,
+        event: JString<'l>,
+    ) -> jstring {
+        let (dir, password) = (text(&mut env, &data_dir).unwrap_or_default(), text(&mut env, &password));
+        let (name, event) = (text(&mut env, &name).unwrap_or_default(), text(&mut env, &event).unwrap_or_default());
+        answer(&mut env, "playback event", || {
+            let event: crate::library::playback::PlaybackEvent = serde_json::from_str(&event).map_err(|e| e.to_string())?;
+            if with_car(Path::new(&dir), |car| car.playback_event(password.as_deref(), &name, &event))? {
+                log("a play in the car, shared");
             }
             Ok(None::<()>)
         })

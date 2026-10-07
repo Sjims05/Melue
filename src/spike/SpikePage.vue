@@ -84,6 +84,8 @@ onMounted(async () => {
     const sources = change.sources.length > 6 ? `${change.sources.slice(0, 6).join(', ')}, ...` : change.sources.join(', ')
     logMsg(`Library changed (${change.reason}): ${change.tracks.length} songs${sources ? `; lists: ${sources}` : ''}`)
     refreshFolders().catch(() => {})
+    // A sync can have moved songs into place: the layout notice follows (it isn't left stale).
+    if (sync.available) shareLayout.status().then((s) => (layoutStatus.value = s)).catch(() => {})
     if (songs.value) showSongs().catch(() => {})
     if (albums.value) showAlbums().catch(() => {})
     if (artists.value) showArtists().catch(() => {})
@@ -116,6 +118,7 @@ onMounted(async () => {
     logMsg(`Playback: offered ${describeOffer(offer)}`)
   })
   copies.value = await moving.copies().catch(() => null)
+  layoutStatus.value = await shareLayout.status().catch(() => null)
   stopCopies = await moving.onCopies((found) => {
     copies.value = found
     if (found.songs) logMsg(`${plural(found.songs, 'song')} on this device ${found.songs === 1 ? 'is' : 'are'} also in your synced music (${megabytes(found.bytes)})`)
@@ -393,6 +396,21 @@ const showNotOnShare = () =>
 const describeMove = (r: MoveResult) =>
   `${r.moved} moved, ${r.alreadyThere} already on the share${r.failed.length ? `, ${r.failed.length} failed (${r.failed.map(([s, why]) => `${s}: ${why}`).join('; ')})` : ''}${r.cancelled ? ', cancelled' : ''}`
 
+/**
+ * On Android, before moving or clearing: what will happen to the originals (a copy goes into the synced folder
+ * first; Android then asks to move songs from all music on the phone to its trash).
+ */
+const confirming = ref<'move' | 'clear' | null>(null)
+
+const askMoveToSync = () => (isAndroid ? (confirming.value = 'move') : moveToSync())
+const askClearCopies = () => (isAndroid ? (confirming.value = 'clear') : clearCopies())
+
+const confirmed = () => {
+  const what = confirming.value
+  confirming.value = null
+  return what === 'move' ? moveToSync() : clearCopies()
+}
+
 const moveToSync = () =>
   run('Move to sync', async () => {
     const started = performance.now()
@@ -505,7 +523,7 @@ const cancelSync = () => syncing.cancel().then(() => logMsg('Sync: cancelling af
 
 const changeSyncSettings = (change: Partial<SyncSettings>) =>
   shareRun('Sync settings', async () => {
-    const current = syncSettings.value ?? (await syncing.settings())
+    const current = await syncing.settings()
     syncSettings.value = await syncing.setSettings({ ...current, ...change })
     const v = syncSettings.value
     logMsg(
@@ -780,7 +798,8 @@ async function libraryStatus() {
           Queue follows library: {{ queueFollow?.enabled === false ? 'off' : 'on' }}
         </button>
       </div>
-      <h3 class="text-sm font-medium">Share setup</h3>
+      <h3 class="text-sm font-medium">Sync</h3>
+      <h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">The share</h4>
       <div class="text-sm">
         Sync available: {{ sync.available ? 'yes' : 'no' }}
         <template v-if="shareInfo?.settings">
@@ -807,6 +826,21 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="setUpShare()">Set up share{{ isAndroid ? ' (choose folder)' : '' }}</button>
         <button class="border rounded px-3 py-1" @click="giveSharePassword">{{ shareInfo?.needsPassword ? 'Give password' : 'Change password' }}</button>
         <button class="border rounded px-3 py-1" @click="removeShare">Remove share</button>
+      </div>
+      <div v-if="noSecureStore" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
+        No secure place for the password on this system.
+        <button class="border rounded px-3 py-1" @click="setUpShare('ask')">Ask each time</button>
+        <button class="border rounded px-3 py-1" @click="setUpShare('file')">Keep it in a plain file</button>
+      </div>
+      <div v-if="!isAndroid" class="flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-xs text-muted-foreground">Or a network drive Windows has connected (tip: it can be played straight from):</span>
+        <input v-model="shareForm.drivePath" class="border rounded px-2 py-1 w-40" placeholder="Z:\ or \\nas\music" />
+        <label class="flex items-center gap-1"><input v-model="shareForm.streamDrive" type="checkbox" /> play straight from it</label>
+        <button class="border rounded px-3 py-1" @click="setUpDrive">Set up drive</button>
+      </div>
+      <template v-if="sync.available">
+      <h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Syncing</h4>
+      <div class="flex flex-wrap gap-2">
         <button class="border rounded px-3 py-1" @click="dryRun">Dry run</button>
         <button class="border rounded px-3 py-1" @click="syncNow()">Sync now</button>
         <button class="border rounded px-3 py-1" @click="cancelSync">Cancel sync</button>
@@ -865,6 +899,9 @@ async function libraryStatus() {
           <button class="border rounded px-3 py-1" @click="showInOtherApps(true)">Show in other apps</button>
           <button class="border rounded px-3 py-1" @click="showInOtherApps(false)">Hide from other apps</button>
         </template>
+      </div>
+      <h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Moving to sync, and the layout on the share</h4>
+      <div v-if="sync.available" class="flex flex-wrap items-center gap-2 text-sm">
         <button class="border rounded px-3 py-1" @click="changeSyncSettings({ moveNewSongs: !syncSettings?.moveNewSongs })">
           Move new songs to sync automatically: {{ syncSettings?.moveNewSongs ? 'yes' : 'no' }}
         </button>
@@ -872,7 +909,7 @@ async function libraryStatus() {
           Folders on the share:
           <select
             class="border rounded px-1"
-            :value="syncSettings?.shareLayout ?? 'artistAlbum'"
+            :value="layoutStatus?.layout ?? syncSettings?.shareLayout ?? 'artistAlbum'"
             @change="changeLayout(($event.target as HTMLSelectElement).value as ShareLayout)"
           >
             <option value="artistAlbum">Artist/Album/</option>
@@ -886,15 +923,27 @@ async function libraryStatus() {
         (e.g. {{ layoutStatus.examples[0]?.from }} → {{ layoutStatus.examples[0]?.to }}).
         <button class="border rounded px-3 py-1" @click="reorganise">Reorganise now</button>
       </div>
+      <div v-if="confirming" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
+        <template v-if="confirming === 'move'">
+          Each song is copied into your synced folder first. Then the original is removed: for songs from all music on
+          this phone, Android asks you to move them to its trash (kept there for 30 days).
+        </template>
+        <template v-else>
+          The hidden copies are removed (your synced music stays): for songs from all music on this phone, Android asks
+          you to move them to its trash (kept there for 30 days).
+        </template>
+        <button class="border rounded px-3 py-1" @click="confirmed">{{ confirming === 'move' ? `Move ${plural(picked.length, 'song')}` : 'Clear space' }}</button>
+        <button class="border rounded px-3 py-1" @click="confirming = null">Cancel</button>
+      </div>
       <div v-if="copies?.songs" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
         {{ plural(copies.songs, 'song') }} on this device {{ copies.songs === 1 ? 'is' : 'are' }} also in your synced music ({{ megabytes(copies.bytes) }}).
-        <button class="border rounded px-3 py-1" @click="clearCopies">Clear space</button>
+        <button class="border rounded px-3 py-1" @click="askClearCopies">Clear space</button>
         <button class="border rounded px-3 py-1" @click="keepCopies">Keep hidden copies</button>
       </div>
       <div v-if="sync.available" class="flex flex-wrap items-center gap-2">
         <button class="border rounded px-3 py-1" @click="showNotOnShare">Not on your share</button>
         <template v-if="notOnShare">
-          <button class="border rounded px-3 py-1" :disabled="!picked.length" @click="moveToSync">
+          <button class="border rounded px-3 py-1" :disabled="!picked.length" @click="askMoveToSync">
             Move {{ plural(picked.length, 'song') }} to sync
           </button>
           <button class="border rounded px-2 text-xs" @click="picked = picked.length ? [] : notOnShare.map((s) => s.id)">
@@ -914,6 +963,7 @@ async function libraryStatus() {
           </span>
         </label>
       </div>
+      <h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Across devices (playback, likes, plays, playlists)</h4>
       <div v-if="playbackOffer" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
         Continue where you left off on {{ playbackOffer.deviceName }}?
         <span class="font-medium">{{ playbackOffer.title ?? playbackOffer.queue[playbackOffer.index] }}{{ playbackOffer.artist ? ` — ${playbackOffer.artist}` : '' }}</span>
@@ -959,17 +1009,7 @@ async function libraryStatus() {
         <button class="border rounded px-3 py-1" @click="checkPlayback">Check other devices</button>
         <button class="border rounded px-3 py-1" @click="syncLibraryNow">Sync likes, plays and playlists now</button>
       </div>
-      <div v-if="noSecureStore" class="flex flex-wrap items-center gap-2 text-sm border rounded p-2">
-        No secure place for the password on this system.
-        <button class="border rounded px-3 py-1" @click="setUpShare('ask')">Ask each time</button>
-        <button class="border rounded px-3 py-1" @click="setUpShare('file')">Keep it in a plain file</button>
-      </div>
-      <div v-if="!isAndroid" class="flex flex-wrap items-center gap-2 text-sm">
-        <span class="text-xs text-muted-foreground">Or a network drive Windows has connected (tip: it can be played straight from):</span>
-        <input v-model="shareForm.drivePath" class="border rounded px-2 py-1 w-40" placeholder="Z:\ or \\nas\music" />
-        <label class="flex items-center gap-1"><input v-model="shareForm.streamDrive" type="checkbox" /> play straight from it</label>
-        <button class="border rounded px-3 py-1" @click="setUpDrive">Set up drive</button>
-      </div>
+      </template>
       <ul class="text-sm space-y-1">
         <li v-for="folder in folders" :key="folder.id" class="flex flex-wrap items-center gap-2">
           <span :class="{ 'opacity-50': !folder.enabled }">{{ folder.name }} ({{ folder.tracks }} songs)</span>

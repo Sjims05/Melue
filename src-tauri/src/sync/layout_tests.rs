@@ -74,3 +74,27 @@ fn reorganising_moves_songs_on_the_share_and_here_with_their_playlists() {
     let records: Vec<String> = t.library.sync_records().unwrap().into_iter().map(|r| r.path).collect();
     assert!(records.contains(&"Baby.wav".to_string()) && !records.iter().any(|p| p.starts_with("Big Mountain")));
 }
+
+#[test]
+fn every_device_uses_the_layout_on_the_share() {
+    let share = TestShare::new("layout-shared");
+    let (desktop, phone) = (TestLibrary::new("layout-shared-desktop"), TestLibrary::new("layout-shared-phone"));
+    // The phone never chose: its default isn't written to the share.
+    assert_eq!(agree(&phone.library, &share.share).unwrap().layout, Layout::ArtistAlbum);
+    assert!(!share.exists(SHARE_FILE));
+    // The desktop chose one folder: it goes to the share, and the phone takes it.
+    let mut settings = desktop.library.sync_settings().unwrap();
+    settings.share_layout = Layout::OneFolder;
+    desktop.library.set_sync_settings(&settings).unwrap();
+    desktop.library.layout_changed_here().unwrap();
+    assert_eq!(agree(&desktop.library, &share.share).unwrap(), ShareFile { layout: Layout::OneFolder, applied: None });
+    assert_eq!(agree(&phone.library, &share.share).unwrap().layout, Layout::OneFolder);
+    assert_eq!(phone.library.sync_settings().unwrap().share_layout, Layout::OneFolder, "kept on the phone too");
+    // Changed on the phone later: the desktop follows.
+    let mut settings = phone.library.sync_settings().unwrap();
+    settings.share_layout = Layout::ArtistAlbum;
+    phone.library.set_sync_settings(&settings).unwrap();
+    phone.library.layout_changed_here().unwrap();
+    agree(&phone.library, &share.share).unwrap();
+    assert_eq!(agree(&desktop.library, &share.share).unwrap().layout, Layout::ArtistAlbum);
+}

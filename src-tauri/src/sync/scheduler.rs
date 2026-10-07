@@ -210,6 +210,10 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
                 s.problem = None;
                 s.retry_at_ms = None;
             });
+            // The share's layout, as the share says (another device may have changed it).
+            if let Err(e) = super::layout::agree(&app.state::<Library>(), share.as_ref()) {
+                eprintln!("melue: can't read the share's layout: {e}");
+            }
             keep_watching(app, share);
             super::data::soon(app);
             Ok(done)

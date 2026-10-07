@@ -4,6 +4,10 @@
 //! in that layout. Switching the layout doesn't move anything by itself: Melue says how many songs would move,
 //! and reorganises when asked.
 //!
+//! The layout belongs to the share, so every device uses the same one: it's kept on the share
+//! (`.melue/share.json`: the layout, and the layout the share was last put in completely), read at every sync
+//! and kept here too (for when the share can't be reached). Changing it on a device changes it for all.
+//!
 //! Reorganising renames files on the share (and the copies in the synced folder here, so nothing is downloaded
 //! again; other devices see the files as moved and move theirs). Playlist files (.m3u) on the share are updated
 //! to the new paths, and so are Melue's synced playlists; folders left empty are removed.
@@ -25,8 +29,21 @@ use crate::share::setup::{self, ShareSetup};
 use crate::share::{Share, ShareError};
 
 /// The layout the share was last put in completely (empty: never): new songs are tidied only when it's the
-/// chosen one.
+/// chosen one. Kept here as the share last said.
 const APPLIED: &str = "share_layout_applied";
+/// This device changed the layout while the share couldn't be reached: it goes to the share next time.
+const PENDING: &str = "share_layout_pending";
+/// Where the share keeps its layout (every device reads it).
+pub const SHARE_FILE: &str = ".melue/share.json";
+
+/// The share's own settings, in [`SHARE_FILE`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ShareFile {
+    pub layout: Layout,
+    /// The layout the share was last put in completely.
+    pub applied: Option<Layout>,
+}
 
 /// How songs are laid out on the share.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -165,6 +182,28 @@ impl Library {
         Ok(moves)
     }
 
+    /// The share's layout as this device last knew it (or set it).
+    pub fn layout_here(&self) -> Result<ShareFile> {
+        Ok(ShareFile { layout: self.sync_settings()?.share_layout, applied: self.applied_layout()? })
+    }
+
+    fn keep_layout_here(&self, file: ShareFile) -> Result<()> {
+        let mut settings = self.sync_settings()?;
+        if settings.share_layout != file.layout {
+            settings.share_layout = file.layout;
+            self.set_sync_settings(&settings)?;
+        }
+        match file.applied {
+            Some(applied) => self.set_setting(APPLIED, applied.as_str()),
+            None => self.conn().execute("DELETE FROM settings WHERE key = ?1", [APPLIED]).map(|_| ()).map_err(err),
+        }
+    }
+
+    /// This device chose another layout: it goes to the share (now, or at the next sync).
+    pub fn layout_changed_here(&self) -> Result<()> {
+        self.set_setting(PENDING, "1")
+    }
+
     /// The layout the share was last put in completely.
     pub fn applied_layout(&self) -> Result<Option<Layout>> {
         Ok(match self.setting(APPLIED)?.as_deref() {
@@ -173,6 +212,53 @@ impl Library {
             _ => None,
         })
     }
+}
+
+// ---- the layout on the share
+
+/// The share's layout, agreed with the share: the share's (kept here too), or this device's when the share has
+/// none yet or this device changed it while away (then it's written to the share).
+pub fn agree(library: &Library, share: &dyn Share) -> Result<ShareFile> {
+    let here = library.layout_here()?;
+    let changed_here = library.setting(PENDING)?.is_some();
+    let on_share = match share.read(SHARE_FILE) {
+        Ok(bytes) if !changed_here => serde_json::from_slice::<ShareFile>(&bytes).ok(),
+        Ok(_) | Err(ShareError::NotFound { .. }) => None,
+        Err(e) => return Err(e.into()),
+    };
+    match on_share {
+        Some(file) => {
+            library.keep_layout_here(file)?;
+            Ok(file)
+        }
+        // Nothing on the share, and this device never chose or applied a layout: its default isn't a choice.
+        None if !changed_here && here.applied.is_none() => Ok(here),
+        None => {
+            share.create_dir_all(".melue")?;
+            share.write(SHARE_FILE, &serde_json::to_vec_pretty(&here).map_err(err)?)?;
+            library.conn().execute("DELETE FROM settings WHERE key = ?1", [PENDING]).map_err(err)?;
+            Ok(here)
+        }
+    }
+}
+
+/// The layout with the share when it can be reached (the shared open share), else as known here.
+fn agree_now(app: &AppHandle) -> Result<ShareFile> {
+    let library = app.state::<Library>();
+    match super::shared::with_share(app, |share| agree(&library, share)) {
+        Ok(file) => Ok(file),
+        Err(_) => library.layout_here(),
+    }
+}
+
+/// The layout was changed on this device: to the share, in the background.
+pub fn layout_changed(app: &AppHandle) -> Result<()> {
+    app.state::<Library>().layout_changed_here()?;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let _ = agree_now(&app);
+    });
+    Ok(())
 }
 
 // ---- reorganising (with the share)
@@ -192,12 +278,12 @@ pub struct LayoutStatus {
 
 pub fn status(app: &AppHandle) -> Result<LayoutStatus> {
     let library = app.state::<Library>();
-    let layout = library.sync_settings()?.share_layout;
+    let ShareFile { layout, applied } = agree_now(app)?;
     let folder = library.synced_folder()?.ok_or("no share is set up")?;
     let moves = library.layout_moves(&folder, layout)?;
     Ok(LayoutStatus {
         layout,
-        applied: library.applied_layout()? == Some(layout),
+        applied: applied == Some(layout),
         to_move: moves.len(),
         examples: moves.into_iter().take(5).collect(),
     })
@@ -218,19 +304,32 @@ pub struct ReorganiseResult {
 /// songs, by themselves); otherwise this is the user's "Reorganise now", and the layout counts as applied after.
 pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result<ReorganiseResult, SyncFailure> {
     let library = app.state::<Library>();
-    let layout = library.sync_settings()?.share_layout;
-    if only_if_applied && library.applied_layout()? != Some(layout) {
+    // As last known here first (no connecting after every scan for nothing), then as the share says.
+    let here = library.layout_here()?;
+    if only_if_applied && here.applied != Some(here.layout) {
         return Ok(ReorganiseResult::default());
     }
     let folder = library.synced_folder()?.ok_or_else(|| "no share is set up".to_string())?;
-    let moves = library.layout_moves(&folder, layout)?;
-    if moves.is_empty() {
-        library.set_setting(APPLIED, layout.as_str())?;
+    if only_if_applied && library.layout_moves(&folder, here.layout)?.is_empty() {
         return Ok(ReorganiseResult::default());
     }
     let (settings, share) = with_stores(app, |library, stores| setup::current(library, stores, &setup::open))
         .and_then(|r| r)
         .map_err(|error| SyncFailure::Setup { error })?;
+    let ShareFile { layout, applied } = agree(&library, share.as_ref())?;
+    if only_if_applied && applied != Some(layout) {
+        return Ok(ReorganiseResult::default());
+    }
+    let moves = library.layout_moves(&folder, layout)?;
+    let done = |library: &Library| -> Result<()> {
+        library.keep_layout_here(ShareFile { layout, applied: Some(layout) })?;
+        let file = ShareFile { layout, applied: Some(layout) };
+        Ok(share.write(SHARE_FILE, &serde_json::to_vec_pretty(&file).map_err(err)?)?)
+    };
+    if moves.is_empty() {
+        done(&library)?;
+        return Ok(ReorganiseResult::default());
+    }
     let target = match settings.setup {
         ShareSetup::Drive { stream: true, .. } => None,
         _ => Some(local::target(app, &folder)?),
@@ -239,7 +338,7 @@ pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result
         Ok(reorganise_files(&library, share.as_ref(), target.as_deref(), &moves, report, &|| scheduler::cancelled(app))?)
     })?;
     if result.failed.is_empty() {
-        library.set_setting(APPLIED, layout.as_str())?;
+        done(&library)?;
     }
     scanner::scan_soon(app);
     super::data::soon(app);

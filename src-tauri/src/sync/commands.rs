@@ -57,8 +57,13 @@ pub fn sync_settings(library: tauri::State<'_, Library>) -> Result<SyncSettings,
 
 #[tauri::command(async)]
 pub fn sync_set_settings(app: AppHandle, library: tauri::State<'_, Library>, settings: SyncSettings) -> Result<SyncSettings, String> {
+    let layout_before = library.sync_settings()?.share_layout;
     library.set_sync_settings(&settings)?;
     super::moving::moving_new_songs(&library, settings.move_new_songs)?;
+    // The layout belongs to the share: changed here, changed for every device.
+    if settings.share_layout != layout_before {
+        super::layout::layout_changed(&app)?;
+    }
     if !settings.on_change {
         scheduler::stop_watching(&app);
     }

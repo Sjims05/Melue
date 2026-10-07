@@ -396,11 +396,15 @@ fn stem(name: &str) -> String {
 }
 
 impl Library {
-    /// Every song, for matching playlist lines.
+    /// Every song, for matching playlist lines. A hidden copy of a synced song (moved to sync, or the same song)
+    /// stands for that synced song: a line naming the copy's file lands on the song that's there.
     pub fn track_index(&self) -> Result<TrackIndex> {
         let conn = self.conn();
         let mut stmt = conn
-            .prepare("SELECT t.id, f.kind, f.location, t.path, t.title, t.artist_credit FROM tracks t JOIN folders f ON f.id = t.folder_id ORDER BY t.id")
+            .prepare(
+                "SELECT coalesce(t.copy_of, t.id), f.kind, f.location, t.path, t.title, t.artist_credit
+                 FROM tracks t JOIN folders f ON f.id = t.folder_id ORDER BY t.id",
+            )
             .map_err(err)?;
         let rows = stmt
             .query_map([], |r| {

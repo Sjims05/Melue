@@ -208,13 +208,8 @@ impl Library {
             tx.execute(sql, [from]).map_err(err)?;
         }
         tx.execute("UPDATE plays SET track_id = ?2 WHERE track_id = ?1", params![from, to]).map_err(err)?;
-        // Melue's own playlists (a linked playlist follows its file).
-        tx.execute(
-            "UPDATE playlist_entries SET track_id = ?2
-             WHERE track_id = ?1 AND playlist_id IN (SELECT id FROM playlists WHERE kind = 'app')",
-            params![from, to],
-        )
-        .map_err(err)?;
+        // Playlists: Melue's own, and linked ones (their entries keep the file's line).
+        tx.execute("UPDATE playlist_entries SET track_id = ?2 WHERE track_id = ?1", params![from, to]).map_err(err)?;
         tx.commit().map_err(err)
     }
 
@@ -229,6 +224,14 @@ impl Library {
                 "UPDATE tracks SET copy_of = NULL, copy_kept = 0 WHERE copy_of IS NOT NULL AND copy_of IN
                      (SELECT id FROM tracks WHERE missing_since IS NOT NULL OR folder_id != ?1)",
                 [folder.id],
+            )
+            .map_err(err)?;
+        // Playlist entries still on a hidden copy (linked playlists from before they followed): to the synced song.
+        self.conn()
+            .execute(
+                "UPDATE playlist_entries SET track_id = (SELECT copy_of FROM tracks WHERE id = playlist_entries.track_id)
+                 WHERE track_id IN (SELECT id FROM tracks WHERE copy_of IS NOT NULL)",
+                [],
             )
             .map_err(err)?;
         // Moved to sync: the synced copy is in the library.
@@ -349,7 +352,7 @@ pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>) -> std::result::Result<
         _ => Some(local::target(app, &folder)?),
     };
     let songs = library.songs_here(&folder, &handoff::device_id(&library)?)?;
-    let layout = library.sync_settings()?.share_layout;
+    let layout = super::layout::agree(&library, share.as_ref()).map(|f| f.layout).or_else(|_| library.layout_here().map(|f| f.layout))?;
     let result = scheduler::exclusive(app, |report| {
         let mut result = MoveResult::default();
         let total = items.len() as u32;

@@ -126,3 +126,23 @@ fn on_the_same_drive_a_song_is_moved_into_the_synced_folder() {
     assert!(!original.exists(), "moved, not copied");
     assert!(std::path::Path::new(&synced.location).join("Band/B.wav").exists());
 }
+
+#[test]
+fn linked_playlists_follow_their_songs_to_the_synced_copy() {
+    let (t, synced, other_music, other) = setup("moving-linked");
+    other_music.add_text("Mix.m3u", "A.wav\nB.wav\n");
+    t.scan(other, &other_music);
+    let mix = t.library.playlists().unwrap().into_iter().find(|p| p.name == "Mix").unwrap().id;
+    let tracks = |t: &TestLibrary| -> Vec<i64> { t.library.playlist_entries(mix).unwrap().into_iter().filter_map(|e| e.track.map(|s| s.id)).collect() };
+    assert_eq!(tracks(&t)[0], track(&t, other, "A"), "the file's A: the copy");
+
+    let songs = t.library.songs_here(&synced, "me").unwrap();
+    t.library.find_copies(&synced, &songs).unwrap();
+    assert_eq!(tracks(&t), vec![track(&t, synced.id, "A"), track(&t, other, "B")], "A is the synced song now");
+    let entry = t.library.playlist_entries(mix).unwrap().remove(0);
+    assert_eq!(entry.file_entry.as_deref(), Some("A.wav"), "the file's line is kept");
+    // A rescan of the file matches it to the synced song too.
+    other_music.add_text("Mix.m3u", "B.wav\nA.wav\n");
+    t.scan(other, &other_music);
+    assert_eq!(tracks(&t), vec![track(&t, other, "B"), track(&t, synced.id, "A")]);
+}

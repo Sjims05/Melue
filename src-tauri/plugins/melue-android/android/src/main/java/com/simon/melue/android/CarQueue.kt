@@ -45,6 +45,11 @@ class CarQueue : QueueProvider {
         @JvmStatic external fun nativeEntries(dataDir: String, password: String?, folderId: String): String?
         @JvmStatic external fun nativeQueueForEntry(dataDir: String, password: String?, entryId: String): String?
         @JvmStatic external fun nativePlayback(dataDir: String, password: String?, name: String, playback: String): String?
+        @JvmStatic external fun nativeLike(dataDir: String, password: String?, name: String, track: Long, liked: Boolean): String?
+        @JvmStatic external fun nativePlaybackEvent(dataDir: String, password: String?, name: String, event: String): String?
+
+        /** The like button's id (src/library/playback.ts). */
+        private const val LIKE_BUTTON = "like"
     }
 
     private fun dataDir(context: Context): String? =
@@ -109,6 +114,18 @@ class CarQueue : QueueProvider {
             .put("title", playback.title ?: JSONObject.NULL)
             .put("artist", playback.artist ?: JSONObject.NULL)
         withMelue(context) { dir, password -> nativePlayback(dir, password, phoneName(context), json.toString()) }
+    }
+
+    /** The like button in the car: saved and shared now (the app doesn't get the press again later). */
+    override fun onControlPress(context: Context, buttonId: String, itemId: Long?, active: Boolean?): Boolean {
+        if (appRunning || buttonId != LIKE_BUTTON || itemId == null || active == null) return false
+        return withMelue(context) { dir, password -> nativeLike(dir, password, phoneName(context), itemId, active) } != null
+    }
+
+    /** A play in the car: counted and shared now (the app gets the event later too, and counts it once). */
+    override fun onPlaybackEvent(context: Context, event: JSONObject) {
+        if (appRunning) return
+        withMelue(context) { dir, password -> nativePlaybackEvent(dir, password, phoneName(context), event.toString()) }
     }
 
     /** The phone's name, as set in its settings, or its model (the app's own name setting wins, in Rust). */
