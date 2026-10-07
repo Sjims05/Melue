@@ -105,6 +105,15 @@ pub fn run() {
             sync::scheduler::start(app.handle());
             // Synced playback: what plays here goes to the share; another device's is offered (see sync/handoff.rs).
             app.manage(sync::shared::OpenShare::default());
+            // The car with Melue closed finds the library here (sync/car.rs).
+            #[cfg(target_os = "android")]
+            {
+                use tauri_plugin_melue_android::MelueAndroidExt;
+                let dir = app.path().app_data_dir()?;
+                if let Err(e) = app.melue_android().remember_data_dir(&dir.to_string_lossy()) {
+                    eprintln!("melue: can't remember the data folder for the car: {e}");
+                }
+            }
             app.manage(sync::handoff::Handoff::default());
             sync::handoff::start(app.handle());
             // Library data across devices: likes, plays and playlists (see sync/data.rs).

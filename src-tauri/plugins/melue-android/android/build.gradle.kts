@@ -23,4 +23,6 @@ android {
 
 dependencies {
     implementation(project(":tauri-android"))
+    // The car with Melue closed: CarQueue is the player's queue provider.
+    implementation(project(":tauri-plugin-native-audio"))
 }

@@ -29,6 +29,7 @@ use tauri_plugin_native_audio::NativeAudioExt;
 use crate::library::linked::document_path;
 use crate::library::{err, now_ms, Folder, FolderKind, Library, Result};
 use super::shared::with_share;
+use crate::share::Share;
 
 /// Where the playback files are on the share.
 pub const DIR: &str = ".melue/playback";
@@ -234,11 +235,71 @@ fn system_name(app: &AppHandle) -> String {
     }
 }
 
-pub fn settings(app: &AppHandle) -> Result<PlaybackSettings> {
-    let saved: PlaybackSettings = match app.state::<Library>().setting(SETTINGS)? {
-        Some(json) => serde_json::from_str(&json).map_err(err)?,
-        None => PlaybackSettings::default(),
+// ---- with the library and the share, without the app (the car uses these too: car.rs)
+
+/// The settings as saved (the device name: None when it's the system's).
+pub fn stored_settings(library: &Library) -> Result<PlaybackSettings> {
+    match library.setting(SETTINGS)? {
+        Some(json) => serde_json::from_str(&json).map_err(err),
+        None => Ok(PlaybackSettings::default()),
+    }
+}
+
+/// The time on the share of the newest other device's playback answered (Continue, Not now, or loaded).
+pub fn answered_ms(library: &Library) -> i64 {
+    library.setting(ANSWERED).ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0)
+}
+
+pub fn mark_answered(library: &Library, other: &PlaybackFile) -> Result<()> {
+    library.set_setting(ANSWERED, &other.share_ms.to_string())
+}
+
+/// Every device's playback on the share, with the share's time for each (files that can't be read are left
+/// out).
+pub fn read_playback_files(share: &dyn Share) -> Result<Vec<PlaybackFile>> {
+    let entries = match share.list(DIR) {
+        Ok(entries) => entries,
+        Err(crate::share::ShareError::NotFound { .. }) => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
     };
+    Ok(entries
+        .iter()
+        .filter(|e| !e.is_dir && e.name.ends_with(".json"))
+        .filter_map(|e| {
+            let file: PlaybackFile = serde_json::from_slice(&share.read(&e.path).ok()?).ok()?;
+            Some(PlaybackFile { share_ms: e.modified_ms, ..file })
+        })
+        .collect())
+}
+
+/// Writes a device's playback to the share.
+pub fn write_playback_file(share: &dyn Share, file: &PlaybackFile) -> Result<()> {
+    let json = serde_json::to_vec_pretty(file).map_err(err)?;
+    share.create_dir_all(DIR)?;
+    Ok(share.write(&format!("{DIR}/{}.json", file.device_id), &json)?)
+}
+
+/// The queue here for another device's playback: its songs that are here, and the song's place among them
+/// (None: the song isn't here, not synced yet).
+pub fn queue_here(library: &Library, folder: &Folder, other: &Playback) -> Result<Option<(Vec<tauri_plugin_native_audio::QueueItem>, usize)>> {
+    let songs: HashMap<String, i64> = library.synced_songs(folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
+    let Some((ids, index)) = here(other, &songs) else { return Ok(None) };
+    Ok(Some((library.queue_items_for(&ids)?, index)))
+}
+
+/// What plays, on the share's terms, from the queue's item ids (None: the song isn't on the share).
+pub fn playback_on_share(library: &Library, folder: &Folder, ids: &[Option<i64>], index: usize, position_s: f64, modes: (bool, bool, &str)) -> Result<Option<Playback>> {
+    let paths: HashMap<i64, String> = library.synced_songs(folder)?.into_iter().collect();
+    let Some((queue, index)) = on_share(ids, index, &paths) else { return Ok(None) };
+    let (playing, shuffle, repeat) = modes;
+    let repeat = if repeat.is_empty() { "off" } else { repeat };
+    Ok(Some(Playback { queue, index, position_s: position_s.max(0.0), playing, shuffle, repeat: repeat.into() }))
+}
+
+// ---- with the app
+
+pub fn settings(app: &AppHandle) -> Result<PlaybackSettings> {
+    let saved = stored_settings(&app.state::<Library>())?;
     let device_name = saved.device_name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| system_name(app));
     Ok(PlaybackSettings { device_name: Some(device_name), ..saved })
 }
@@ -286,18 +347,10 @@ fn playing_here(app: &AppHandle, library: &Library, folder: &Folder) -> Result<O
     }
     let queue = player.get_queue()?;
     let Ok(index) = usize::try_from(queue.current_index) else { return Ok(None) };
-    let paths: HashMap<i64, String> = library.synced_songs(folder)?.into_iter().collect();
     let ids: Vec<Option<i64>> = queue.items.iter().map(|i| i.id).collect();
-    let Some((songs, index_on_share)) = on_share(&ids, index, &paths) else { return Ok(None) };
+    let modes = (state.is_playing, state.shuffle, state.repeat_mode.as_str());
+    let Some(playback) = playback_on_share(library, folder, &ids, index, state.current_time, modes)? else { return Ok(None) };
     let current = &queue.items[index];
-    let playback = Playback {
-        queue: songs,
-        index: index_on_share,
-        position_s: state.current_time.max(0.0),
-        playing: state.is_playing,
-        shuffle: state.shuffle,
-        repeat: if state.repeat_mode.is_empty() { "off".into() } else { state.repeat_mode },
-    };
     Ok(Some((playback, (current.title.clone(), current.artist.clone()))))
 }
 
@@ -331,11 +384,7 @@ fn save(app: &AppHandle, force: bool) -> Result<()> {
         title,
         artist,
     };
-    let json = serde_json::to_vec_pretty(&file).map_err(err)?;
-    with_share(app, |share| {
-        share.create_dir_all(DIR)?;
-        Ok(share.write(&format!("{DIR}/{}.json", file.device_id), &json)?)
-    })?;
+    with_share(app, |share| write_playback_file(share, &file))?;
     // Only once it's on the share (otherwise it's tried again on the next look at the player).
     *handoff.last.lock().unwrap() = Some((file.state, now));
     Ok(())
@@ -351,25 +400,7 @@ pub fn save_now(app: &AppHandle) {
 /// Every device's playback on the share, with the share's time for each (files that can't be read are left
 /// out).
 fn read_all(app: &AppHandle) -> Result<Vec<PlaybackFile>> {
-    with_share(app, |share| {
-        let entries = match share.list(DIR) {
-            Ok(entries) => entries,
-            Err(crate::share::ShareError::NotFound { .. }) => return Ok(Vec::new()),
-            Err(e) => return Err(e.into()),
-        };
-        Ok(entries
-            .iter()
-            .filter(|e| !e.is_dir && e.name.ends_with(".json"))
-            .filter_map(|e| {
-                let file: PlaybackFile = serde_json::from_slice(&share.read(&e.path).ok()?).ok()?;
-                Some(PlaybackFile { share_ms: e.modified_ms, ..file })
-            })
-            .collect())
-    })
-}
-
-fn setting_ms(library: &Library, key: &str) -> i64 {
-    library.setting(key).ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0)
+    with_share(app, read_playback_files)
 }
 
 /// Looks at the other devices' playback: offers the newest (or loads it, with "follow").
@@ -382,15 +413,14 @@ fn look(app: &AppHandle) -> Result<()> {
     let files = read_all(app)?;
     let me = device_id(&library)?;
     let now_on_share = now_ms() + share_clock_ahead(&files, &me);
-    let Some(other) = newest_other(files, &me, setting_ms(&library, ANSWERED)) else { return Ok(()) };
+    let Some(other) = newest_other(files, &me, answered_ms(&library)) else { return Ok(()) };
     // Never interrupt: playing here wins (and soon saves, which makes it the newest).
     if app.native_audio().get_state()?.is_playing {
         return Ok(());
     }
     // A song that isn't here yet (not synced) can't be continued.
     let Some(folder) = library.synced_folder()? else { return Ok(()) };
-    let songs: HashMap<String, i64> = library.synced_songs(&folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
-    if here(&other.state, &songs).is_none() {
+    if queue_here(&library, &folder, &other.state)?.is_none() {
         return Ok(());
     }
     let handoff = app.state::<Handoff>();
@@ -413,14 +443,12 @@ fn look(app: &AppHandle) -> Result<()> {
 fn load(app: &AppHandle, other: &PlaybackFile) -> Result<()> {
     let library = app.state::<Library>();
     let folder = library.synced_folder()?.ok_or("no share is set up")?;
-    let songs: HashMap<String, i64> = library.synced_songs(&folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
-    let (ids, index) = here(&other.state, &songs).ok_or("that song isn't here (not synced yet?)")?;
-    let items = library.queue_items_for(&ids)?;
+    let (items, index) = queue_here(&library, &folder, &other.state)?.ok_or("that song isn't here (not synced yet?)")?;
     let player = app.native_audio();
     player.set_queue(items, index, other.state.position_s, None)?;
     player.set_shuffle(other.state.shuffle)?;
     player.set_repeat_mode(&other.state.repeat)?;
-    library.set_setting(ANSWERED, &other.share_ms.to_string())?;
+    mark_answered(&library, other)?;
     // Not something new to tell the others: it's theirs (saved once it changes here).
     let loaded = playing_here(app, &library, &folder)?.map(|(p, ..)| p).unwrap_or_else(|| Playback { playing: false, ..other.state.clone() });
     *app.state::<Handoff>().last.lock().unwrap() = Some((loaded, now_ms()));
@@ -438,7 +466,7 @@ pub fn answer(app: &AppHandle, continue_here: bool) -> Result<()> {
     if continue_here {
         load(app, &other)
     } else {
-        app.state::<Library>().set_setting(ANSWERED, &other.share_ms.to_string())
+        mark_answered(&app.state::<Library>(), &other)
     }
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.4.9"
+version = "0.4.10"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -55,6 +55,8 @@ keyring = { version = "3", features = ["apple-native"] }
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
+# Synced playback in the car with Melue closed: the player's Kotlin side calls Melue's Rust code (sync/car.rs).
+jni = "0.21"
 tauri-plugin-android-fs = "29.0.0"
 # Melue's own Android code: the music permission and Android's music index.
 tauri-plugin-melue-android = { path = "plugins/melue-android" }

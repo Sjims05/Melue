@@ -12,6 +12,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application>
+        <!-- Synced playback in the car with Melue closed (CarQueue, see native-audio's QueueProvider). -->
+        <meta-data
+            android:name="app.tauri.nativeaudio.QUEUE_PROVIDER"
+            android:value="com.simon.melue.android.CarQueue" />
         <service
             android:name="com.simon.melue.android.SyncService"
             android:exported="false"

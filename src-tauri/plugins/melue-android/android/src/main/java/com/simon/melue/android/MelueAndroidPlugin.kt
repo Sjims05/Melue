@@ -3,14 +3,6 @@ package com.simon.melue.android
 import android.Manifest
 import android.app.Activity
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.Network
@@ -52,8 +44,6 @@ import app.tauri.plugin.Plugin
     ]
 )
 /** The Android Keystore key Melue's secrets are encrypted with. */
-private const val SECRET_KEY_ALIAS = "melue-secrets"
-
 class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     /** The permission this Android version uses for reading music. */
     private fun musicAlias() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) "audio" else "storage"
@@ -156,6 +146,8 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
 
     override fun load(webView: WebView) {
         super.load(webView)
+        // Melue's app is running: it saves and offers synced playback itself (not the car's provider).
+        CarQueue.appRunning = true
         // Android notifies about every song separately while copying: Rust waits for it to calm down.
         val watcher = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
@@ -181,6 +173,7 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     override fun onDestroy() {
+        CarQueue.appRunning = false
         observer?.let { activity.contentResolver.unregisterContentObserver(it) }
         observer = null
         super.onDestroy()
@@ -260,61 +253,40 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve(JSObject().put("files", files))
     }
 
-    // ---- secrets (the share's password)
-    //
-    // Encrypted with an AES key that lives in the Android Keystore (it can't be read out of the phone's
-    // secure hardware), and kept in the app's private preferences as "iv:ciphertext" (Base64).
-
-    private val secrets by lazy { activity.getSharedPreferences("melue_secrets", Context.MODE_PRIVATE) }
-
-    private fun secretKey(): SecretKey {
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(SECRET_KEY_ALIAS, null) as? SecretKey)?.let { return it }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        generator.init(
-            KeyGenParameterSpec.Builder(SECRET_KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build(),
-        )
-        return generator.generateKey()
-    }
+    // ---- secrets (the share's password; see MelueSecrets)
 
     @Command
     fun secretSet(invoke: Invoke) {
         val args = invoke.getArgs()
         val key = args.getString("key") ?: return invoke.reject("a secret needs a key")
         val value = args.getString("value") ?: return invoke.reject("a secret needs a value")
-        runCatching {
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey())
-            val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-            val stored = Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(encrypted, Base64.NO_WRAP)
-            secrets.edit().putString(key, stored).apply()
-        }.onSuccess { invoke.resolve() }.onFailure { invoke.reject("can't store the secret: ${it.message}") }
+        runCatching { MelueSecrets.set(activity, key, value) }
+            .onSuccess { invoke.resolve() }
+            .onFailure { invoke.reject("can't store the secret: ${it.message}") }
     }
 
     @Command
     fun secretGet(invoke: Invoke) {
         val key = invoke.getArgs().getString("key") ?: return invoke.reject("a secret needs a key")
-        val stored = secrets.getString(key, null)
-        if (stored == null) {
-            invoke.resolve(JSObject()) // no "value": none stored
-            return
-        }
-        runCatching {
-            val (iv, encrypted) = stored.split(":", limit = 2).map { Base64.decode(it, Base64.NO_WRAP) }
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv))
-            String(cipher.doFinal(encrypted), Charsets.UTF_8)
-        }.onSuccess { invoke.resolve(JSObject().put("value", it)) }.onFailure { invoke.reject("can't read the secret: ${it.message}") }
+        runCatching { MelueSecrets.get(activity, key) }
+            .onSuccess { invoke.resolve(if (it == null) JSObject() else JSObject().put("value", it)) }
+            .onFailure { invoke.reject("can't read the secret: ${it.message}") }
     }
 
     @Command
     fun secretDelete(invoke: Invoke) {
         val key = invoke.getArgs().getString("key") ?: return invoke.reject("a secret needs a key")
-        secrets.edit().remove(key).apply()
+        MelueSecrets.delete(activity, key)
+        invoke.resolve()
+    }
+
+    // ---- the car with Melue closed (CarQueue)
+
+    /** Remembers the app's data folder (where the library is), for the car with Melue closed. */
+    @Command
+    fun rememberDataDir(invoke: Invoke) {
+        val dir = invoke.getArgs().getString("dir") ?: return invoke.reject("rememberDataDir needs the folder")
+        CarQueue.rememberDataDir(activity, dir)
         invoke.resolve()
     }
 

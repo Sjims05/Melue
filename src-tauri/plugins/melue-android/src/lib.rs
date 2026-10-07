@@ -204,6 +204,15 @@ mod android {
             self.0.run_mobile_plugin::<Found>("trashMusic", Paths { paths }).map(|f| f.found).map_err(|e| e.to_string())
         }
 
+        /// Remembers the app's data folder, for the car with Melue closed (CarQueue.kt).
+        pub fn remember_data_dir(&self, dir: &str) -> Result<(), String> {
+            #[derive(Serialize)]
+            struct Dir<'a> {
+                dir: &'a str,
+            }
+            self.0.run_mobile_plugin::<serde_json::Value>("rememberDataDir", Dir { dir }).map(|_| ()).map_err(|e| e.to_string())
+        }
+
         /// The phone's name, as set in its settings, or its model.
         pub fn device_name(&self) -> Result<String, String> {
             self.0.run_mobile_plugin::<DeviceName>("deviceName", ()).map(|d| d.name).map_err(|e| e.to_string())
