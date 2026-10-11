@@ -41,6 +41,8 @@ pub struct SmbConfig {
     pub home_host: Option<String>,
     /// Set when the home address was tried at home and didn't answer (the main one was used).
     pub home_note: Arc<std::sync::Mutex<Option<String>>>,
+    /// How long connecting may take (None: [`CONNECT_TIMEOUT`]).
+    pub connect_timeout: Option<Duration>,
     /// The share's name ("music").
     pub share: String,
     /// The music folder inside the share ("" for the share itself, "Media/Music").
@@ -156,7 +158,7 @@ async fn connect(config: &SmbConfig) -> ShareResult<Conn> {
             }
         }
     }
-    connect_to(config, &host_with_port(&config.host), CONNECT_TIMEOUT).await
+    connect_to(config, &host_with_port(&config.host), config.connect_timeout.unwrap_or(CONNECT_TIMEOUT)).await
 }
 
 async fn connect_to(config: &SmbConfig, addr: &str, timeout: Duration) -> ShareResult<Conn> {

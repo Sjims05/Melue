@@ -148,6 +148,8 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         super.load(webView)
         // Melue's app is running: it saves and offers synced playback itself (not the car's provider).
         CarQueue.appRunning = true
+        // The folder for Melue's log file (Rust's logging.rs writes there); Android makes it on first ask.
+        activity.getExternalFilesDir(null)
         // Android notifies about every song separately while copying: Rust waits for it to calm down.
         val watcher = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {

@@ -80,6 +80,8 @@ static CAR: Mutex<Option<Car>> = Mutex::new(None);
 
 /// Runs `work` with the car's library (opened the first time) from the app's data folder.
 pub fn with_car<T>(data_dir: &Path, work: impl FnOnce(&mut Car) -> Result<T>) -> Result<T> {
+    // With Melue closed (the car started the player), nothing else starts the log.
+    crate::logging::start();
     let mut car = CAR.lock().unwrap_or_else(|p| p.into_inner());
     if car.as_ref().is_none_or(|c| c.data_dir != data_dir) {
         let library = Library::open(&data_dir.join("library.db"))?;
@@ -118,7 +120,8 @@ impl Car {
                 setup::ShareSetup::Smb { .. } => return Err("the share's password is asked each time: not in the car".into()),
                 setup::ShareSetup::Drive { .. } => None,
             };
-            self.share = Some(setup::open(&settings.setup, password.as_deref()).map_err(|e| format!("{e:?}"))?);
+            // A short wait: in the car the share is often away (mobile data), and the player is waiting.
+            self.share = Some(setup::open_quick(&settings.setup, password.as_deref()).map_err(|e| format!("{e:?}"))?);
         }
         let result = work(&self.library, self.share.as_deref().expect("opened"));
         if result.is_err() {
@@ -254,7 +257,6 @@ impl Car {
 /// The Android side: what CarQueue.kt calls (JSON in and out; nothing here ever crashes the player).
 #[cfg(target_os = "android")]
 mod android {
-    use std::ffi::CString;
     use std::path::Path;
 
     use jni::objects::{JClass, JString};
@@ -263,15 +265,9 @@ mod android {
 
     use super::{with_car, CarPlayback};
 
-    #[link(name = "log")]
-    extern "C" {
-        fn __android_log_write(priority: i32, tag: *const std::ffi::c_char, text: *const std::ffi::c_char) -> i32;
-    }
-
-    /// To Android's log (logcat), tag "MelueCar".
+    /// To Android's log and Melue's log file (logging.rs).
     fn log(text: &str) {
-        let (tag, text) = (CString::new("MelueCar").unwrap(), CString::new(text.replace('\0', " ")).unwrap_or_default());
-        unsafe { __android_log_write(4, tag.as_ptr(), text.as_ptr()) };
+        crate::logging::write(&format!("car: {text}"));
     }
 
     fn text(env: &mut JNIEnv, s: &JString) -> Option<String> {

@@ -1,4 +1,5 @@
 mod library;
+mod logging;
 mod share;
 mod sync;
 
@@ -67,6 +68,8 @@ async fn smb_copy_file(state: tauri::State<'_, SpikeShare>, remote_path: String,
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Android: Melue's messages to Android's log and a log file on the phone (logging.rs).
+    logging::start();
     let builder = tauri::Builder::default();
 
     // Android only (see Cargo.toml): android-fs (its permissions are in capabilities/android.json), and

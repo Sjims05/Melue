@@ -7,6 +7,7 @@
 //! like the SMB share, or played straight from: then the drive itself is the synced library folder.
 
 use std::path::Path;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -143,6 +144,15 @@ pub type Opener<'a> = dyn Fn(&ShareSetup, Option<&str>) -> Result<Box<dyn Share>
 
 /// The real shares: SMB, or a folder (a network drive).
 pub fn open(setup: &ShareSetup, password: Option<&str>) -> Result<Box<dyn Share>, SetupError> {
+    open_with(setup, password, None)
+}
+
+/// Like [`open`], giving up connecting after 5 seconds (the car: the player is waiting).
+pub fn open_quick(setup: &ShareSetup, password: Option<&str>) -> Result<Box<dyn Share>, SetupError> {
+    open_with(setup, password, Some(Duration::from_secs(5)))
+}
+
+fn open_with(setup: &ShareSetup, password: Option<&str>, connect_timeout: Option<Duration>) -> Result<Box<dyn Share>, SetupError> {
     Ok(match setup {
         ShareSetup::Smb { host, share, folder, user, home_host, .. } => Box::new(SmbShare::new(SmbConfig {
             host: host.clone(),
@@ -151,6 +161,7 @@ pub fn open(setup: &ShareSetup, password: Option<&str>) -> Result<Box<dyn Share>
             folder: folder.clone(),
             user: user.clone(),
             password: password.unwrap_or_default().to_string(),
+            connect_timeout,
             ..Default::default()
         })?),
         ShareSetup::Drive { path, .. } => Box::new(FolderShare::new(path)),

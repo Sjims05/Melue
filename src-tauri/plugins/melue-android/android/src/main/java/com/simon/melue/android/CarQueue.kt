@@ -60,6 +60,7 @@ class CarQueue : QueueProvider {
     /** Runs `call` with the data folder and password, when Melue's library can be reached. */
     private fun <T> withMelue(context: Context, call: (String, String?) -> T?): T? {
         val dir = dataDir(context) ?: return null
+        context.getExternalFilesDir(null) // the log file's folder (logging.rs)
         if (!native) return null
         return runCatching { call(dir, password(context)) }.onFailure { Log.w(TAG, "the car's synced playback failed: $it") }.getOrNull()
     }
