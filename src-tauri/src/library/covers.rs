@@ -90,6 +90,12 @@ impl Library {
         find(self)
     }
 
+    /// How much space the covers take (bytes).
+    pub fn covers_size(&self) -> u64 {
+        let Ok(entries) = std::fs::read_dir(&self.covers_dir) else { return 0 };
+        entries.flatten().filter_map(|e| e.metadata().ok()).filter(|m| m.is_file()).map(|m| m.len()).sum()
+    }
+
     /// Deletes the covers no song or album uses any more (songs that are missing keep theirs), and files in
     /// the covers folder that aren't a stored cover's (left over from an interrupted scan). Returns how
     /// many files were deleted.

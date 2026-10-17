@@ -36,6 +36,15 @@
   --color-warn: var(--warn);
   --color-new: var(--new);
   --color-new-foreground: var(--new-foreground);
+  /* Things on a card (Melue's design, 2026-10-17): in light mode white with a line, like the chips; in dark mode
+     filled. Wells: a segment's track, the stepper, progress bars, icon tiles (their line is an inner shadow, so it
+     never changes a size). Then switches that are off, chips that aren't picked, secondary buttons (outline, danger). */
+  --color-well: var(--well);
+  --color-switch-off: var(--switch-off);
+  --color-chip: var(--chip);
+  --color-chip-line: var(--chip-line);
+  --color-button-2: var(--button-2);
+  --color-button-2-line: var(--button-2-line);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -102,6 +111,27 @@
   --warn: #f59e0b;
   --new: #052e16;
   --new-foreground: #fafafa;
+}
+
+:root {
+  --well: var(--card);
+  --well-line: var(--border);
+  --switch-off: var(--card);
+  --switch-off-line: var(--border);
+  --chip: var(--card);
+  --chip-line: var(--border);
+  --button-2: var(--card);
+  --button-2-line: var(--border);
+}
+.dark {
+  --well: var(--badge);
+  --well-line: transparent;
+  --switch-off: var(--badge);
+  --switch-off-line: transparent;
+  --chip: var(--secondary);
+  --chip-line: var(--secondary);
+  --button-2: var(--secondary);
+  --button-2-line: var(--border);
 }
 
 @layer base {

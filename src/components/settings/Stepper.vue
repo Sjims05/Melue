@@ -17,7 +17,7 @@ const step = (delta: number) => {
 </script>
 
 <template>
-  <span class="inline-flex items-center rounded-lg bg-secondary">
+  <span class="inline-flex items-center rounded-lg bg-well shadow-[inset_0_0_0_1px_var(--well-line)]">
     <button type="button" class="grid size-8 place-items-center text-base disabled:opacity-40" :disabled="at === 0" aria-label="Less" @click="step(-1)">−</button>
     <!-- The old and the new number share one grid cell while they slide; the cell clips them. -->
     <span class="inline-grid h-8 min-w-7 place-items-center overflow-hidden" aria-live="polite">

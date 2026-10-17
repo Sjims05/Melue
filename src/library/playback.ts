@@ -17,7 +17,7 @@ import {
 } from 'tauri-plugin-native-audio-api'
 import { invoke } from '@tauri-apps/api/core'
 import { player, trackedLists } from '@/platform'
-import { library, type PlaybackOutcome, type Source } from '.'
+import { library, type PlaybackOutcome, type PlayerSettings, type Source } from '.'
 
 const LIKE_BUTTON = 'like'
 /** The lists played (albums, playlists, artists), most recent first: Android Auto's "Recently played" tab. */
@@ -52,11 +52,20 @@ export function onPlaybackCounted(listener: CountedListener): () => void {
 
 let started = false
 
+/** Hands the player settings Melue keeps to the player (all of them, or a change). */
+export async function applyPlayerSettings(settings: PlayerSettings, change: Partial<PlayerSettings> = settings) {
+  const { skipSeconds, ...options } = change
+  if (Object.keys(options).length > 0) await player.setOptions(options)
+  if (skipSeconds !== undefined) await player.setSkipInterval(settings.skipSeconds)
+}
+
 /** Once at app start: the player's buttons, and counting what it plays. */
 export async function startPlayback(): Promise<void> {
   if (started) return
   started = true
   await player.initialize()
+  // The player settings (it saves them too; this keeps it in line with Melue's, e.g. after a reinstall).
+  await library.playerSettings().then((settings) => applyPlayerSettings(settings)).catch((e) => console.error('melue: player settings', e))
   // The player keeps this itself, also for lists played in the car with the app closed (auto.rs uses it).
   await trackedLists.configure([{ id: RECENT_LISTS, track: 'folder', limit: 20 }])
   await setControls({

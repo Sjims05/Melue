@@ -87,6 +87,7 @@ const didWords = (r: ReorganiseResult) =>
       <SettingsRow
         title="Folders on the share"
         wide
+        setting="sync.shareLayout"
         :reset="() => pickLayout(SYNC_DEFAULTS.shareLayout)"
         :is-default="syncSettings.value.shareLayout === SYNC_DEFAULTS.shareLayout"
       >

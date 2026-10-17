@@ -19,7 +19,7 @@ const pick = (value: unknown) => {
       v-for="[value, label] in options"
       :key="value"
       :value="value"
-      class="h-8 rounded-full border border-border bg-card px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:border-secondary dark:bg-secondary data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground dark:data-[state=on]:border-primary dark:data-[state=on]:bg-primary"
+      class="h-8 rounded-full border border-chip-line bg-chip px-3 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 outline-none motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
     >
       {{ label }}
     </ToggleGroupItem>

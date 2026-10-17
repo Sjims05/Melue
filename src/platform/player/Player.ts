@@ -66,6 +66,18 @@ export interface OutputDevices {
   active: string | null
 }
 
+/** The player's options (the plugin's setOptions). */
+export interface PlayerOptions {
+  volumeCurve?: 'linear' | 'quadratic' | 'cubic'
+  mediaControls?: boolean
+  resumeLastQueue?: 'off' | 'paused' | 'play'
+  previousRestartsAfterSeconds?: number
+  nextAtEnd?: 'nothing' | 'first'
+  repeatAddedTracks?: boolean
+  pausedKeepAliveMinutes?: number
+  keepAliveWhileCarConnected?: boolean
+}
+
 export interface UpdateQueueOptions {
   /** The playlist / album the queue now plays; unchanged when left out. */
   sourceId?: string
@@ -138,6 +150,10 @@ export interface Player {
   /** 0 to 1. */
   setVolume(volume: number): Promise<PlayerState>
   getOutputDevices(): Promise<OutputDevices>
-  /** A device id from getOutputDevices, or null for the system default. Not saved by the player. */
+  /** A device id from getOutputDevices, or null for the system default. Saved by the player. */
   setOutputDevice(id: string | null): Promise<OutputDevices>
+  /** The player's options (only those passed change). Saved by the player. */
+  setOptions(options: PlayerOptions): Promise<void>
+  /** What previous / next do on media keys, headphones and the notification: 0 skips tracks, above 0 seeks. */
+  setSkipInterval(seconds: number): Promise<PlayerState>
 }

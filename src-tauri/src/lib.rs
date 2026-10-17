@@ -1,3 +1,5 @@
+#[cfg(desktop)]
+mod desktop;
 mod library;
 mod logging;
 mod share;
@@ -76,6 +78,10 @@ pub fn run() {
     // Melue's own Android code (no JavaScript commands, used by the library).
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_android_fs::init()).plugin(tauri_plugin_melue_android::init());
+    // Desktop only: one Melue at a time (registered first, so a second start goes no further), and starting with
+    // the system (desktop.rs).
+    #[cfg(desktop)]
+    let builder = builder.plugin(desktop::single_instance()).plugin(desktop::autostart());
 
     builder
         .plugin(tauri_plugin_native_audio::init())
@@ -137,6 +143,9 @@ pub fn run() {
                 let app = app.handle().clone();
                 move || sync::scheduler::cancel(&app)
             });
+            // Desktop: the window, the tray, starting with the system (desktop.rs).
+            #[cfg(desktop)]
+            desktop::setup(app.handle())?;
             Ok(())
         })
         // Desktop: back into the window counts as coming back to the app (a sync if the last is a while ago).
@@ -147,8 +156,16 @@ pub fn run() {
                     sync::scheduler::trigger(window.app_handle(), sync::schedule::Trigger::Return);
                     sync::handoff::check(window.app_handle());
                 }
-                // Closing: where the song is now goes to the share.
-                tauri::WindowEvent::CloseRequested { .. } => sync::handoff::save_now(window.app_handle()),
+                // Closing: on desktop usually hidden in the tray (desktop.rs); when it quits, where the song is now
+                // goes to the share.
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    #[cfg(desktop)]
+                    if desktop::on_close(window, api) {
+                        return;
+                    }
+                    let _ = api;
+                    sync::handoff::save_now(window.app_handle())
+                }
                 _ => {}
             }
         })
@@ -226,6 +243,10 @@ pub fn run() {
             library::library_set_auto_playlist,
             library::library_queue_follow,
             library::library_set_queue_follow,
+            library::library_player_settings,
+            library::library_covers_size,
+            library::library_clean_covers,
+            library::library_set_player_settings,
             library::library_folder_covers,
             library::library_set_folder_covers,
         ])

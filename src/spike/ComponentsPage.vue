@@ -1,15 +1,18 @@
 <script setup lang="ts">
 /**
- * The spike's Components page: Phase 3's finished components, as they will be in the app, each from Melue's design
- * (and the playground's component lab). "Not wired yet" marks a component whose setting Melue doesn't have yet.
+ * The spike's Components page: the settings' building blocks in Melue's design (the playground's component lab has
+ * them all). The finished settings are on the Settings page (settings/SettingsPage.vue).
  */
 import { ChevronRight, Copy, Folder, HardDrive, Cloud } from '@lucide/vue'
 import { reactive } from 'vue'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
 import {
   Chips,
+  ConfirmDialog,
   DropValue,
+  Field,
   Hint,
   IconTile,
   RadioMark,
@@ -24,11 +27,6 @@ import {
   Stepper,
 } from '@/components/settings'
 import { themeMode } from '@/lib/theme'
-import AcrossDevices from '@/settings/AcrossDevices.vue'
-import MobileData from '@/settings/MobileData.vue'
-import SongsAndLayout from '@/settings/SongsAndLayout.vue'
-import SyncTriggers from '@/settings/SyncTriggers.vue'
-import SyncStatusCard from '@/settings/SyncStatusCard.vue'
 
 // The building blocks' demo values (nothing here is a real setting).
 const demo = reactive({
@@ -38,6 +36,9 @@ const demo = reactive({
   limit: 250 as number | 'off',
   steps: 5,
   device: 'system',
+  address: 'nas/music',
+  picked: [true, false] as boolean[],
+  asking: false,
 })
 const DEVICES = [
   ['system', 'System default', 'Follows Windows’ choice · now Speakers (Realtek)'],
@@ -51,22 +52,12 @@ const DEVICES = [
     <header class="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="text-[28px] font-bold tracking-tight">Components</h1>
-        <p class="mt-1 text-sm text-muted-foreground">Phase 3’s finished components, as they will be in the app.</p>
+        <p class="mt-1 text-sm text-muted-foreground">The building blocks every setting is made of. The settings are on the Settings page.</p>
       </div>
       <Segmented v-model="themeMode" :options="[['system', 'System'], ['dark', 'Dark'], ['light', 'Light']]" />
     </header>
 
-    <SettingsHeading title="General" description="Settings: the sync status and the other devices. Wired to Melue." />
-    <SettingsLabel>General settings</SettingsLabel>
-    <SyncStatusCard />
-    <AcrossDevices />
 
-    <SettingsHeading title="Syncing" />
-    <SyncTriggers />
-    <SongsAndLayout />
-    <MobileData />
-
-    <div class="h-14" />
     <SettingsHeading title="Building blocks" description="What every settings component is made of (Melue’s design)." />
 
     <SettingsLabel>Rows and controls</SettingsLabel>
@@ -119,6 +110,29 @@ const DEVICES = [
         <Button variant="outline" size="sm">Sync now</Button>
       </SettingsRow>
     </SettingsCard>
+
+    <SettingsLabel>Fields, checkboxes, a question</SettingsLabel>
+    <SettingsCard>
+      <div class="settings-row grid gap-3 sm:grid-cols-2" data-row>
+        <Field v-model="demo.address" label="A field" placeholder="\\nas\music or nas/music" hint="A hint under it" />
+        <Field v-model="demo.address" label="A field with an error" error="Can’t reach “nas”. Check that it’s on." />
+      </div>
+      <SettingsRow title="Checkboxes" description="Picked, not picked, some picked (a folder’s “select all”)">
+        <Checkbox :model-value="true" />
+        <Checkbox :model-value="false" />
+        <Checkbox model-value="indeterminate" />
+      </SettingsRow>
+      <SettingsRow title="A question before something big" description="Red when it can’t simply come back">
+        <Button variant="outline" size="sm" @click="demo.asking = true">Ask</Button>
+      </SettingsRow>
+    </SettingsCard>
+    <ConfirmDialog
+      v-model:open="demo.asking"
+      title="Remove the share?"
+      text="Syncing stops on this device. The synced folder stays, with its songs."
+      action="Remove share"
+      danger
+    />
 
     <SettingsLabel>Tips and buttons</SettingsLabel>
     <div class="grid gap-3">

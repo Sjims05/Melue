@@ -52,6 +52,7 @@ async function save(change: Partial<PlaybackSettings>) {
 
 // "Reset to default" for one setting. The name's default is the system's, which only Melue knows: always offered.
 const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
+  setting: `playback.${key}`,
   reset: () => save({ [key]: PLAYBACK_DEFAULTS[key] }),
   isDefault: key !== 'deviceName' && settings.value?.[key] === PLAYBACK_DEFAULTS[key],
 })

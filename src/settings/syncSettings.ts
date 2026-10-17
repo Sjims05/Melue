@@ -43,6 +43,7 @@ export async function saveSyncSettings(change: Partial<SyncSettings>): Promise<v
 /** A row's "Reset to default" for one setting: `<SettingsRow v-bind="resetSync('atStart')">`. */
 export function resetSync<K extends keyof SyncSettings>(key: K) {
   return {
+    setting: `sync.${key}`,
     reset: () => saveSyncSettings({ [key]: SYNC_DEFAULTS[key] }),
     isDefault: syncSettings.value?.[key] === SYNC_DEFAULTS[key],
   }

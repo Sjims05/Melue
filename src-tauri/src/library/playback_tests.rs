@@ -2,6 +2,7 @@
 
 use super::changes::{ChangeReason, LibraryChange};
 use super::follow::{affects, QueueFollow};
+use super::player_settings::PlayerSettings;
 use super::playback::{outcome, Outcome, PlaybackEvent, HISTORY_LIMIT};
 use super::testkit::{MusicFolder, Tags, TestLibrary};
 
@@ -198,6 +199,19 @@ fn queue_follow_settings_and_which_changes_touch_a_queue() {
     assert!(!affects(&change, Some("album:4")));
     assert!(!affects(&change, None), "a queue not started from a list");
     assert!(affects(&LibraryChange::liked(5), Some("liked")));
+}
+
+#[test]
+fn player_settings_are_kept_and_checked() {
+    let t = TestLibrary::new("play-player-settings");
+    assert_eq!(t.library.player_settings().unwrap(), PlayerSettings::default());
+    let mine = PlayerSettings { volume_curve: "cubic".into(), skip_seconds: 10, resume_last_queue: "off".into(), ..Default::default() };
+    t.library.set_player_settings(&mine).unwrap();
+    assert_eq!(t.reopen().library.player_settings().unwrap(), mine);
+    let t = TestLibrary::new("play-player-settings-bad");
+    assert!(t.library.set_player_settings(&PlayerSettings { volume_curve: "loud".into(), ..Default::default() }).is_err());
+    assert!(t.library.set_player_settings(&PlayerSettings { skip_seconds: 999, ..Default::default() }).is_err());
+    assert_eq!(t.library.player_settings().unwrap(), PlayerSettings::default(), "nothing saved when it's refused");
 }
 
 #[test]

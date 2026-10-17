@@ -46,8 +46,16 @@
   .reveal-enter-active > div, .reveal-leave-active > div {
     clip-path: inset(-16px -8px 0 -8px);
   }
-  .settings-row + .settings-reveal, .settings-reveal + .settings-row {
+  .settings-row + .settings-reveal, .settings-reveal + .settings-row, .settings-reveal + .settings-reveal {
     border-top: var(--separator) solid var(--background);
+  }
+  /* A setting opened from its link (settings/settingsMenu.ts: goToSetting): it lights up, then fades back. */
+  .settings-flash {
+    animation: settings-flash 1.8s ease-out;
+  }
+  @keyframes settings-flash {
+    from, 30% { background: color-mix(in oklab, var(--primary) 10%, transparent); }
+    to { background: transparent; }
   }
   /* Something appearing in place (a button that shows when a card opens): <Transition name="drop">. It drops and
      fades in like Reveal's content; it fades out quickly. */

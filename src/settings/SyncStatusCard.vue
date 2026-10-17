@@ -170,7 +170,7 @@ async function save(value: string) {
     </SettingsRow>
 
     <div v-if="progress" class="-mt-1.5 pr-4 pb-3.5 pl-10">
-      <div class="h-1 overflow-hidden rounded-full bg-secondary">
+      <div class="h-1 overflow-hidden rounded-full bg-well shadow-[inset_0_0_0_1px_var(--well-line)]">
         <div class="h-full rounded-full bg-primary transition-[width] duration-300" :style="{ width: `${percent}%` }" />
       </div>
     </div>

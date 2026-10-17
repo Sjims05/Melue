@@ -246,6 +246,26 @@ export interface QueueFollow {
   order: 'playlist' | 'queue'
 }
 
+/** The player's settings, as Melue keeps them (library/player_settings.rs); settings/playerSettings.ts hands them to the player. */
+export interface PlayerSettings {
+  volumeCurve: 'linear' | 'quadratic' | 'cubic'
+  /** Desktop: the system's media controls and the media keys. */
+  mediaControls: boolean
+  /** What previous / next do on media keys, headphones, the notification: 0 skips songs, above 0 seeks that many seconds. */
+  skipSeconds: number
+  /** The last queue when Melue starts: loaded and 'paused', 'play', or 'off' (starts empty). */
+  resumeLastQueue: 'off' | 'paused' | 'play'
+  /** 0: previous always goes to the song before. */
+  previousRestartsAfterSeconds: number
+  /** Next on the last song, with repeat off. */
+  nextAtEnd: 'nothing' | 'first'
+  repeatAddedTracks: boolean
+  /** Android: how long the player stays ready after a pause. */
+  pausedKeepAliveMinutes: number
+  /** Android: stays ready while Android Auto is connected. */
+  keepAliveWhileCarConnected: boolean
+}
+
 /** An album: songs with the same album title and album artist (see the grouping rules in grouping.rs). */
 export interface Album {
   id: number
@@ -359,6 +379,12 @@ export const library = {
   likedIds: () => invoke<number[]>('library_liked_ids'),
   queueFollow: () => invoke<QueueFollow>('library_queue_follow'),
   setQueueFollow: (settings: QueueFollow) => invoke<QueueFollow>('library_set_queue_follow', { settings }),
+  playerSettings: () => invoke<PlayerSettings>('library_player_settings'),
+  /** How much space the covers take, in bytes. */
+  coversSize: () => invoke<number>('library_covers_size'),
+  /** Removes covers no song uses any more; resolves with how many files went. */
+  cleanCovers: () => invoke<number>('library_clean_covers'),
+  setPlayerSettings: (settings: PlayerSettings) => invoke<PlayerSettings>('library_set_player_settings', { settings }),
   /** Albums with songs that are there, by title ("The" ignored). */
   albums: (offset = 0, limit = 100) => invoke<Album[]>('library_albums', { offset, limit }),
   /** Artists with songs that are there, by name ("The" and accents ignored, or their sort tag). */

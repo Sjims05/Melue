@@ -31,6 +31,7 @@ const LIMITS_DEFAULT = { limit: 0, monthStarts: 1, askOver: 100 }
 const limits = reactive({ ...LIMITS_DEFAULT })
 // "Reset to default" for a limit (local only, like the limits).
 const resetLimit = (key: keyof typeof LIMITS_DEFAULT) => ({
+  setting: `mobile.${key}`,
   reset: () => (limits[key] = LIMITS_DEFAULT[key]),
   isDefault: limits[key] === LIMITS_DEFAULT[key],
 })
@@ -49,7 +50,7 @@ function pick(next: Level) {
     description="Settings controlling when to sync on mobile data. They apply on your phones, and can be changed from any device."
   />
   <SettingsCard v-if="syncSettings.value">
-    <SettingsRow :description="LEVEL_LINE[level]" wide :reset="() => pick('small')" :is-default="level === 'small'">
+    <SettingsRow :description="LEVEL_LINE[level]" wide setting="mobile.level" :reset="() => pick('small')" :is-default="level === 'small'">
       <template #title>On mobile data, sync <SettingsBadge v-if="level === 'nothing'" class="ml-1.5">Not wired yet</SettingsBadge></template>
       <Segmented :model-value="level" :options="LEVELS" @update:model-value="pick" />
     </SettingsRow>
@@ -73,7 +74,7 @@ function pick(next: Level) {
         <span>{{ isMobile ? 'This month on mobile data' : 'Your phones, this month' }} <SettingsBadge class="ml-1.5">Not wired yet</SettingsBadge></span>
         <span><b class="text-[17px] font-bold">0 MB</b><small v-if="limits.limit && level === 'all'" class="text-muted-foreground"> of {{ limits.limit >= 1000 ? `${limits.limit / 1000} GB` : `${limits.limit} MB` }}</small></span>
       </div>
-      <div class="h-1 overflow-hidden rounded-full bg-secondary"><div class="h-full w-0 rounded-full bg-primary" /></div>
+      <div class="h-1 overflow-hidden rounded-full bg-well shadow-[inset_0_0_0_1px_var(--well-line)]"><div class="h-full w-0 rounded-full bg-primary" /></div>
       <small class="text-[13px] text-muted-foreground">
         {{ isMobile ? 'Counted by Melue for its own syncing' : 'From your phones (each sends it when it syncs, and when Melue closes there)' }} · the month starts on the {{ ordinal(limits.monthStarts) }}
       </small>

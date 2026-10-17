@@ -6,7 +6,7 @@ defineProps<{ icon: Component }>()
 </script>
 
 <template>
-  <span class="grid size-[34px] flex-none place-items-center rounded-lg bg-secondary text-foreground">
+  <span class="grid size-[34px] flex-none place-items-center rounded-lg bg-well shadow-[inset_0_0_0_1px_var(--well-line)] text-foreground">
     <component :is="icon" class="size-4" />
   </span>
 </template>

@@ -1,5 +1,5 @@
 import * as audio from 'tauri-plugin-native-audio-api'
-import type { Player, PlayerQueue, PlayerTrack, RepeatMode, SetQueueOptions, UpdateQueueOptions } from './Player'
+import type { Player, PlayerOptions, PlayerQueue, PlayerTrack, RepeatMode, SetQueueOptions, UpdateQueueOptions } from './Player'
 
 /**
  * Every platform: everything goes to the native-audio plugin. On Android / iOS it plays in a native
@@ -43,4 +43,6 @@ export class NativePlayer implements Player {
   setVolume = (volume: number) => audio.setVolume(volume)
   getOutputDevices = () => audio.getOutputDevices()
   setOutputDevice = (id: string | null) => audio.setOutputDevice(id)
+  setOptions = (options: PlayerOptions) => audio.setOptions(options)
+  setSkipInterval = (seconds: number) => audio.setSkipInterval(seconds)
 }

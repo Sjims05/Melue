@@ -24,6 +24,7 @@ mod linked_tests;
 pub mod m3u;
 mod migrations;
 pub mod playback;
+pub mod player_settings;
 #[cfg(test)]
 mod playback_tests;
 pub mod playlists;

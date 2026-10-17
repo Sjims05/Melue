@@ -9,6 +9,7 @@ use super::scan::ScanSummary;
 use super::changes::{self, tracking, ChangeReason, LibraryChange};
 use super::follow::QueueFollow;
 use super::playback::{Outcome, PlaybackEvent};
+use super::player_settings::PlayerSettings;
 use super::playlists::{Playlist, PlaylistEntry};
 use super::scanner::AppFiles;
 use super::{android, scanner, Album, Artist, Folder, FolderKind, Library, Result, Track};
@@ -370,4 +371,28 @@ pub fn library_queue_follow(library: State<'_, Library>) -> Result<QueueFollow> 
 pub fn library_set_queue_follow(library: State<'_, Library>, settings: QueueFollow) -> Result<QueueFollow> {
     library.set_queue_follow(&settings)?;
     library.queue_follow()
+}
+
+/// How much space the covers take (Storage), in bytes.
+#[tauri::command(async)]
+pub fn library_covers_size(library: State<'_, Library>) -> u64 {
+    library.covers_size()
+}
+
+/// Storage's Clean up: removes covers no song uses any more. Returns how many files went.
+#[tauri::command(async)]
+pub fn library_clean_covers(library: State<'_, Library>) -> Result<u32> {
+    library.clean_covers()
+}
+
+/// The player's settings, as the settings page shows them (the frontend hands them to the player).
+#[tauri::command(async)]
+pub fn library_player_settings(library: State<'_, Library>) -> Result<PlayerSettings> {
+    library.player_settings()
+}
+
+#[tauri::command(async)]
+pub fn library_set_player_settings(library: State<'_, Library>, settings: PlayerSettings) -> Result<PlayerSettings> {
+    library.set_player_settings(&settings)?;
+    library.player_settings()
 }
