@@ -1,0 +1,158 @@
+/* The settings building blocks' structure (the rest is Tailwind classes in the components). Simon's design rules
+   (2026-10-17), as in the playground's component lab.
+
+   What these rules adjust (a row's padding, its text's size) must be set here, not as Tailwind classes on the
+   component: utilities always beat this layer, so a `px-4` on the row would cancel the detail row's indent. */
+/* The opening motion (Simon, 2026-10-17): everything that unfolds or appears in place. The space opens in 300 ms; the
+   content waits --reveal-delay, then drops --reveal-drop into place over --reveal-time and fades in over
+   --reveal-fade. Reveal.vue's transition takes 400 ms (delay + time): change it with these. */
+:root {
+  --reveal-delay: 100ms;
+  --reveal-time: 300ms;
+  --reveal-fade: 180ms;
+  --reveal-drop: -12px;
+}
+
+@layer components {
+  .settings-row {
+    padding: 0.875rem 1rem;
+  }
+  .settings-row-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Rows in a card are separated by lines in the page's colour (flat cards: no borders). */
+  .settings-row + .settings-row {
+    border-top: var(--separator) solid var(--background);
+  }
+
+  /* A card's details line (Simon, 2026-10-17): a separator like the others, across the whole card (its details sit
+     16 px in). */
+  .settings-details-line {
+    height: var(--separator);
+    margin-inline: -1rem;
+    background: var(--background);
+  }
+
+  /* Something that slides open and closed in a card (Reveal.vue): separated like a row. Its rows are set here, not as
+     a utility class, so the transition's 0fr can win. */
+  .settings-reveal {
+    display: grid;
+    grid-template-rows: 1fr;
+  }
+  /* While it moves it hides what hasn't unfolded yet (the bottom), but not the top: the content drops in from a little
+     above (--reveal-drop) and stays visible on its way. Once open, nothing is clipped (a field's focus ring). */
+  .reveal-enter-active > div, .reveal-leave-active > div {
+    clip-path: inset(-16px -8px 0 -8px);
+  }
+  .settings-row + .settings-reveal, .settings-reveal + .settings-row {
+    border-top: var(--separator) solid var(--background);
+  }
+  /* Something appearing in place (a button that shows when a card opens): <Transition name="drop">. It drops and
+     fades in like Reveal's content; it fades out quickly. */
+  .drop-enter-active {
+    animation:
+      reveal-drop var(--reveal-time) cubic-bezier(.2, .8, .2, 1) var(--reveal-delay) both,
+      reveal-fade var(--reveal-fade) ease-out var(--reveal-delay) both;
+  }
+  .drop-leave-active {
+    animation: reveal-fade 150ms ease-in reverse both;
+  }
+
+  /* A text that changes (a row's grey line): <Transition name="swap" mode="out-in">, a quick cross-fade. */
+  .swap-enter-active, .swap-leave-active {
+    transition: opacity 120ms ease;
+  }
+  .swap-enter-from, .swap-leave-to {
+    opacity: 0;
+  }
+
+  /* Content with its own line at the top (a card's details) doesn't get the separator too. */
+  .settings-reveal.no-line {
+    border-top: 0;
+  }
+  /* Opening, like switching pages in the playground: the space opens while the content, after a short delay, drops
+     into place and fades in (same fast-then-settle curve). Closing mirrors it. */
+  .reveal-enter-active, .reveal-leave-active {
+    transition: grid-template-rows 300ms cubic-bezier(.2, .8, .2, 1);
+  }
+  .reveal-leave-active {
+    transition-duration: 220ms;
+  }
+  .reveal-enter-active > div > * {
+    animation:
+      reveal-drop var(--reveal-time) cubic-bezier(.2, .8, .2, 1) var(--reveal-delay) both,
+      reveal-fade var(--reveal-fade) ease-out var(--reveal-delay) both;
+  }
+  .reveal-leave-active > div > * {
+    animation: reveal-drop 220ms cubic-bezier(.2, .8, .2, 1) reverse both, reveal-fade 150ms ease-in reverse both;
+  }
+  .reveal-enter-from, .reveal-leave-to {
+    grid-template-rows: 0fr;
+  }
+  @keyframes reveal-drop {
+    from {
+      transform: translateY(var(--reveal-drop));
+    }
+  }
+  @keyframes reveal-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* A row with a wide control (segments, chips, several buttons) moves it under the text when there's no room. */
+  .settings-row.wide {
+    flex-wrap: wrap;
+  }
+  .settings-row.wide > .settings-row-text {
+    flex-basis: 12rem;
+  }
+
+  /* A detail row (under a setting): 16 px further in on both sides, its trailing icon too. */
+  .settings-row.detail {
+    padding-inline: 2rem;
+  }
+
+  /* The trailing icon (a chevron, ⋯, a radio) sits in a square at the row's end: one column per card, as wide as the
+     card's shortest row with one is tall (SettingsCard measures it into --end-size), so a card's icons line up and
+     sit as far from the side as from the top. */
+  .settings-row.has-end {
+    padding-right: 0;
+  }
+  .settings-row.detail.has-end {
+    padding-right: 1rem;
+  }
+  .settings-row-end {
+    flex: none;
+    align-self: stretch;
+    width: var(--end-size, 2.75rem);
+    margin-block: -0.875rem;
+    margin-left: -0.5rem;
+    display: grid;
+    place-items: center;
+  }
+
+  /* The stepper's number slides to the side as the next one comes in: + moves it left (the next comes from the
+     right), − the other way. */
+  .step-up-enter-active, .step-up-leave-active, .step-down-enter-active, .step-down-leave-active {
+    transition: transform 200ms ease-out, opacity 200ms ease-out;
+  }
+  .step-up-enter-from, .step-down-leave-to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  .step-up-leave-to, .step-down-enter-from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-enter-active, .reveal-leave-active, .reveal-enter-active > div > *, .reveal-leave-active > div > *,
+    .drop-enter-active, .drop-leave-active, .swap-enter-active, .swap-leave-active,
+    .step-up-enter-active, .step-up-leave-active, .step-down-enter-active, .step-down-leave-active {
+      transition: none;
+      animation: none;
+    }
+  }
+}
