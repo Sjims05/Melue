@@ -1,0 +1,32 @@
+/* Cover cards and their grids (CoverCard, .cover-grid). Under the pointer, focused, or with its menu open, the whole
+   card gets the songs' highlight behind it (songs.css --song-highlight: white like a card in light mode, a raised grey
+   in dark; Simon picked it over brightening the cover, 2026-10-17). The card's padding reaches into the space around
+   it (a negative margin), so nothing moves when it shows; the grid has room above and below (padding, which doesn't
+   merge with a heading's margin) so a highlighted card never covers the heading over it. */
+@layer components {
+  .cover-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--cover-min, 150px), 1fr));
+    gap: 1.75rem;
+    padding-block: 0.75rem;
+  }
+  .cover-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    margin: -0.75rem;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    transition: background-color 200ms ease-out;
+  }
+  .cover-card-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .cover-card:hover,
+  .cover-card:focus-visible,
+  .cover-card[data-state='open'] {
+    background: var(--song-highlight);
+  }
+}

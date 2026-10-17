@@ -21,11 +21,15 @@ const root = ref<{ $el: HTMLElement }>()
 // Where the picked segment is, and how wide the whole group is (the labels' copy is laid out like the group).
 // `moves` stays off until it's placed the first time, so nothing slides in from the corner when the page opens.
 const pill = reactive({ x: 0, y: 0, width: 0, height: 0, groupWidth: 0, moves: false })
+// Measured exactly (fractions of a pixel): the labels' copy must be laid out like the group, and rounded down by a
+// fraction, its labels wrap onto a second line (out of sight under the pill).
 function place() {
   const group = root.value?.$el
   const picked = group?.querySelector<HTMLElement>('[data-state="on"]')
   if (!group || !picked) return
-  Object.assign(pill, { x: picked.offsetLeft, y: picked.offsetTop, width: picked.offsetWidth, height: picked.offsetHeight, groupWidth: group.offsetWidth })
+  const g = group.getBoundingClientRect()
+  const p = picked.getBoundingClientRect()
+  Object.assign(pill, { x: p.left - g.left, y: p.top - g.top, width: p.width, height: p.height, groupWidth: g.width })
 }
 
 let resizes: ResizeObserver | undefined

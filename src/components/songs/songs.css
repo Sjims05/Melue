@@ -1,0 +1,35 @@
+/* Song lists (SongRow, SongList): the highlighted row and the playing bars. */
+
+/* The highlighted row (the song playing, the one under the pointer, the one whose menu is open), in every list: light
+   mode white like a card (on the page it reads as the song lifted onto a card), dark mode a raised grey. A list that
+   sits on a card (.song-on-card) uses the badge grey in light mode, as white wouldn't show there. */
+:root {
+  --song-highlight: var(--card);
+  --song-highlight-foreground: var(--foreground);
+  --song-highlight-muted: var(--muted-foreground);
+}
+:root:not(.dark) .song-on-card {
+  --song-highlight: var(--badge);
+}
+.dark {
+  --song-highlight: var(--secondary);
+  --song-highlight-foreground: var(--foreground);
+  --song-highlight-muted: var(--muted-foreground);
+}
+
+@layer components {
+  /* The song playing: three bars (PlayingBars.vue moves them: the playground's rise and fall while playing, and
+     gravity when it pauses). */
+  .song-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 11px;
+  }
+  .song-bars > i {
+    width: 3px;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+  }
+}

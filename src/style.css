@@ -3,6 +3,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./components/settings/settings.css";
+@import "./components/songs/songs.css";
+@import "./components/covers/covers.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -43,6 +45,10 @@
   --color-switch-off: var(--switch-off);
   --color-chip: var(--chip);
   --color-chip-line: var(--chip-line);
+  /* Song lists' highlighted row (components/songs/songs.css). */
+  --color-song-highlight: var(--song-highlight);
+  --color-song-highlight-foreground: var(--song-highlight-foreground);
+  --color-song-highlight-muted: var(--song-highlight-muted);
   --color-button-2: var(--button-2);
   --color-button-2-line: var(--button-2-line);
   --radius-sm: calc(var(--radius) - 4px);

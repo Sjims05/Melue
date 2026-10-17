@@ -101,6 +101,9 @@ pub fn run() {
         })
         .setup(|app| {
             use tauri::Manager;
+            // Desktop: the window first (desktop.rs), so a slow start-up never leaves it hidden.
+            #[cfg(desktop)]
+            desktop::show_at_start(app.handle());
             // The music library, in the app's data folder.
             let library = library::Library::open(&app.path().app_data_dir()?.join("library.db"))?;
             app.manage(library);
@@ -143,7 +146,7 @@ pub fn run() {
                 let app = app.handle().clone();
                 move || sync::scheduler::cancel(&app)
             });
-            // Desktop: the window, the tray, starting with the system (desktop.rs).
+            // Desktop: the tray, starting with the system (desktop.rs).
             #[cfg(desktop)]
             desktop::setup(app.handle())?;
             Ok(())

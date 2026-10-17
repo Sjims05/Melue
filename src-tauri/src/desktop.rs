@@ -27,12 +27,17 @@ pub fn single_instance() -> TauriPlugin<Wry> {
     tauri_plugin_single_instance::init(|app, _args, _cwd| show_window(app))
 }
 
-/// At start: the window (unless the system started Melue), the tray, and starting with the system the first time.
-pub fn setup(app: &AppHandle) -> tauri::Result<()> {
-    // The window starts hidden (tauri.windows.conf.json), so starting in the tray doesn't flash it.
+/// First thing at start: the window, unless the system started Melue (then it stays in the tray). The window starts
+/// hidden (tauri.windows.conf.json) so starting in the tray doesn't flash it; it's shown before the rest of the
+/// start-up (the library, the sync), which can take a while.
+pub fn show_at_start(app: &AppHandle) {
     if !std::env::args().any(|a| a == HIDDEN) {
         show_window(app);
     }
+}
+
+/// At start, after the rest: the tray, and starting with the system the first time.
+pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Show Melue", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Melue", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &PredefinedMenuItem::separator(app)?, &quit_item])?;
