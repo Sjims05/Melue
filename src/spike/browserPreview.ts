@@ -7,7 +7,7 @@
  */
 import { emit } from '@tauri-apps/api/event'
 import { mockIPC } from '@tauri-apps/api/mocks'
-import type { PlaybackSettings, ShareInfo, SyncResult, SyncStatus } from '@/library/sync'
+import type { LayoutStatus, PlaybackSettings, ShareInfo, SyncResult, SyncSettings, SyncStatus } from '@/library/sync'
 
 const minutes = (n: number) => n * 60_000
 const status = new URLSearchParams(location.search).get('status') ?? 'synced'
@@ -32,6 +32,16 @@ let syncStatus: SyncStatus = {
   retryAtMs: status === 'error' ? Date.now() + minutes(15) : null,
   note: null,
 }
+
+let settings: SyncSettings = {
+  removeGone: true, askBeforeRemoving: 5, atStart: false, onReturnAfterMinutes: 15, onChange: true, everyMinutes: 30,
+  copyOnMetered: false, moveNewSongs: false, shareLayout: 'artistAlbum',
+}
+// The share's songs are in Artist/Album; picking One folder leaves 3 to move.
+const layoutStatus = (): LayoutStatus => settings.shareLayout === 'artistAlbum'
+  ? { layout: 'artistAlbum', applied: true, toMove: 0, examples: [] }
+  : { layout: 'oneFolder', applied: false, toMove: 3, examples: [{ from: 'ABBA/Waterloo/Waterloo.mp3', to: 'Waterloo.mp3' }] }
+let reorganised = false
 
 let playback: PlaybackSettings = { mode: 'ask', deviceName: 'TROLLGANG', continueWithinMinutes: 10 }
 
@@ -63,6 +73,10 @@ export function installBrowserPreview() {
           return info
         case 'sync_now': return pretendSync()
         case 'sync_cancel': return null
+        case 'sync_settings': return settings
+        case 'sync_set_settings': settings = a.settings as SyncSettings; reorganised = false; return settings
+        case 'sync_layout_status': return reorganised ? { ...layoutStatus(), applied: true, toMove: 0 } : layoutStatus()
+        case 'sync_reorganise': await wait(1200); reorganised = true; return { moved: 3, playlistsUpdated: 2, failed: [] }
         case 'playback_sync_settings': return playback
         case 'playback_sync_set_settings': playback = a.settings as PlaybackSettings; return playback
         default: return null

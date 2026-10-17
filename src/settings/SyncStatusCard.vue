@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The sync status card, at the top of the settings: the one live status for syncing (Simon's design, with the states
+ * The sync status card, at the top of the settings: the one live status for syncing (Melue's design, with the states
  * from the lab). Not set up, password needed, syncing (with a bar and Cancel), can't reach (with when it tries again),
  * synced; the chevron opens the last sync's details, what waits for an answer, and the address at home.
  *

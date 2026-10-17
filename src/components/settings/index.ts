@@ -1,5 +1,5 @@
 /**
- * Melue's settings building blocks, in Simon's design (Figma, 2026-10-16/17; the playground's component lab has
+ * Melue's settings building blocks, in Melue's design (Figma, 2026-10-16/17; the playground's component lab has
  * every component). The settings components are made from these.
  */
 export { default as Chevron } from './Chevron.vue'

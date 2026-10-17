@@ -24,7 +24,7 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     data-slot="switch"
     v-bind="forwarded"
     :class="cn(
-      // Simon's switch (44 × 24): the badge grey when off, the primary colour when on.
+      // The design's switch (44 × 24): the badge grey when off, the primary colour when on.
       'peer data-[state=checked]:bg-primary data-[state=unchecked]:bg-badge focus-visible:ring-ring/50 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-[3px] transition-all outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50',
       props.class,
     )"

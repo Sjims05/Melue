@@ -1,9 +1,9 @@
-/* The settings building blocks' structure (the rest is Tailwind classes in the components). Simon's design rules
+/* The settings building blocks' structure (the rest is Tailwind classes in the components). Melue's design rules
    (2026-10-17), as in the playground's component lab.
 
    What these rules adjust (a row's padding, its text's size) must be set here, not as Tailwind classes on the
    component: utilities always beat this layer, so a `px-4` on the row would cancel the detail row's indent. */
-/* The opening motion (Simon, 2026-10-17): everything that unfolds or appears in place. The space opens in 300 ms; the
+/* The opening motion (2026-10-17): everything that unfolds or appears in place. The space opens in 300 ms; the
    content waits --reveal-delay, then drops --reveal-drop into place over --reveal-time and fades in over
    --reveal-fade. Reveal.vue's transition takes 400 ms (delay + time): change it with these. */
 :root {
@@ -27,7 +27,7 @@
     border-top: var(--separator) solid var(--background);
   }
 
-  /* A card's details line (Simon, 2026-10-17): a separator like the others, across the whole card (its details sit
+  /* A card's details line (2026-10-17): a separator like the others, across the whole card (its details sit
      16 px in). */
   .settings-details-line {
     height: var(--separator);

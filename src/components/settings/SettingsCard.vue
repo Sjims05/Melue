@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A card of setting rows. It also sizes the trailing icons' column (Simon's rule): as wide as the card's shortest row
+ * A card of setting rows. It also sizes the trailing icons' column (the design's rule): as wide as the card's shortest row
  * with a trailing icon is tall, at most 64 px. CSS can't size a width from a stretched height, so it's measured, and
  * again whenever the card's rows or size change.
  */

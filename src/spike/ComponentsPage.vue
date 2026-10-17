@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The spike's Components page: Phase 3's finished components, as they will be in the app, each from Simon's design
+ * The spike's Components page: Phase 3's finished components, as they will be in the app, each from Melue's design
  * (and the playground's component lab). "Not wired yet" marks a component whose setting Melue doesn't have yet.
  */
 import { ChevronRight, Copy, Folder, HardDrive, Cloud } from '@lucide/vue'
@@ -25,6 +25,9 @@ import {
 } from '@/components/settings'
 import { themeMode } from '@/lib/theme'
 import AcrossDevices from '@/settings/AcrossDevices.vue'
+import MobileData from '@/settings/MobileData.vue'
+import SongsAndLayout from '@/settings/SongsAndLayout.vue'
+import SyncTriggers from '@/settings/SyncTriggers.vue'
 import SyncStatusCard from '@/settings/SyncStatusCard.vue'
 
 // The building blocks' demo values (nothing here is a real setting).
@@ -58,8 +61,13 @@ const DEVICES = [
     <SyncStatusCard />
     <AcrossDevices />
 
+    <SettingsHeading title="Syncing" />
+    <SyncTriggers />
+    <SongsAndLayout />
+    <MobileData />
+
     <div class="h-14" />
-    <SettingsHeading title="Building blocks" description="What every settings component is made of (Simon’s design)." />
+    <SettingsHeading title="Building blocks" description="What every settings component is made of (Melue’s design)." />
 
     <SettingsLabel>Rows and controls</SettingsLabel>
     <SettingsCard>

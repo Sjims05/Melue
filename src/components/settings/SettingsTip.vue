@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * A strip with an icon and a line of text. `note` (a tip; Simon's primary colour), `ok` (green: it worked), `bad`
+ * A strip with an icon and a line of text. `note` (a tip; the primary colour), `ok` (green: it worked), `bad`
  * (red: it didn't). The `action` slot holds a link or button at its end.
  */
 import { CircleCheck, CircleX, Info } from '@lucide/vue'

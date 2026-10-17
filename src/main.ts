@@ -4,6 +4,12 @@ import "./style.css";
 // Light or dark (follows the system unless set).
 import "./lib/theme";
 import { isMobile } from "./platform";
+
+// No browser right-click menu: Melue's own menus (e.g. a setting's "Reset to default") open where there is one.
+// Text fields keep it, for copy and paste.
+document.addEventListener("contextmenu", (e) => {
+  if (!(e.target as Element | null)?.closest?.("input, textarea, [contenteditable]")) e.preventDefault();
+});
 import { startPlayback } from "./library/playback";
 import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";

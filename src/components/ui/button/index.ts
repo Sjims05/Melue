@@ -12,10 +12,10 @@ export const buttonVariants = cva(
           "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-        // Simon's secondary button: white with a line in light (it shows on the page and on cards), #262626 in dark.
+        // The design's secondary button: white with a line in light (it shows on the page and on cards), #262626 in dark.
         outline:
           "border bg-card hover:bg-accent hover:text-accent-foreground dark:bg-secondary dark:hover:bg-secondary/70",
-        // Simon's "Remove share": a secondary button with red text, for things that can't simply come back.
+        // The design's "Remove share": a secondary button with red text, for things that can't simply come back.
         danger:
           "border bg-card text-destructive hover:bg-accent dark:bg-secondary dark:hover:bg-secondary/70",
         secondary:
