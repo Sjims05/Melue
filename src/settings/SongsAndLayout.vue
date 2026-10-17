@@ -4,11 +4,12 @@
  * the share), and how the share's folders are laid out. Changing the layout offers to put the share's songs into it
  * (they move on the share, for every device), with an example of what moves.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, Stepper } from '@/components/settings'
 import { describeSyncFailure, shareLayout, sync, type LayoutStatus, type ReorganiseResult, type ShareLayout } from '@/library/sync'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { SYNC_DEFAULTS } from './defaults'
 import { loadSyncSettings, resetSync, saveSyncSettings, syncSettings } from './syncSettings'
 
@@ -26,7 +27,7 @@ const error = ref('')
 const loadLayout = async () => {
   layout.value = sync.available ? await shareLayout.status().catch(() => null) : null
 }
-onMounted(async () => {
+onPageLoad(async () => {
   await loadSyncSettings()
   await loadLayout()
 })

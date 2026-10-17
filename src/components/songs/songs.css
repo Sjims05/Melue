@@ -16,8 +16,20 @@
   --song-highlight-foreground: var(--foreground);
   --song-highlight-muted: var(--muted-foreground);
 }
+/* The queue (Up next): the strong highlight, black in light mode (as in the concept), white in dark mode. */
+.song-strong,
+:root:not(.dark) .song-on-card.song-strong {
+  --song-highlight: var(--primary);
+  --song-highlight-foreground: var(--primary-foreground);
+  --song-highlight-muted: color-mix(in oklch, var(--primary-foreground) 62%, transparent);
+}
 
 @layer components {
+  /* A like button's heart: fills in and out softly (popHeart, components/player/heart.ts, pops it as it's liked). */
+  .heart {
+    transition: fill 200ms ease-out, color 200ms ease-out;
+  }
+
   /* The song playing: three bars (PlayingBars.vue moves them: the playground's rise and fall while playing, and
      gravity when it pauses). */
   .song-bars {

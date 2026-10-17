@@ -1,11 +1,13 @@
 <script setup lang="ts">
 /**
- * The settings page, as in the design (Frame 2): General, Syncing (with Mobile data), Playback, Library, Display and
- * Storage, About. Each part is its own component; this puts them in order. "Set up" (the status card, the triggers'
+ * Sync & settings (the settings page, as in the design, Frame 2): General, Syncing (with Mobile data), Playback,
+ * Library, Display and Storage, About; under the title, the last sync in short. Each part is its own component; this puts them in order. "Set up" (the status card, the triggers'
  * tip) goes to the share's form under Library. It gives the rows' right-click menus their extras (settingsMenu.ts),
  * and opens at a setting when asked (?setting=sync.atStart).
  */
-import { nextTick, onMounted, provide, ref } from 'vue'
+import { useIntervalFn } from '@vueuse/core'
+import { computed, nextTick, onMounted, provide, ref } from 'vue'
+import { PageHeader } from '@/components/page'
 import { SETTING_MENU, SettingsHeading, SettingsLabel } from '@/components/settings'
 import { isAndroid } from '@/platform'
 import AboutSettings from './AboutSettings.vue'
@@ -25,9 +27,32 @@ import SongsAndLayout from './SongsAndLayout.vue'
 import StorageSettings from './StorageSettings.vue'
 import SyncStatusCard from './SyncStatusCard.vue'
 import SyncTriggers from './SyncTriggers.vue'
+import { sync } from '@/library/sync'
+import { ago } from './format'
+import { providePageLoading } from '@/components/page/pageLoading'
 import { createSettingsMenu, goToSetting } from './settingsMenu'
+import { useShownSync } from './shownSync'
 
 provide(SETTING_MENU, createSettingsMenu())
+
+// Shown once its parts have their first data (pageLoading.ts); a skeleton until then: the first sections' shapes.
+const ready = providePageLoading()
+const SKELETON = [{ rows: 1 }, { rows: 3 }, { rows: 4 }]
+
+// The grey line under the title: the last sync in short ("Synced just now · 2 copied · 0 moved · 0 removed"), or the
+// one running (held a moment, like the status card), and "12 min ago" moving on by itself.
+const shown = useShownSync()
+const now = ref(Date.now())
+useIntervalFn(() => (now.value = Date.now()), 30_000)
+const summary = computed(() => {
+  const s = sync.status
+  if (!sync.available) return 'No share set up'
+  if (shown.value) return shown.value.filesTotal ? `Syncing ${shown.value.filesDone} of ${shown.value.filesTotal}` : 'Syncing…'
+  if (s?.problem) return 'Last sync didn’t finish: see below'
+  if (!s?.last) return 'Not synced yet'
+  const r = s.last.result
+  return `Synced ${ago(s.last.atMs, now.value)} · ${r.copied} copied · ${r.moved} moved · ${r.removed} removed`
+})
 
 // A setting's link: the page opens at it (once its rows are there).
 onMounted(() => {
@@ -40,35 +65,57 @@ const toShare = () => shareSection.value?.scrollIntoView({ behavior: 'smooth', b
 </script>
 
 <template>
-  <main class="mx-auto max-w-[960px] px-4 pt-6 pb-16">
-    <h1 class="mb-6 text-[28px] font-bold tracking-tight">Settings</h1>
+  <!-- 960 px: wider, the settings' rows get hard to read across (Melue's design). -->
+  <div class="max-w-[960px] pb-16">
+    <PageHeader title="Sync & settings" :subtitle="summary" />
 
-    <SettingsLabel>General settings</SettingsLabel>
-    <SyncStatusCard @set-up="toShare" />
-    <AcrossDevices />
+    <!-- Until its parts have their first data: a skeleton, then the page all at once (not section by section). -->
+    <div class="relative">
+      <Transition name="fade">
+        <div v-if="!ready" class="pointer-events-none absolute inset-x-0 top-0 z-10 bg-background" aria-hidden="true">
+          <template v-for="section in SKELETON" :key="section.rows">
+            <div class="mt-5 mb-2 h-4 w-32 rounded bg-card first:mt-0" />
+            <div class="rounded-xl bg-card">
+              <div v-for="row in section.rows" :key="row" class="settings-row flex animate-pulse items-center gap-4 border-background [&+&]:border-t-2">
+                <div class="flex flex-1 flex-col gap-2">
+                  <div class="h-3.5 w-1/3 rounded bg-well" />
+                  <div class="h-3 w-1/2 rounded bg-well" />
+                </div>
+                <div class="h-7 w-20 rounded-md bg-well" />
+              </div>
+            </div>
+          </template>
+        </div>
+      </Transition>
+      <div class="transition-opacity duration-300" :class="ready ? 'opacity-100' : 'opacity-0'">
+        <SettingsLabel>General settings</SettingsLabel>
+        <SyncStatusCard @set-up="toShare" />
+        <AcrossDevices />
 
-    <SettingsHeading title="Syncing" />
-    <SyncTriggers @set-up="toShare" />
-    <SongsAndLayout />
-    <MobileData />
+        <SettingsHeading title="Syncing" />
+        <SyncTriggers @set-up="toShare" />
+        <SongsAndLayout />
+        <MobileData />
 
-    <SettingsHeading title="Playback" />
-    <QueueSettings />
-    <AudioSettings />
-    <OutputDevice />
+        <SettingsHeading title="Playback" />
+        <QueueSettings />
+        <AudioSettings />
+        <OutputDevice />
 
-    <SettingsHeading title="Library" description="Your music folders, and the share" />
-    <AndroidSource v-if="isAndroid" />
-    <LibraryStatus />
-    <MusicFolders />
-    <div ref="shareSection" class="scroll-mt-16" />
-    <ShareSetup />
-    <PlaylistSettings />
+        <SettingsHeading title="Library" description="Your music folders, and the share" />
+        <AndroidSource v-if="isAndroid" />
+        <LibraryStatus />
+        <MusicFolders />
+        <div ref="shareSection" class="scroll-mt-16" />
+        <ShareSetup />
+        <PlaylistSettings />
 
-    <DisplaySettings />
-    <StorageSettings />
+        <DisplaySettings />
+        <StorageSettings />
 
-    <AboutSettings />
-    <DropSongs />
-  </main>
+        <AboutSettings />
+        <DropSongs />
+      </div>
+    </div>
+  </div>
 </template>

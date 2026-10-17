@@ -6,11 +6,13 @@
  *
  * Reads Melue's live sync status (library/sync.ts) and the share's info.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Chevron, EditRow, Reveal, SettingsCard, SettingsRow, StatusDot } from '@/components/settings'
-import { describeSetupError, describeSyncFailure, share, sync, syncing, type ShareInfo, type SyncProgress } from '@/library/sync'
+import { describeSetupError, describeSyncFailure, share, sync, syncing, type ShareInfo } from '@/library/sync'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { ago, at, didWords, middle, shareName, size, TRIGGER, when } from './format'
+import { useShownSync } from './shownSync'
 
 const emit = defineEmits<{ setUp: [] }>()
 
@@ -18,7 +20,7 @@ const info = ref<ShareInfo | null>(null)
 const loadInfo = async () => {
   info.value = await share.info().catch(() => null)
 }
-onMounted(loadInfo)
+onPageLoad(loadInfo)
 watch(() => sync.available, loadInfo)
 
 const open = ref(false)
@@ -28,30 +30,8 @@ const saving = ref(false)
 
 const status = computed(() => sync.status)
 
-// What the card shows of a running sync: held at least SHOWN_AT_LEAST ms, and when it's done the bar fills and stays a
-// moment (FILLED_FOR) before "Synced", so a quick sync reads as one, not a flash. Only what's shown: syncing isn't slowed.
-const SHOWN_AT_LEAST = 1200
-const FILLED_FOR = 400
-const shownProgress = ref<SyncProgress | null>(null)
-let shownSince = 0
-let hide: ReturnType<typeof setTimeout> | undefined
-watch(
-  () => status.value?.syncing ?? null,
-  (live) => {
-    clearTimeout(hide)
-    if (live) {
-      if (!shownProgress.value) shownSince = Date.now()
-      shownProgress.value = live
-      return
-    }
-    const shown = shownProgress.value
-    if (!shown) return
-    shownProgress.value = { ...shown, filesDone: shown.filesTotal, bytesDone: shown.bytesTotal, current: null }
-    hide = setTimeout(() => (shownProgress.value = null), Math.max(0, SHOWN_AT_LEAST - (Date.now() - shownSince)) + FILLED_FOR)
-  },
-  { immediate: true },
-)
-onBeforeUnmount(() => clearTimeout(hide))
+// What the card shows of a running sync: held a moment, so a quick sync reads as one (shownSync.ts).
+const shownProgress = useShownSync()
 const settings = computed(() => info.value?.settings ?? null)
 const streamed = computed(() => settings.value?.kind === 'drive' && settings.value.stream)
 // The full path shows in the details; the title shortens it in the middle when it's long.

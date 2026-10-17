@@ -6,9 +6,10 @@
  * Melue's playback sync settings (library/sync.ts: playbackSync). An empty name goes back to the system's name. Only
  * with a share: it all goes through the share.
  */
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { Chevron, DropValue, EditRow, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { playbackSync, sync, type PlaybackMode, type PlaybackSettings } from '@/library/sync'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { PLAYBACK_DEFAULTS } from './defaults'
 
 const MODES = [['ask', 'Ask'], ['follow', 'Follow'], ['off', 'Off']] as const
@@ -25,7 +26,7 @@ const editingName = ref(false)
 const error = ref('')
 const saving = ref(false)
 
-onMounted(async () => {
+onPageLoad(async () => {
   try {
     settings.value = await playbackSync.settings()
   } catch (e) {

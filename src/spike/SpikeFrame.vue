@@ -54,7 +54,7 @@ watch(page, (value) => {
       </div>
     </nav>
     <slot v-if="page === 'tests'" />
-    <SettingsPage v-else-if="page === 'settings'" />
+    <div v-else-if="page === 'settings'" class="mx-auto max-w-[960px] px-4 pt-6"><SettingsPage /></div>
     <ComponentsPage v-else />
   </TooltipProvider>
 </template>

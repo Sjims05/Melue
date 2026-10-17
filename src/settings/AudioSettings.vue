@@ -4,11 +4,11 @@
  * notification and on headphones), what the queue does when Melue starts, previous restarting the song, and keeping
  * the player ready after a pause (phones). The player's settings (playerSettings.ts).
  */
-import { onMounted } from 'vue'
 import { Switch } from '@/components/ui/switch'
 import { DropValue, Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow } from '@/components/settings'
 import type { PlayerSettings } from '@/library'
 import { isMobile } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { loadPlayerSettings, playerSettings, resetPlayer, savePlayerSettings } from './playerSettings'
 
 const CURVES = [['quadratic', 'Quadratic'], ['cubic', 'Cubic'], ['linear', 'Linear']] as const
@@ -22,7 +22,7 @@ const STARTS = [['paused', 'Load the last queue, paused'], ['play', 'Play it'], 
 const RESTARTS = [[0, 'Never'], [3, '3 seconds'], [5, '5 seconds'], [10, '10 seconds']] as const
 const READY = [[5, '5 min'], [15, '15 min'], [30, '30 min'], [60, '1 hour']] as const
 
-onMounted(loadPlayerSettings)
+onPageLoad(loadPlayerSettings)
 </script>
 
 <template>

@@ -3,9 +3,12 @@
     "windows": [
       {
         "title": "Melue",
-        "width": 800,
-        "height": 600,
-        "visible": false
+        "width": 1280,
+        "height": 860,
+        "visible": false,
+        "decorations": false,
+        "minWidth": 900,
+        "minHeight": 600
       }
     ]
   }

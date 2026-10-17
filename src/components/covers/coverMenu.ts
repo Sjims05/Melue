@@ -4,7 +4,8 @@
  * changes where it lives (only here / synced / linked) and deletes; an auto playlist hides. A song's card uses the
  * song's own menu (songMenu): Add to playlist is for songs only (Simon, 2026-10-17).
  */
-import { Cloud, EyeOff, ListEnd, Lock, Pencil, Play, Shuffle, SkipForward, Trash2, Unlink, User } from '@lucide/vue'
+import { Cloud, EyeOff, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
+import { NextIcon, PlayIcon } from '@/components/player/icons'
 import type { Component } from 'vue'
 
 export type CoverAction =
@@ -31,10 +32,8 @@ export interface MenuItem<A extends string = string> {
   action: A
   label: string
   icon: Component
-  /** The icon filled (Play, Play next, Remove from liked). */
+  /** The icon filled (Remove from liked). */
   filled?: boolean
-  /** The icon smaller (12 px, in the same 16 px space): filled shapes look bigger than outlines (Play, Play next). */
-  small?: boolean
   /** It takes something away (red). */
   danger?: boolean
   /** A line above it. */
@@ -43,9 +42,9 @@ export interface MenuItem<A extends string = string> {
 
 export function coverMenu(what: CoverKind): MenuItem<CoverAction>[] {
   const items: MenuItem<CoverAction>[] = [
-    { action: 'play', label: 'Play', icon: Play, filled: true, small: true },
+    { action: 'play', label: 'Play', icon: PlayIcon },
     { action: 'shuffle', label: 'Shuffle', icon: Shuffle },
-    { action: 'playNext', label: 'Play next', icon: SkipForward, filled: true, small: true },
+    { action: 'playNext', label: 'Play next', icon: NextIcon },
     { action: 'addToQueue', label: 'Add to queue', icon: ListEnd },
   ]
   if (what.kind === 'album') {

@@ -32,7 +32,7 @@ import app.tauri.plugin.Plugin
  * Also the permission to read photos, which the opt-in covers next to the songs (folder.jpg) need.
  *
  * Events (to Rust listeners): "musicChanged" when the music index changes (songs added, removed, edited
- * while Melue runs), "resumed" when the app comes back to the foreground.
+ * while Melue runs), "paused" when the app goes to the background, "resumed" when it comes back.
  */
 @TauriPlugin(
     permissions = [
@@ -167,6 +167,11 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
                 trigger("networkChanged", JSObject())
             }
         })
+    }
+
+    override fun onPause() {
+        super.onPause()
+        trigger("paused", JSObject())
     }
 
     override fun onResume() {

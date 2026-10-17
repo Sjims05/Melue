@@ -47,7 +47,7 @@ const emit = defineEmits<{ open: []; action: [action: string] }>()
       <template v-for="item in menu" :key="item.action">
         <ContextMenuSeparator v-if="item.apart" />
         <ContextMenuItem :variant="item.danger ? 'destructive' : 'default'" @select="emit('action', item.action)">
-          <component :is="item.icon" :class="[item.filled && 'fill-current', item.small && 'm-0.5 size-3']" />{{ item.label }}
+          <component :is="item.icon" :class="item.filled && 'fill-current'" />{{ item.label }}
         </ContextMenuItem>
       </template>
     </ContextMenuContent>

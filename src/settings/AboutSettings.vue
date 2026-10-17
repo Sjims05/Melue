@@ -6,19 +6,20 @@
  * Not wired yet: sharing the log (Melue can't hand a file to Android's share sheet yet).
  */
 import { getVersion } from '@tauri-apps/api/app'
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { SettingsBadge, SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
 import { library } from '@/library'
 import { share, sync } from '@/library/sync'
 import { isAndroid, isMobile } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { ago, didWords, shareName } from './format'
 
 const version = ref('')
 const copied = ref(false)
 const error = ref('')
 
-onMounted(async () => {
+onPageLoad(async () => {
   version.value = await getVersion().catch(() => '')
 })
 

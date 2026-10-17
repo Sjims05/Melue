@@ -281,6 +281,12 @@ export interface Album {
   tracks: number
 }
 
+/** An artist a song names, and their page's id. */
+export interface ArtistLink {
+  id: number
+  name: string
+}
+
 /** An artist, from the songs' artist tags ("A feat. B" is A, with B featured). */
 export interface Artist {
   id: number
@@ -380,6 +386,8 @@ export const library = {
   queueFollow: () => invoke<QueueFollow>('library_queue_follow'),
   setQueueFollow: (settings: QueueFollow) => invoke<QueueFollow>('library_set_queue_follow', { settings }),
   playerSettings: () => invoke<PlayerSettings>('library_player_settings'),
+  /** The songs with these ids, in no particular order (the player's queue: lengths, likes, covers). */
+  tracksByIds: (ids: number[]) => invoke<Track[]>('library_tracks_by_ids', { ids }),
   /** How much space the covers take, in bytes. */
   coversSize: () => invoke<number>('library_covers_size'),
   /** Removes covers no song uses any more; resolves with how many files went. */
@@ -389,6 +397,8 @@ export const library = {
   albums: (offset = 0, limit = 100) => invoke<Album[]>('library_albums', { offset, limit }),
   /** Artists with songs that are there, by name ("The" and accents ignored, or their sort tag). */
   artists: (offset = 0, limit = 100) => invoke<Artist[]>('library_artists', { offset, limit }),
+  /** Songs' artists with their ids, by song id: the main ones, then the featured ones (for linking the names). */
+  trackArtists: (ids: number[]) => invoke<Record<number, ArtistLink[]>>('library_track_artists', { ids }),
   /** Android, all music on the phone: whether cover images next to the songs are used (off by default). */
   folderCovers: () => invoke<FolderCovers>('library_folder_covers'),
   /** Switching on asks for the photos permission, and is refused without it. Rescans either way. */

@@ -6,7 +6,7 @@
  * the row opens the full path and the synced folder), with Change password and Remove share in its ⋯ menu.
  */
 import { ChevronRight, Cloud, Ellipsis, Folder, Monitor } from '@lucide/vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
@@ -25,6 +25,7 @@ import {
 } from '@/components/settings'
 import { describeSetupError, share, syncing, type PasswordStore, type SetupError, type ShareInfo, type SyncFolderChoice } from '@/library/sync'
 import { isAndroid, isDesktop, storage } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { middle, shareName } from './format'
 import { refreshLibrary } from './libraryState'
 
@@ -47,7 +48,7 @@ const removing = ref(false)
 const details = ref(false)
 const error = ref('')
 
-onMounted(async () => {
+onPageLoad(async () => {
   try {
     info.value = await share.info()
   } catch (e) {

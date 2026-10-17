@@ -23,11 +23,16 @@ const LIKE_BUTTON = 'like'
 /** The lists played (albums, playlists, artists), most recent first: Android Auto's "Recently played" tab. */
 export const RECENT_LISTS = 'recentLists'
 
-/** Plays a list from its start, or from the song `startAt` (a song id in it). */
+/**
+ * Plays a list from its start, or from the song `startAt` (a song id in it). With shuffle on and no song picked, it
+ * starts on a random one of its songs (the rest shuffled after it), not always its first.
+ */
 export async function playSource(source: Source, options: { startAt?: number } = {}): Promise<void> {
   const items = await library.queueItems(source)
   if (items.length === 0) throw new Error('nothing to play in that list')
-  const startIndex = Math.max(0, items.findIndex((item) => item.id === options.startAt))
+  const picked = items.findIndex((item) => item.id === options.startAt)
+  const shuffled = picked < 0 && (await player.getState().catch(() => null))?.shuffle
+  const startIndex = picked >= 0 ? picked : shuffled ? Math.floor(Math.random() * items.length) : 0
   await player.setQueue(items, { sourceId: source, startIndex })
   await player.play()
 }

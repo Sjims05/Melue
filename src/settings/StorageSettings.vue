@@ -3,10 +3,11 @@
  * Storage (this device's): how much space covers take, and Clean up, which removes covers no song uses any more.
  * Covers are made when songs are scanned, so they aren't cleared all at once: they wouldn't come back by themselves.
  */
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library } from '@/library'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { size } from './format'
 
 const bytes = ref<number | null>(null)
@@ -17,7 +18,7 @@ const error = ref('')
 const read = async () => {
   bytes.value = await library.coversSize()
 }
-onMounted(() => read().catch((e) => (error.value = `Can’t read the covers’ size: ${e}`)))
+onPageLoad(() => read().catch((e) => (error.value = `Can’t read the covers’ size: ${e}`)))
 
 async function cleanUp() {
   cleaning.value = true

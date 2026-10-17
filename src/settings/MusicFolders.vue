@@ -7,7 +7,7 @@
  * Copies of synced songs are handled on the status card above (Melue counts them for the whole library).
  */
 import { Cloud, CloudUpload, Ellipsis, FilePlus, Folder, Plus, Smartphone } from '@lucide/vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -15,6 +15,7 @@ import { Chevron, ConfirmDialog, EditRow, IconTile, Reveal, SettingsBadge, Setti
 import { library, type MusicFolder } from '@/library'
 import { describeSyncFailure, moving, sync, type LocalSong } from '@/library/sync'
 import { isAndroid, isDesktop, isMobile, storage } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { adding, pickSongs } from './addSongs'
 import { size } from './format'
 import { libraryState, refreshLibrary, startLibraryState } from './libraryState'
@@ -25,7 +26,7 @@ const picked = reactive(new Set<number>())
 const asking = ref<{ what: 'move'; songs: LocalSong[] } | { what: 'remove'; folder: MusicFolder } | null>(null)
 const error = ref('')
 
-onMounted(startLibraryState)
+onPageLoad(startLibraryState)
 
 // Your folders first (by name), the synced one last.
 const folders = computed(() => [...libraryState.folders].sort((a, b) => Number(a.synced) - Number(b.synced) || a.name.localeCompare(b.name)))

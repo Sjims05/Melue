@@ -44,7 +44,7 @@ pub mod testkit;
 
 pub use commands::*;
 pub use folders::{Folder, FolderKind};
-pub use tracks::{Album, Artist, Track};
+pub use tracks::{Album, Artist, ArtistLink, Track};
 
 use std::fmt::Display;
 use std::path::{Path, PathBuf};

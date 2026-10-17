@@ -1,0 +1,59 @@
+/* The app's frame (Melue's design, the app playground's motion).
+
+   The column: the page's content between the side dots and the right edge: about 15% of the window on the left (288 px
+   at 1920 px, room for the dots and their names) and 12.5% on the right (240 px). The top bar's logo lines up with it. */
+:root {
+  --col-left: max(11rem, 15vw);
+  --col-right: max(2.5rem, 12.5vw);
+}
+
+@layer components {
+  .app-column {
+    padding-left: var(--col-left);
+    padding-right: var(--col-right);
+  }
+
+  /* Switching main pages (the side dots): the new one slides in from below when going down the dots, from above when
+     going up, and fades in; the old one goes at once (the playground's hd-down / hd-up). The way it went is the page
+     area's --page-from (1 or -1), read as it starts: a kept-alive page keeps the transition it was first shown with. */
+  .page-enter-active {
+    transition:
+      transform 320ms cubic-bezier(.2, .8, .2, 1),
+      opacity 320ms cubic-bezier(.2, .8, .2, 1);
+  }
+  .page-enter-from {
+    opacity: 0;
+    transform: translateY(calc(var(--page-from, 1) * 32px));
+  }
+
+  /* A page opened on top (an artist, a folder, Search), its own layer with its own top bar (the playground's overlay):
+     opening, it slides in from the right over what's there, which stays put under it (layer-in); going back, it slides
+     out, uncovering the one under it (layer-out). The moving layer is the upper one. */
+  .layer-in-enter-active,
+  .layer-out-leave-active {
+    z-index: 30;
+    transition: transform 340ms cubic-bezier(.2, .8, .2, 1);
+  }
+  .layer-in-enter-from,
+  .layer-out-leave-to {
+    transform: translateX(100%);
+  }
+
+  /* Something that comes and goes in place (the side dots, under a page on top). */
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 200ms ease-out;
+  }
+  .fade-enter-from,
+  .fade-leave-to {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter-active,
+    .layer-in-enter-active,
+    .layer-out-leave-active {
+      transition: none;
+    }
+  }
+}

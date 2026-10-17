@@ -8,10 +8,11 @@
  * The queue following its list is Melue's (library/follow.rs: QueueFollow); the end of the queue is the player's
  * (playerSettings.ts).
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Switch } from '@/components/ui/switch'
 import { Chevron, DropValue, Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library, type QueueFollow } from '@/library'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { QUEUE_FOLLOW_DEFAULTS } from './defaults'
 import { loadPlayerSettings, playerSettings, resetPlayer, savePlayerSettings } from './playerSettings'
 import { followSummary } from './queueFollow'
@@ -30,7 +31,7 @@ const customizing = ref(false)
 const trying = ref(false)
 const error = ref('')
 
-onMounted(async () => {
+onPageLoad(async () => {
   loadPlayerSettings()
   try {
     follow.value = await library.queueFollow()
@@ -98,10 +99,10 @@ const summary = computed(() => (follow.value ? followSummary(follow.value) : '')
     </Reveal>
   </SettingsCard>
   <Reveal :show="!!follow?.enabled && customizing && trying" :line="false">
-    <TryIt v-if="follow" :follow="follow" class="mt-3" />
+    <TryIt v-if="follow" :follow="follow" class="mt-5" />
   </Reveal>
 
-  <SettingsCard v-if="playerSettings.value" class="mt-3">
+  <SettingsCard v-if="playerSettings.value" class="mt-5">
     <SettingsRow
       title="Next on the last song"
       :description="playerSettings.value.nextAtEnd === 'first' ? 'With repeat off: back to the first song, paused' : 'With repeat off: nothing happens'"

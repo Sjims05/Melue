@@ -6,9 +6,10 @@
  * Wired: Small things / Everything (Melue's "copy songs on metered connections"). Not wired yet (Melue doesn't have
  * them): Nothing, the limits and the month's use; they keep their values only here, for the design.
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { DropValue, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsHeading, SettingsRow } from '@/components/settings'
 import { isMobile } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { loadSyncSettings, saveSyncSettings, syncSettings } from './syncSettings'
 
 type Level = 'nothing' | 'small' | 'all'
@@ -23,7 +24,7 @@ const ordinal = (n: number) => `${n}${[11, 12, 13].includes(n) ? 'th' : ({ 1: 's
 const DAYS = Array.from({ length: 28 }, (_, i) => [i + 1, `The ${ordinal(i + 1)}`] as const)
 const ASKS = [[0, 'Never'], [50, '50 MB'], [100, '100 MB'], [250, '250 MB']] as const
 
-onMounted(loadSyncSettings)
+onPageLoad(loadSyncSettings)
 
 // Not wired yet: "Nothing" and the limits live only here.
 const nothing = ref(false)

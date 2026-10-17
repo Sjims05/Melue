@@ -6,13 +6,14 @@
  * "All music" is Melue's android_media folder: switching to chosen folders removes it (asked first).
  */
 import { Check } from '@lucide/vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { ConfirmDialog, Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library, type FolderCovers, type MusicAccess } from '@/library'
 import { share, sync } from '@/library/sync'
 import { storage } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { libraryState, refreshLibrary, startLibraryState } from './libraryState'
 
 const SOURCES = [['all', 'All music'], ['chosen', 'Chosen folders']] as const
@@ -32,7 +33,7 @@ function saved() {
 const asking = ref(false)
 const error = ref('')
 
-onMounted(async () => {
+onPageLoad(async () => {
   await startLibraryState()
   try {
     ;[access.value, covers.value] = await Promise.all([library.musicAccess(), library.folderCovers()])

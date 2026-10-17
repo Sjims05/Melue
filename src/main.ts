@@ -8,6 +8,7 @@ import { startPlayback } from "./library/playback";
 import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
+import { router } from "./router";
 
 // No browser right-click menu: Melue's own menus (e.g. a setting's "Reset to default") open where there is one.
 // Text fields keep it, for copy and paste.
@@ -18,7 +19,7 @@ document.addEventListener("contextmenu", (e) => {
 function start() {
   // Phone and desktop have their own shell (navigation and layout) around the same pages.
   // The platform is fixed at build time, so the other shell is left out of the build.
-  createApp(isMobile ? MobileShell : DesktopShell).mount("#app");
+  createApp(isMobile ? MobileShell : DesktopShell).use(router).mount("#app");
 
   // The player's buttons, and counting what it plays (also what played while the app wasn't running).
   startPlayback().catch((e) => console.error("melue: playback setup failed", e));

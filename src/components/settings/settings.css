@@ -14,8 +14,9 @@
 }
 
 @layer components {
+  /* 20 px above and below a row's content (Melue's design, 2026-10-17). */
   .settings-row {
-    padding: 0.875rem 1rem;
+    padding: 1.25rem 1rem;
   }
   .settings-row-text {
     flex: 1 1 auto;

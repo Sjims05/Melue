@@ -3,10 +3,10 @@
  * When Melue syncs by itself: at start, when the share's music changes, coming back after a while, and every so
  * often (the design's rows, texts and order). The tip shows only without a share.
  */
-import { onMounted } from 'vue'
 import { Switch } from '@/components/ui/switch'
 import { Chips, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { sync } from '@/library/sync'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { loadSyncSettings, resetSync, saveSyncSettings, syncSettings } from './syncSettings'
 
 const emit = defineEmits<{ setUp: [] }>()
@@ -15,7 +15,7 @@ const emit = defineEmits<{ setUp: [] }>()
 const RETURN = [[0, 'Never'], [5, '5 min'], [15, '15 min'], [60, '1 hour']] as const
 const EVERY = [[0, 'Never'], [15, '15 min'], [30, '30 min'], [60, '1 hour']] as const
 
-onMounted(loadSyncSettings)
+onPageLoad(loadSyncSettings)
 </script>
 
 <template>

@@ -1,5 +1,6 @@
 //! Reading songs back out of the library (the UI's lists build on this).
 
+use std::collections::BTreeMap;
 use rusqlite::{params, Row};
 use serde::Serialize;
 
@@ -87,6 +88,52 @@ impl Library {
         let tracks = stmt.query_map(params![limit, offset], track_row).map_err(err)?;
         tracks.collect::<rusqlite::Result<_>>().map_err(err)
     }
+
+    /// The songs with these ids (missing ones too, marked not available), in no particular order; ids not in the
+    /// library are left out. For a list that has the ids (the player's queue): the songs' lengths, likes, covers.
+    pub fn tracks_by_ids(&self, ids: &[i64]) -> Result<Vec<Track>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn();
+        let marks = vec!["?"; ids.len()].join(",");
+        let sql = format!(
+            "SELECT {TRACK_COLUMNS}
+             FROM tracks t JOIN folders f ON f.id = t.folder_id LEFT JOIN covers c ON c.id = t.cover_id
+             WHERE t.id IN ({marks})"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(err)?;
+        let tracks = stmt.query_map(rusqlite::params_from_iter(ids), track_row).map_err(err)?;
+        tracks.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+
+    /// These songs' artists, each with its artist page's id, by song id: the main ones, then the featured ones, in the
+    /// tag's order ("A feat. B": A, then B). For linking the names the songs show. Songs without any are left out.
+    pub fn track_artists(&self, track_ids: &[i64]) -> Result<BTreeMap<i64, Vec<ArtistLink>>> {
+        let mut found: BTreeMap<i64, Vec<ArtistLink>> = BTreeMap::new();
+        if track_ids.is_empty() {
+            return Ok(found);
+        }
+        let conn = self.conn();
+        let marks = vec!["?"; track_ids.len()].join(",");
+        let sql = format!(
+            "SELECT x.track_id, ar.id, ar.name FROM track_artists x JOIN artists ar ON ar.id = x.artist_id
+             WHERE x.track_id IN ({marks}) ORDER BY x.track_id, x.role = 'featured', x.position"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(err)?;
+        let mut rows = stmt.query(rusqlite::params_from_iter(track_ids)).map_err(err)?;
+        while let Some(r) = rows.next().map_err(err)? {
+            found.entry(r.get(0).map_err(err)?).or_default().push(ArtistLink { id: r.get(1).map_err(err)?, name: r.get(2).map_err(err)? });
+        }
+        Ok(found)
+    }
+}
+
+/// An artist a song names, and their page's id.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ArtistLink {
+    pub id: i64,
+    pub name: String,
 }
 
 /// An album as the UI shows it.

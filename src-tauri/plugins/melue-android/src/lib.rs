@@ -236,7 +236,7 @@ mod android {
             self.0.run_mobile_plugin::<serde_json::Value>("syncNotificationDone", ()).map(|_| ()).map_err(|e| e.to_string())
         }
 
-        /// Calls `handler` for each of the plugin's `event`s ("musicChanged", "resumed").
+        /// Calls `handler` for each of the plugin's `event`s ("musicChanged", "paused", "resumed").
         pub fn listen(&self, event: &str, handler: impl Fn() + Send + Sync + 'static) -> Result<(), String> {
             let channel = Channel::new(move |_| {
                 handler();

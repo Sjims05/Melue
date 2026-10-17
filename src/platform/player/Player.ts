@@ -49,6 +49,13 @@ export interface PlayerQueue {
   currentIndex: number
   /** Indexes into `items` in the order they play (differs from `items` while shuffled). */
   playOrder: number[]
+  /** The list the queue was started from (setQueue's `sourceId`: 'album:3', 'liked'…), or null. */
+  sourceId?: string | null
+  /**
+   * With shuffle and repeat all: the order the next pass plays in (indexes into `items`; it's shuffled again each time
+   * the queue starts over), worked out ahead. Null otherwise: without shuffle the next pass is the list.
+   */
+  nextPassOrder?: number[] | null
 }
 
 export interface OutputDevice {
@@ -111,6 +118,8 @@ export interface Player {
   /** Call once before anything else. */
   initialize(): Promise<PlayerState>
   getState(): Promise<PlayerState>
+  /** Stops playback and empties the queue (the player bar's ✕). The queue saved for restoreLastQueue stays. */
+  dispose(): Promise<void>
   /** Calls `listener` with the current state, then on every change. Resolves to a function that stops listening. */
   onState(listener: (state: PlayerState) => void): Promise<() => void>
 
@@ -137,6 +146,8 @@ export interface Player {
   /** Index into the queue's `items`. */
   removeFromQueue(index: number): Promise<PlayerState>
   moveInQueue(from: number, to: number): Promise<PlayerState>
+  /** Places in the play order (`playOrder`): what Up next shows; with shuffle on, only the play order changes. */
+  moveInPlayOrder(from: number, to: number): Promise<PlayerState>
   /** Loads the queue that was playing last time (paused). Null when there is none. */
   restoreLastQueue(): Promise<PlayerState | null>
 

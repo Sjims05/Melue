@@ -12,6 +12,7 @@ import type { Player, PlayerOptions, PlayerQueue, PlayerTrack, RepeatMode, SetQu
 export class NativePlayer implements Player {
   initialize = () => audio.initialize()
   getState = () => audio.getState()
+  dispose = () => audio.dispose()
   onState = async (listener: Parameters<Player['onState']>[0]) => {
     const stop = await audio.addStateListener(listener)
     // The plugin sends state when it changes; a paused, restored queue doesn't, so start with the current one.
@@ -35,6 +36,7 @@ export class NativePlayer implements Player {
   updateQueue = (items: PlayerTrack[], options?: UpdateQueueOptions) => audio.updateQueue(items, options)
   removeFromQueue = (index: number) => audio.removeFromQueue(index)
   moveInQueue = (from: number, to: number) => audio.moveInQueue(from, to)
+  moveInPlayOrder = (from: number, to: number) => audio.moveInPlayOrder(from, to)
   restoreLastQueue = () => audio.restoreLastQueue()
 
   setSleepTimer = (timer: Parameters<Player['setSleepTimer']>[0]) => audio.setSleepTimer(timer)

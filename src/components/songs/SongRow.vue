@@ -11,11 +11,14 @@
  * the one under the pointer, and the one whose menu is open. Play and the heart show on a highlighted row; a liked
  * song keeps its filled heart.
  */
-import { Ellipsis, GripVertical, Heart, Music, Pause, Play, X } from '@lucide/vue'
+import { Ellipsis, GripVertical, Heart, Music, X } from '@lucide/vue'
+import { popHeart } from '@/components/player/heart'
+import { PauseIcon, PlayIcon } from '@/components/player/icons'
 import { computed, ref } from 'vue'
 import SettingsBadge from '@/components/settings/SettingsBadge.vue'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { artistParts } from './artistParts'
 import PlayingBars from './PlayingBars.vue'
 import { songMenu, type Song, type SongAction, type SongMenuPlace } from './songMenu'
 
@@ -32,6 +35,10 @@ const props = defineProps<{
   removable?: boolean
   /** The song playing (or paused on). */
   current?: boolean
+  /** Picked up (the queue: being dragged, or gliding into its place): highlighted. */
+  lifted?: boolean
+  /** Just put down: its highlight fades away (instead of going at once). */
+  fading?: boolean
   /** With `current`: playing, not paused. */
   playing?: boolean
   /** A short grey note after the title ("Plays next"). */
@@ -40,7 +47,7 @@ const props = defineProps<{
   unavailable?: boolean
   /** Where it is, for the menu's extras. */
   place?: SongMenuPlace
-  /** Only on this device (not on the share): the "This device" badge after the title (Simon picked it, 2026-10-17). */
+  /** Only on this device (not on the share): the "This device" badge after the title. */
   localOnly?: boolean
 }>()
 const emit = defineEmits<{ play: []; pause: []; like: [liked: boolean]; remove: []; action: [action: SongAction] }>()
@@ -48,9 +55,12 @@ const emit = defineEmits<{ play: []; pause: []; like: [liked: boolean]; remove: 
 const menuOpen = ref(false)
 const contextOpen = ref(false)
 const items = computed(() => songMenu(props.song, props.place))
-const highlighted = computed(() => props.current || menuOpen.value || contextOpen.value)
+const highlighted = computed(() => props.current || props.lifted || menuOpen.value || contextOpen.value)
+// A greyed song (unavailable, or shown ahead) isn't highlighted, by the pointer or otherwise.
+const greyed = computed(() => props.unavailable || !!props.song.later)
 
 const length = computed(() => {
+  if (!props.song.duration) return ''
   const s = Math.round(props.song.duration)
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 })
@@ -58,6 +68,12 @@ const length = computed(() => {
 function pick(action: SongAction) {
   if (action === 'like') emit('like', !props.song.liked)
   else emit('action', action)
+}
+// Double-click on the row plays it, but not on something with its own action (a button, the album link, the handle).
+function playOnDoubleClick(e: MouseEvent) {
+  if (props.unavailable || props.song.later) return
+  if ((e.target as HTMLElement).closest('button, a, input, [role=button], [role=menuitem], .song-handle')) return
+  emit('play')
 }
 function playOrPause() {
   if (props.current && props.playing) emit('pause')
@@ -78,17 +94,24 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
     <ContextMenuTrigger as-child :disabled="unavailable">
       <div
         v-bind="$attrs"
-        class="group/song flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none"
+        class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none"
         :class="
           unavailable
             ? 'opacity-45'
-            : 'hover:bg-song-highlight hover:text-song-highlight-foreground data-[highlight]:bg-song-highlight data-[highlight]:text-song-highlight-foreground'
+            : song.later
+              ? 'opacity-50'
+              : [
+                  fading && 'transition-colors duration-300 [&_*]:transition-colors [&_*]:duration-300',
+                  'group/song hover:bg-song-highlight hover:text-song-highlight-foreground data-[highlight]:bg-song-highlight data-[highlight]:text-song-highlight-foreground',
+                ]
         "
-        :data-highlight="highlighted && !unavailable ? '' : undefined"
+        :data-highlight="highlighted && !greyed ? '' : undefined"
         :aria-current="current || undefined"
-        @dblclick="!unavailable && emit('play')"
+        @dblclick="playOnDoubleClick"
       >
-        <span v-if="handle" class="song-handle -mx-1 grid size-6 flex-none cursor-grab touch-none place-items-center active:cursor-grabbing" aria-label="Drag to move">
+        <!-- A song shown ahead (later) keeps the handle's space, but can't be moved. -->
+        <span v-if="handle && song.later" class="invisible -mx-1 size-6 flex-none" />
+        <span v-else-if="handle" class="song-handle -mx-1 grid size-6 flex-none cursor-grab touch-none place-items-center active:cursor-grabbing" aria-label="Drag to move">
           <GripVertical class="size-4" />
         </span>
         <span v-if="number !== undefined" class="w-6 flex-none text-center text-[13px] tabular-nums" :class="MUTED">
@@ -108,25 +131,37 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
               <span v-if="note" class="flex-none text-xs" :class="MUTED">{{ note }}</span>
             </Transition>
           </span>
-          <span class="truncate text-[13px]" :class="MUTED">{{ song.artist }}</span>
+          <!-- Each artist's name links to their page, when the song knows them (underlined under the pointer). -->
+          <span class="truncate text-[13px]" :class="MUTED"><template v-for="(part, i) in artistParts(song.artist, song.artists)" :key="i"><RouterLink v-if="part.artist && !greyed" :to="`/artist/${part.artist}`" class="hover:underline" @dblclick.stop>{{ part.text }}</RouterLink><template v-else>{{ part.text }}</template></template></span>
         </span>
-        <span class="hidden w-[28%] min-w-0 truncate text-right text-sm @2xl:block" :class="MUTED">{{ song.album }}</span>
+        <!-- The album opens its page (like Go to album in the menu). -->
+        <span class="hidden w-[28%] min-w-0 truncate text-right text-sm @2xl:block" :class="MUTED">
+          <button
+            v-if="song.album && !song.later"
+            type="button"
+            class="max-w-full truncate underline-offset-2 hover:text-current hover:underline"
+            @click.stop="emit('action', 'goToAlbum')"
+          >
+            {{ song.album }}
+          </button>
+          <template v-else>{{ song.album }}</template>
+        </span>
         <span class="hidden w-14 flex-none text-right text-sm tabular-nums @md:block" :class="MUTED">{{ length }}</span>
         <span class="ml-2 flex flex-none items-center gap-1">
           <!-- A missing song keeps the button's space (invisible), so its album and length line up with the others. -->
           <button type="button" :class="[BUTTON, unavailable ? 'invisible' : ON_HIGHLIGHT]" :disabled="unavailable" :aria-label="current && playing ? 'Pause' : 'Play'" @click="playOrPause">
             <!-- Smaller than the other icons, as drawn: filled shapes look bigger than outlines. -->
-            <Pause v-if="current && playing" class="size-3! fill-current" />
-            <Play v-else class="size-3! fill-current" />
+            <PauseIcon v-if="current && playing" class="size-4!" />
+            <PlayIcon v-else class="size-4!" />
           </button>
           <button
             type="button"
             :class="[BUTTON, song.liked ? '' : ON_HIGHLIGHT]"
             :aria-label="song.liked ? 'Remove from liked' : 'Add to liked'"
             :aria-pressed="!!song.liked"
-            @click="emit('like', !song.liked)"
+            @click="(e: MouseEvent) => (popHeart(e.currentTarget, !song.liked), emit('like', !song.liked))"
           >
-            <Heart :class="song.liked && 'fill-current'" />
+            <Heart class="heart" :class="song.liked && 'fill-current'" />
           </button>
           <DropdownMenu @update:open="(open) => (menuOpen = open)">
             <DropdownMenuTrigger :class="BUTTON" :aria-label="`${song.title}: more`"><Ellipsis /></DropdownMenuTrigger>
@@ -134,12 +169,14 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
               <template v-for="item in items" :key="item.action">
                 <DropdownMenuSeparator v-if="item.apart" />
                 <DropdownMenuItem :variant="item.danger ? 'destructive' : 'default'" @select="pick(item.action)">
-                  <component :is="item.icon" :class="[item.filled && 'fill-current', item.small && 'm-0.5 size-3']" />{{ item.label }}
+                  <component :is="item.icon" :class="item.filled && 'fill-current'" />{{ item.label }}
                 </DropdownMenuItem>
               </template>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button v-if="removable" type="button" :class="BUTTON" aria-label="Take out" @click="emit('remove')"><X /></button>
+          <button v-if="removable" type="button" :class="[BUTTON, song.later && 'invisible']" :disabled="!!song.later" aria-label="Take out" @click="emit('remove')">
+            <X />
+          </button>
         </span>
       </div>
     </ContextMenuTrigger>
@@ -147,7 +184,7 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
       <template v-for="item in items" :key="item.action">
         <ContextMenuSeparator v-if="item.apart" />
         <ContextMenuItem :variant="item.danger ? 'destructive' : 'default'" @select="pick(item.action)">
-          <component :is="item.icon" :class="[item.filled && 'fill-current', item.small && 'm-0.5 size-3']" />{{ item.label }}
+          <component :is="item.icon" :class="item.filled && 'fill-current'" />{{ item.label }}
         </ContextMenuItem>
       </template>
     </ContextMenuContent>

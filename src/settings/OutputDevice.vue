@@ -9,9 +9,10 @@
  */
 import { Unplug } from '@lucide/vue'
 import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RadioMark, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { player, type OutputDevices } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 
 const NAMES = 'melue-output-names'
 
@@ -40,7 +41,7 @@ function show(next: OutputDevices) {
 }
 
 const read = () => player.getOutputDevices().then(show).catch((e) => (error.value = `Can’t list the output devices: ${e}`))
-onMounted(read)
+onPageLoad(read)
 const visible = useDocumentVisibility()
 const { pause, resume } = useIntervalFn(read, 3000)
 watch(visible, (now) => {

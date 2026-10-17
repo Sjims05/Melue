@@ -7,12 +7,14 @@
  * Not wired yet: Start on (Melue's pages aren't there yet).
  */
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
-import { onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Switch } from '@/components/ui/switch'
 import { DropValue, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsHeading, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library } from '@/library'
+import { APPEARANCE_DEFAULTS, appearance } from '@/lib/appearance'
 import { THEME_TIMES_DEFAULT, themeMode, themeTimes, type ThemeMode } from '@/lib/theme'
 import { isDesktop } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 
 const THEMES = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light'], ['adaptive', 'Adaptive']] as const
 const themeLine = (mode: ThemeMode) =>
@@ -28,6 +30,10 @@ const TIMES = Array.from({ length: 48 }, (_, i) => {
   return [time, time] as const
 })
 const STARTS = [['home', 'Home'], ['library', 'Library'], ['last', 'Where I left off']] as const
+const WHITE = [['white', 'White'], ['card', 'Like the cards']] as const
+// Up next and Home's cards: white (in dark mode too) or like the other cards.
+const upNext = computed({ get: () => (appearance.upNextWhite ? 'white' : 'card'), set: (v) => (appearance.upNextWhite = v === 'white') })
+const homeCards = computed({ get: () => (appearance.homeCardsWhite ? 'white' : 'card'), set: (v) => (appearance.homeCardsWhite = v === 'white') })
 
 type Close = 'tray' | 'quit'
 const CLOSES = [['tray', 'Keep playing'], ['quit', 'Quit']] as const
@@ -44,7 +50,7 @@ const autostart = ref<boolean | null>(null)
 const close = ref<Close>('tray')
 const error = ref('')
 
-onMounted(async () => {
+onPageLoad(async () => {
   if (!isDesktop) return
   try {
     autostart.value = await isEnabled()
@@ -106,6 +112,25 @@ async function setClose(mode: Close) {
         <DropValue v-model="themeTimes.light" :options="TIMES" />
       </SettingsRow>
     </Reveal>
+    <SettingsRow
+      title="Up next on Now playing"
+      description="The queue under the player"
+      wide
+      setting="display.upNextWhite"
+      :reset="() => (appearance.upNextWhite = APPEARANCE_DEFAULTS.upNextWhite)"
+      :is-default="appearance.upNextWhite === APPEARANCE_DEFAULTS.upNextWhite"
+    >
+      <Segmented v-model="upNext" :options="WHITE" />
+    </SettingsRow>
+    <SettingsRow
+      title="Home’s Playing and Continue cards"
+      wide
+      setting="display.homeCardsWhite"
+      :reset="() => (appearance.homeCardsWhite = APPEARANCE_DEFAULTS.homeCardsWhite)"
+      :is-default="appearance.homeCardsWhite === APPEARANCE_DEFAULTS.homeCardsWhite"
+    >
+      <Segmented v-model="homeCards" :options="WHITE" />
+    </SettingsRow>
     <SettingsRow description="Where Melue opens" setting="display.startOn" :reset="() => (startOn = 'home')" :is-default="startOn === 'home'">
       <template #title>Start on <SettingsBadge class="ml-1.5">Not wired yet</SettingsBadge></template>
       <DropValue v-model="startOn" :options="STARTS" />

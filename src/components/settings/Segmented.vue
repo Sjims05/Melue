@@ -7,7 +7,7 @@
  * text is revealed under it even halfway across a label.
  */
 import { ToggleGroupItem, ToggleGroupRoot } from 'reka-ui'
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 defineProps<{ options: readonly (readonly [T, string])[] }>()
 const model = defineModel<T>({ required: true })
@@ -29,6 +29,8 @@ function place() {
   if (!group || !picked) return
   const g = group.getBoundingClientRect()
   const p = picked.getBoundingClientRect()
+  // Hidden (a kept-alive page that isn't shown): no sizes to go by; measuring now would make it grow back when shown.
+  if (!g.width || !p.width) return
   Object.assign(pill, { x: p.left - g.left, y: p.top - g.top, width: p.width, height: p.height, groupWidth: g.width })
 }
 
@@ -40,6 +42,12 @@ onMounted(() => {
   resizes.observe(root.value!.$el)
 })
 onBeforeUnmount(() => resizes?.disconnect())
+// Shown again (a kept-alive page): placed where it is, without sliding there.
+onActivated(() => {
+  pill.moves = false
+  place()
+  requestAnimationFrame(() => (pill.moves = true))
+})
 watch(model, () => nextTick(place))
 
 const LABEL = 'h-[30px] rounded-[7px] px-3 text-[13px] font-medium whitespace-nowrap'

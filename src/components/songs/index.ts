@@ -2,4 +2,5 @@
 export { default as PlayingBars } from './PlayingBars.vue'
 export { default as SongList } from './SongList.vue'
 export { default as SongRow } from './SongRow.vue'
+export { artistParts } from './artistParts'
 export { songMenu, type Song, type SongAction, type SongMenuItem, type SongMenuPlace } from './songMenu'

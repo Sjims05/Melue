@@ -7,19 +7,20 @@
  * Not wired yet: songs that can't be found (Melue doesn't count them yet).
  */
 import { CloudUpload, Copy } from '@lucide/vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog, IconTile, Reveal, SettingsCard, SettingsRow, SettingsTip, StatusDot } from '@/components/settings'
 import { library } from '@/library'
 import { describeSyncFailure, moving } from '@/library/sync'
 import { isMobile } from '@/platform'
+import { onPageLoad } from '@/components/page/pageLoading'
 import { ago, size } from './format'
 import { lastScan, libraryState, refreshLibrary, startLibraryState } from './libraryState'
 
 const asking = ref<'move' | 'copies' | null>(null)
 const error = ref('')
 
-onMounted(startLibraryState)
+onPageLoad(startLibraryState)
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`
 const counts = computed(() => {

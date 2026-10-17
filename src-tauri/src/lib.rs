@@ -131,6 +131,10 @@ pub fn run() {
             // Library data across devices: likes, plays and playlists (see sync/data.rs).
             app.manage(sync::data::LibrarySync::default());
             sync::data::start(app.handle());
+            library::android::on_pause(app.handle(), {
+                let app = app.handle().clone();
+                move || sync::scheduler::went_away(&app)
+            });
             library::android::on_resume(app.handle(), {
                 let app = app.handle().clone();
                 move || {
@@ -155,6 +159,8 @@ pub fn run() {
         .on_window_event(|window, event| {
             use tauri::Manager;
             match event {
+                // Leaving the window: coming back after a while syncs (Sync when coming back after…).
+                tauri::WindowEvent::Focused(false) => sync::scheduler::went_away(window.app_handle()),
                 tauri::WindowEvent::Focused(true) => {
                     sync::scheduler::trigger(window.app_handle(), sync::schedule::Trigger::Return);
                     sync::handoff::check(window.app_handle());
@@ -247,6 +253,8 @@ pub fn run() {
             library::library_queue_follow,
             library::library_set_queue_follow,
             library::library_player_settings,
+            library::library_tracks_by_ids,
+            library::library_track_artists,
             library::library_covers_size,
             library::library_clean_covers,
             library::library_set_player_settings,

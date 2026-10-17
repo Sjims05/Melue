@@ -12,7 +12,7 @@ use super::playback::{Outcome, PlaybackEvent};
 use super::player_settings::PlayerSettings;
 use super::playlists::{Playlist, PlaylistEntry};
 use super::scanner::AppFiles;
-use super::{android, scanner, Album, Artist, Folder, FolderKind, Library, Result, Track};
+use super::{android, scanner, Album, Artist, ArtistLink, Folder, FolderKind, Library, Result, Track};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -371,6 +371,18 @@ pub fn library_queue_follow(library: State<'_, Library>) -> Result<QueueFollow> 
 pub fn library_set_queue_follow(library: State<'_, Library>, settings: QueueFollow) -> Result<QueueFollow> {
     library.set_queue_follow(&settings)?;
     library.queue_follow()
+}
+
+/// The songs with these ids (the player's queue: lengths, likes, covers).
+#[tauri::command(async)]
+pub fn library_tracks_by_ids(library: State<'_, Library>, ids: Vec<i64>) -> Result<Vec<Track>> {
+    library.tracks_by_ids(&ids)
+}
+
+/// Songs' artists with their ids, by song id (Now playing and Up next link each name to its artist).
+#[tauri::command(async)]
+pub fn library_track_artists(library: State<'_, Library>, ids: Vec<i64>) -> Result<std::collections::BTreeMap<i64, Vec<ArtistLink>>> {
+    library.track_artists(&ids)
 }
 
 /// How much space the covers take (Storage), in bytes.

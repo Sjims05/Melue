@@ -215,6 +215,31 @@ fn player_settings_are_kept_and_checked() {
 }
 
 #[test]
+fn tracks_by_ids_finds_the_songs_asked_for() {
+    let (t, m, f) = setup("play-tracks-by-ids");
+    m.add("a.wav", &song("A", "Band", "", 1));
+    m.add("b.wav", &song("B", "Band", "", 2));
+    t.scan(f, &m);
+    let (a, b) = (track(&t, "a.wav"), track(&t, "b.wav"));
+    let mut found: Vec<String> = t.library.tracks_by_ids(&[b, a, 9999]).unwrap().into_iter().map(|t| t.title).collect();
+    found.sort();
+    assert_eq!(found, vec!["A", "B"], "ids not in the library are left out");
+    assert!(t.library.tracks_by_ids(&[]).unwrap().is_empty());
+}
+
+#[test]
+fn a_songs_artists_come_main_first_with_their_ids() {
+    let (t, m, f) = setup("play-track-artists");
+    m.add("a.wav", &song("A", "Band feat. Guest", "", 1));
+    t.scan(f, &m);
+    let a = track(&t, "a.wav");
+    let found = t.library.track_artists(&[a, 9999]).unwrap();
+    let names: Vec<&str> = found[&a].iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(names, vec!["Band", "Guest"]);
+    assert_eq!(found.len(), 1, "songs not in the library are left out");
+}
+
+#[test]
 fn queue_items_for_songs_keep_their_order() {
     let (t, m, f) = setup("play-items-for");
     m.add("a.wav", &song("A", "Band", "", 1));

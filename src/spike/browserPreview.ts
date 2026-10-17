@@ -4,7 +4,8 @@
  * dev browser, never in the app or its build.
  *
  * `?status=` picks the share's state: synced (default), syncing, error, password, none, streamed. `?output=unplugged`:
- * the chosen output device (headphones) isn't connected. `?library=empty`: no music folders yet.
+ * the chosen output device (headphones) isn't connected. `?library=empty`: no music folders yet. `?player=empty`:
+ * nothing in the queue (otherwise eight songs from Liked songs, the first playing 54 s in).
  */
 import { emit } from '@tauri-apps/api/event'
 import { mockIPC } from '@tauri-apps/api/mocks'
@@ -48,6 +49,38 @@ const layoutStatus = (): LayoutStatus => settings.shareLayout === 'artistAlbum'
 let reorganised = false
 
 let playback: PlaybackSettings = { mode: 'ask', deviceName: 'TROLLGANG', continueWithinMinutes: 10 }
+
+// The player: eight songs from Liked songs, the first playing (its state only changes through the controls here).
+const QUEUE_SONGS: [string, string, string, number][] = [
+  ['Golden hour', 'Amara Sol', 'Soft focus', 252], ['Slow motion', 'Elias Bloom', 'After the rain', 226],
+  ['Stay a little longer', 'June & the Satellites', 'In your orbit', 212], ['In your orbit', 'Theo Banks', 'In your orbit', 212],
+  ['Sunday kind of love', 'Nia Rivers', 'Sunday kind of love', 265], ['Coastline', 'Oliver Hayes', 'Open water', 198],
+  ['All the way home', 'Mira Okafor', 'The long way', 221], ['Midnight City Lights', 'Neon Dreams', 'Someway', 225],
+]
+const noQueue = new URLSearchParams(location.search).get('player') === 'empty'
+let queueItems = noQueue ? [] : QUEUE_SONGS.map(([title, artist, album], i) => ({ id: 201 + i, src: `C:/Music/${title}.mp3`, title, artist, album }))
+let playerState = {
+  status: 'playing', currentTime: 54, duration: 252, isPlaying: true, queueIndex: noQueue ? -1 : 0, queueLength: queueItems.length,
+  currentId: queueItems[0]?.id, shuffle: false, repeatMode: 'off', sleepTimerEndsAtMs: null, sleepTimerEndOfTrack: false, volume: 0.7,
+}
+const playerQueue = () => ({
+  items: queueItems,
+  currentIndex: playerState.queueIndex,
+  playOrder: queueItems.map((_, i) => i),
+  // A made-up next pass (the list backwards from the first one), to see the preview's own order.
+  nextPassOrder: playerState.shuffle && playerState.repeatMode === 'all' ? [0, ...queueItems.map((_, i) => i).slice(1).reverse()] : null,
+  sourceId: 'liked',
+})
+const atIndex = (i: number) => {
+  playerState = { ...playerState, queueIndex: i, currentId: queueItems[i]?.id, currentTime: 0, duration: QUEUE_SONGS.find((q) => q[0] === queueItems[i]?.title)?.[3] ?? 200 }
+  return playerState
+}
+const queueTracks = (ids: number[]) =>
+  queueItems.filter((i) => ids.includes(i.id)).map((i) => ({
+    id: i.id, folderId: 1, title: i.title, artist: i.artist, album: i.album, albumArtist: i.artist, trackNo: null, discNo: null, year: 2023,
+    genre: null, durationMs: (QUEUE_SONGS.find((q) => q[0] === i.title)?.[3] ?? 200) * 1000, format: 'mp3', bitrateKbps: 320, sampleRate: 44100,
+    cover: null, tagsRead: true, tagsError: null, available: true, liked: i.id === 202, playCount: 3,
+  }))
 
 // Playlists: the auto ones (one hidden), and two deleted lately.
 let autoPlaylists: AutoPlaylist[] = [
@@ -201,6 +234,37 @@ export function installBrowserPreview() {
           return { moved: ids.length, alreadyThere: 0, failed: [], cancelled: false }
         }
         case 'plugin:dialog|open': return 'E:\Downloads\New music'
+        case 'plugin:native-audio|get_state':
+        case 'plugin:native-audio|initialize': return playerState
+        case 'plugin:native-audio|get_queue': return playerQueue()
+        case 'plugin:native-audio|dispose':
+          queueItems = []
+          playerState = { ...playerState, isPlaying: false, queueIndex: -1, queueLength: 0, currentId: 0, currentTime: 0, duration: 0 }
+          return null
+        case 'plugin:native-audio|play': playerState = { ...playerState, isPlaying: true }; return playerState
+        case 'plugin:native-audio|pause': playerState = { ...playerState, isPlaying: false }; return playerState
+        case 'plugin:native-audio|next': return atIndex(Math.min(queueItems.length - 1, playerState.queueIndex + 1))
+        case 'plugin:native-audio|previous': return atIndex(Math.max(0, playerState.queueIndex - 1))
+        case 'plugin:native-audio|skip_to': return atIndex(a.index as number)
+        case 'plugin:native-audio|seek_to': playerState = { ...playerState, currentTime: a.position as number }; return playerState
+        case 'plugin:native-audio|set_volume': playerState = { ...playerState, volume: a.volume as number }; return playerState
+        case 'plugin:native-audio|set_shuffle': playerState = { ...playerState, shuffle: a.enabled as boolean }; return playerState
+        case 'plugin:native-audio|set_repeat_mode': playerState = { ...playerState, repeatMode: a.mode as string }; return playerState
+        case 'plugin:native-audio|remove_from_queue': {
+          queueItems = queueItems.filter((_, i) => i !== a.index)
+          playerState = { ...playerState, queueLength: queueItems.length }
+          return playerState
+        }
+        // The preview doesn't shuffle: the play order is the list.
+        case 'plugin:native-audio|move_in_play_order':
+        case 'plugin:native-audio|move_in_queue': {
+          const [moved] = queueItems.splice(a.from as number, 1)
+          queueItems.splice(a.to as number, 0, moved)
+          return playerState
+        }
+        case 'library_liked_ids': return [202]
+        case 'library_tracks_by_ids': return queueTracks(a.ids as number[])
+        case 'library_track_artists': return Object.fromEntries(queueItems.filter((i) => (a.ids as number[]).includes(i.id)).map((i) => [i.id, [{ id: 3, name: i.artist }]]))
         case 'library_queue_follow': return queueFollow
         case 'library_set_queue_follow': queueFollow = a.settings as QueueFollow; return queueFollow
         case 'library_player_settings': return player

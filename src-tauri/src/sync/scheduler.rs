@@ -81,6 +81,10 @@ pub struct Syncing {
     watch: Mutex<Option<(Box<dyn Share>, Watch)>>,
     /// The share couldn't be reached: tries so far, and when the next one is due.
     retry: Mutex<Option<(u32, Instant)>>,
+    /// When the user left the app (the window lost focus; Android: the app went to the background), and, once they
+    /// came back, how long they were away: whether coming back syncs.
+    left_at_ms: Mutex<Option<i64>>,
+    away_ms: Mutex<Option<i64>>,
 }
 
 impl SyncFailure {
@@ -323,7 +327,13 @@ pub fn network_changed(app: &AppHandle) {
 
 /// Asks for a sync (the scheduler decides whether one runs, see schedule.rs).
 pub fn trigger(app: &AppHandle, trigger: Trigger) {
-    if let Some(triggers) = app.state::<Syncing>().triggers.lock().unwrap().as_ref() {
+    let syncing = app.state::<Syncing>();
+    if trigger == Trigger::Return {
+        let away = syncing.left_at_ms.lock().unwrap().take().map(|left| now_ms() - left);
+        *syncing.away_ms.lock().unwrap() = away;
+    }
+    let triggers = syncing.triggers.lock().unwrap();
+    if let Some(triggers) = triggers.as_ref() {
         let _ = triggers.send(trigger);
     }
 }
@@ -345,6 +355,11 @@ pub fn simulate_notification(app: &AppHandle) {
         }
         notify(&app, None);
     });
+}
+
+/// The user left the app (the window lost focus; Android: it went to the background): coming back measures from now.
+pub fn went_away(app: &AppHandle) {
+    *app.state::<Syncing>().left_at_ms.lock().unwrap() = Some(now_ms());
 }
 
 /// Stops a running sync after the file it's copying.
@@ -393,14 +408,15 @@ pub fn start(app: &AppHandle) {
                     continue;
                 }
                 let last_ms = library.last_sync().ok().flatten().map(|l| l.at_ms);
-                if should_sync(next, now_ms(), last_ms, &settings) {
+                let away_ms = if next == Trigger::Return { app.state::<Syncing>().away_ms.lock().unwrap().take() } else { None };
+                if should_sync(next, now_ms(), last_ms, away_ms, &settings) {
                     eprintln!("melue: sync ({next:?}): starting");
                     match sync_once(&app, next, false) {
                         Ok(r) => eprintln!("melue: sync ({next:?}): {} copied, {} moved, {} waiting for Wi-Fi", r.copied, r.moved, r.waiting_for_wifi),
                         Err(e) => eprintln!("melue: sync ({next:?}): didn't sync: {e:?}"),
                     }
                 } else if !matches!(next, Trigger::Periodic | Trigger::Network) {
-                    eprintln!("melue: sync ({next:?}): not now (the settings, or the last sync is recent)");
+                    eprintln!("melue: sync ({next:?}): not now (the settings, or not away long enough / the last sync is recent)");
                 }
             }
         })
