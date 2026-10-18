@@ -427,6 +427,9 @@ export const library = {
   letGoFiles: () => invoke<LetGoFile[]>('library_let_go_files'),
   /** Takes a let-go file whose file is gone off the list. */
   forgetLetGoFile: (folderId: number, path: string) => invoke<void>('library_forget_let_go_file', { folderId, path }),
+  /** Search: songs (the first `limit`, and how many in all), albums, artists and playlists whose names have `query`. */
+  search: (query: string, limit = 200) =>
+    invoke<{ tracks: Track[]; trackCount: number; albums: Album[]; artists: Artist[]; playlists: Playlist[] }>('library_search', { query, limit }),
   /** The playlists a song is in (Add to playlist's ✓). */
   playlistsWithTrack: (id: number) => invoke<number[]>('library_playlists_with_track', { id }),
   /** Exports a list's songs as an .m3u8 file at `path`. Resolves with how many songs it holds. */

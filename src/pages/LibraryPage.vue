@@ -63,9 +63,14 @@ const counts = computed(() => {
         <SortMenu v-else-if="tab === 'artists'" v-model="artistSort" :options="ARTIST_SORTS" />
       </div>
     </PageHeader>
-    <SongsTab v-if="tab === 'songs'" :sort="songSort" />
-    <AlbumsTab v-else-if="tab === 'albums'" :sort="albumSort" />
-    <ArtistsTab v-else-if="tab === 'artists'" :sort="artistSort" />
-    <FoldersTab v-else />
+    <!-- Switching tabs: the new one fades in, rising a little. -->
+    <Transition name="part" mode="out-in">
+      <div :key="tab">
+        <SongsTab v-if="tab === 'songs'" :sort="songSort" />
+        <AlbumsTab v-else-if="tab === 'albums'" :sort="albumSort" />
+        <ArtistsTab v-else-if="tab === 'artists'" :sort="artistSort" />
+        <FoldersTab v-else />
+      </div>
+    </Transition>
   </div>
 </template>

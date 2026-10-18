@@ -54,6 +54,13 @@ export async function exportList(source: Source, name: string): Promise<string |
   return path
 }
 
+/** Plays these songs (a list with no page of its own: Home's recent songs) from the one picked. */
+export async function playSongs(ids: number[], startAt: number) {
+  const items = await library.queueItemsFor(ids)
+  await player.setQueue(items, { startIndex: Math.max(0, items.findIndex((i) => i.id === startAt)) })
+  await player.play()
+}
+
 /** Does what a list's card menu item (or button) says; `artistId`: its artist's page (an album's Go to artist). */
 export async function listAction(source: Source, action: CoverAction, artistId?: number | null) {
   switch (action) {

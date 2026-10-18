@@ -70,7 +70,8 @@ const LIFT = 1.03
 const drag = ref<{ from: number; to: number; startY: number; dy: number; centers: number[]; height: number } | null>(null)
 // After letting go, the rows take their new places without sliding back.
 const settling = ref(false)
-// The song picked up (its key), highlighted until it has glided into its place; then its highlight fades (`fading`).
+// The song picked up (its key), highlighted until it has glided into its place; then its highlight's background fades
+// away (`fading`; its words and icons change at once: fading those too passes through grey on grey).
 const lifted = ref<Song['id'] | null>(null)
 const fading = ref<Song['id'] | null>(null)
 function putDown() {
@@ -204,13 +205,13 @@ function moved(index: number): string | undefined {
   <div ref="list" class="@container" :class="{ 'song-on-card': onCard, 'song-strong': queue }" role="list">
     <template v-for="{ song, index, heading } in rows" :key="song.key ?? song.id">
       <div v-if="heading" class="mt-4 mb-1 px-2 text-sm font-semibold text-muted-foreground first:mt-0">{{ heading }}</div>
-      <!-- While a song is picked up and placed, the others don't light up under the pointer: only it is highlighted (all of
-           each row: its context menu trigger sets the pointer back on in its own style). -->
+      <!-- While a song is picked up and placed, the others don't light up under the pointer (song-quiet: their hover
+           look is off, the pointer still reaches them, so the one under it lights up as soon as placing is done). -->
       <div
         role="listitem"
         class="relative rounded-lg"
         :class="[
-          lifted !== null && lifted !== (song.key ?? song.id) && 'pointer-events-none [&_*]:pointer-events-none!',
+          lifted !== null && lifted !== (song.key ?? song.id) && 'song-quiet',
           drag?.from === index
             ? 'z-10 bg-card shadow-lg transition-[scale,box-shadow] duration-200 ease-[cubic-bezier(.2,.8,.2,1)]'
             : !settling && 'transition-[translate] duration-200 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',

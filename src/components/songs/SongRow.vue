@@ -47,7 +47,7 @@ const props = defineProps<{
   current?: boolean
   /** Picked up (the queue: being dragged, or gliding into its place): highlighted. */
   lifted?: boolean
-  /** Just put down: its highlight fades away (instead of going at once). */
+  /** Just put down: its highlight's background fades away (its words and icons change at once). */
   fading?: boolean
   /** With `current`: playing, not paused. */
   playing?: boolean
@@ -94,9 +94,9 @@ function playOrPause() {
 const MUTED = 'text-muted-foreground group-hover/song:text-song-highlight-muted group-data-[highlight]/song:text-song-highlight-muted'
 // The row's small buttons: a square in the page's colour under the pointer, or while its menu is open.
 const BUTTON =
-  'grid size-8 flex-none place-items-center rounded-md outline-none transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-background data-[state=open]:text-foreground [&_svg]:size-4'
+  'grid size-8 flex-none place-items-center rounded-md outline-none transition-[background-color] hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-background data-[state=open]:text-foreground [&_svg]:size-4'
 // Shown on a highlighted row only.
-const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/song:visible'
+const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-data-[highlight]/song:visible'
 </script>
 
 <template>
@@ -104,14 +104,14 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
     <ContextMenuTrigger as-child :disabled="unavailable">
       <div
         v-bind="$attrs"
-        class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none *:transition-[opacity,color,background-color] *:duration-300"
+        class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none *:transition-opacity *:duration-300"
         :class="
           unavailable
             ? '[&>*:not(.song-keep)]:opacity-45'
             : song.later
               ? '[&>*:not(.song-keep)]:opacity-50'
               : [
-                  fading && 'transition-colors duration-300 [&_*]:transition-colors [&_*]:duration-300',
+                  fading && 'transition-[background-color] duration-300',
                   'group/song hover:bg-song-highlight hover:text-song-highlight-foreground data-[highlight]:bg-song-highlight data-[highlight]:text-song-highlight-foreground',
                 ]
         "

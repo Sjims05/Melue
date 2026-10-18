@@ -33,6 +33,7 @@ pub mod playlists;
 mod playlists_tests;
 pub mod scan;
 pub mod scanner;
+mod search;
 #[cfg(test)]
 mod schema_tests;
 pub mod tags;

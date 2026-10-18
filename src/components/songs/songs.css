@@ -21,7 +21,17 @@
 :root:not(.dark) .song-on-card.song-strong {
   --song-highlight: var(--primary);
   --song-highlight-foreground: var(--primary-foreground);
-  --song-highlight-muted: color-mix(in oklch, var(--primary-foreground) 62%, transparent);
+  --song-highlight-muted: color-mix(in oklch, var(--primary-foreground) 62%, var(--primary));
+}
+
+/* While another song is being placed (SongList), a row's hover look is off: no highlight, no ▶ ♥. */
+.song-quiet {
+  --song-highlight: transparent;
+  --song-highlight-foreground: var(--foreground);
+  --song-highlight-muted: var(--muted-foreground);
+}
+.song-quiet .song-hover-only:not([aria-pressed='true']) {
+  visibility: hidden;
 }
 
 @layer components {

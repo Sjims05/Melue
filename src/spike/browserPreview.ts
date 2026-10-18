@@ -335,6 +335,21 @@ export function installBrowserPreview() {
         case 'library_tracks_by_ids': return queueTracks(a.ids as number[])
         case 'library_tracks': return bigLibrary(a.sort as string).slice(a.offset as number, (a.offset as number) + (a.limit as number))
         case 'library_albums': return bigAlbums()
+        case 'library_search': {
+          const q = String(a.query).toLowerCase()
+          const has = (t: string | null | undefined) => !!t && t.toLowerCase().includes(q)
+          const tracks = bigLibrary('title').filter((t) => has(t.title) || has(t.artist) || has(t.album))
+          const names = [...new Set(bigLibrary('artist').map((t) => t.artist as string))]
+          return {
+            tracks: tracks.slice(0, a.limit as number), trackCount: tracks.length,
+            albums: bigAlbums().filter((al) => has(al.title) || has(al.artist)),
+            artists: names.map((name, i) => ({ id: i + 1, name, tracks: 19, featured: 0, albums: 1 })).filter((ar) => has(ar.name)),
+            playlists: playlists.filter((pl) => has(pl.name)),
+          }
+        }
+        case 'plugin:native-audio|get_tracked_list': return { entries: ['playlist:10', 'album:3', 'liked', 'playlist:13', 'top:year', 'album:5', 'playlist:11', 'album:8'].map((id, i) => ({ id, playedAtMs: Date.now() - i * 3_600_000 })) }
+        case 'library_recently_played': return queueTracks(queueItems.map((q) => q.id)).slice(0, a.limit as number)
+        case 'playback_offer': return { deviceId: 'phone', deviceName: 'Phone', savedAtMs: Date.now(), queue: [], index: 0, positionS: 83, playing: false, shuffle: false, repeat: 'off', title: 'Digital Rain', artist: 'Cyber Symphony' }
         case 'library_auto_playlist_tracks': return a.source === 'songs' ? bigLibrary('title') : bigLibrary('plays').slice(0, 25)
         case 'library_folder_tracks': return bigLibrary('album').map((t) => ({ ...t, path: `${t.album ?? ''}${t.album ? '/' : ''}${t.title}.mp3` }))
         case 'library_artists': {

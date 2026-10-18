@@ -108,6 +108,24 @@ fn made_for_you_lists_have_their_songs_in_order() {
 }
 
 #[test]
+fn search_finds_names_anywhere_and_an_artists_songs_and_albums() {
+    let t = library("pages-search");
+    let found = t.library.search("disc", 10).unwrap();
+    assert_eq!(titles(&found.tracks), ["Disc one", "Disc two"]);
+    // An artist: them, their songs (Singer's duet) and their albums.
+    let found = t.library.search("singer", 10).unwrap();
+    assert_eq!(found.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["Singer"]);
+    assert_eq!(titles(&found.tracks), ["Duet"]);
+    assert_eq!(found.albums.iter().map(|a| a.title.as_str()).collect::<Vec<_>>(), ["Other"]);
+    // Anywhere in a name, case ignored; songs found by title come before those found by artist or album.
+    let found = t.library.search("ONE", 1).unwrap();
+    assert_eq!((found.track_count, found.tracks.len()), (2, 1), "Disc one, Old one; the first only");
+    let found = t.library.search("band", 10).unwrap();
+    assert_eq!(found.track_count, 6, "every song by Band, or featuring it");
+    assert!(t.library.search("  ", 10).unwrap().tracks.is_empty());
+}
+
+#[test]
 fn a_folders_songs_go_by_where_they_are() {
     let (t, m, f) = setup("pages-folder");
     m.add("B/01.wav", &song("Two", "Band", "B", 1));

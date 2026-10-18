@@ -260,6 +260,7 @@ pub fn run() {
             library::library_set_playlist_following,
             library::library_forget_let_go_file,
             library::library_playlists_with_track,
+            library::library_search,
             library::library_export_playlist,
             library::library_deleted_linked_playlists,
             library::library_restore_linked_playlist,

@@ -169,6 +169,12 @@ pub fn library_forget_let_go_file(app: AppHandle, library: State<'_, Library>, f
     Ok(())
 }
 
+/// Search: songs (the first `limit`, and how many in all), albums, artists and playlists matching `query`.
+#[tauri::command(async)]
+pub fn library_search(library: State<'_, Library>, query: String, limit: usize) -> Result<super::search::SearchResults> {
+    library.search(&query, limit)
+}
+
 /// The playlists a song is in (Add to playlist's ✓).
 #[tauri::command(async)]
 pub fn library_playlists_with_track(library: State<'_, Library>, id: i64) -> Result<Vec<i64>> {
