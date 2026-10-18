@@ -16,6 +16,7 @@ import { onPageLoad } from '@/components/page/pageLoading'
 import { QUEUE_FOLLOW_DEFAULTS } from './defaults'
 import { loadPlayerSettings, playerSettings, resetPlayer, savePlayerSettings } from './playerSettings'
 import { followSummary } from './queueFollow'
+import { LIST_PLAY_DEFAULTS, listPlay } from '@/lib/listPlay'
 import TryIt from './TryIt.vue'
 
 const CHOICES = {
@@ -103,6 +104,19 @@ const summary = computed(() => (follow.value ? followSummary(follow.value) : '')
   </Reveal>
 
   <SettingsCard v-if="playerSettings.value" class="mt-5">
+    <SettingsRow
+      title="Play starts from the first song"
+      :description="
+        listPlay.playFromStart
+          ? 'Play on an album, playlist or folder turns shuffle off; Shuffle turns it on'
+          : 'Play on an album, playlist or folder leaves shuffle as it is'
+      "
+      setting="queue.playFromStart"
+      :reset="() => (listPlay.playFromStart = LIST_PLAY_DEFAULTS.playFromStart)"
+      :is-default="listPlay.playFromStart === LIST_PLAY_DEFAULTS.playFromStart"
+    >
+      <Switch v-model="listPlay.playFromStart" />
+    </SettingsRow>
     <SettingsRow
       title="Next on the last song"
       :description="playerSettings.value.nextAtEnd === 'first' ? 'With repeat off: back to the first song, paused' : 'With repeat off: nothing happens'"

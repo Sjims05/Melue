@@ -578,9 +578,9 @@ mod tests {
 
     #[test]
     fn the_password_never_shows() {
-        let config = SmbConfig { host: "nas".into(), share: "music".into(), user: "simon".into(), password: "hunter2".into(), ..Default::default() };
+        let config = SmbConfig { host: "nas".into(), share: "music".into(), user: "user1".into(), password: "hunter2".into(), ..Default::default() };
         let shown = format!("{config:?}");
-        assert!(shown.contains("simon") && !shown.contains("hunter2"), "{shown}");
+        assert!(shown.contains("user1") && !shown.contains("hunter2"), "{shown}");
     }
 }
 

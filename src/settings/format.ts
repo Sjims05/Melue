@@ -1,7 +1,7 @@
 /** How the settings put things into words: the share's name, times, sizes, what a sync did. */
 import type { ShareSettings, SyncResult, SyncTrigger } from '@/library/sync'
 
-/** "simon@nas/music", or a network drive's path. */
+/** "me@nas/music", or a network drive's path. */
 export function shareName(settings: ShareSettings | null | undefined): string {
   if (!settings) return ''
   if (settings.kind === 'drive') return settings.path
@@ -9,8 +9,8 @@ export function shareName(settings: ShareSettings | null | undefined): string {
 }
 
 /**
- * A long path shortened in the middle, both ends kept: "simon@100.87.17.73:445/music/Music_Sync_test" →
- * "simon@100.87.17.73:445/.../Music_Sync_test" (the start up to its first separator, and the last folder). Only a
+ * A long path shortened in the middle, both ends kept: "me@192.168.1.10:445/music/Music_Sync_test" →
+ * "me@192.168.1.10:445/.../Music_Sync_test" (the start up to its first separator, and the last folder). Only a
  * path without folders in between is cut by letters.
  */
 export function middle(path: string, max = 32): string {

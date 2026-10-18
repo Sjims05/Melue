@@ -7,6 +7,7 @@ import type { CoverAction } from '@/components/covers'
 import type { Song, SongAction } from '@/components/songs'
 import { coverUrl, library, type Source, type Track } from '@/library'
 import { playSource } from '@/library/playback'
+import { listPlay } from '@/lib/listPlay'
 import { player } from '@/platform'
 import { router } from '@/router'
 import { like, nowPlaying, refreshQueue, setShuffle } from './nowPlaying'
@@ -29,11 +30,13 @@ export function trackSong(t: Track): Song {
 }
 
 /**
- * Plays a list: from its start, or (shuffle) with shuffle on, from a random one of its songs. `startAt`: from that
- * song (a double-click on it).
+ * Plays a list: its Play (from its first song; with shuffle on, Queue settings decide: shuffle off first, or as it is)
+ * or Shuffle (shuffle on, from a random one of its songs). `startAt`: from that song (a double-click on it), shuffle
+ * left as it is.
  */
 export async function playList(source: Source, options: { shuffle?: boolean; startAt?: number } = {}) {
   if (options.shuffle) await setShuffle(true)
+  else if (options.startAt == null && listPlay.playFromStart && nowPlaying.state?.shuffle) await setShuffle(false)
   await playSource(source, { startAt: options.startAt })
 }
 

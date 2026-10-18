@@ -108,6 +108,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: 'The list’s',
     help: 'When the list is sorted or moved around: the queue follows the list’s order, or keeps its own.',
   },
+  'queue.playFromStart': {
+    title: 'Play starts from the first song',
+    default: 'On',
+    help: 'Play on an album, playlist or folder starts on its first song and turns shuffle off; its Shuffle button turns shuffle on. Off: Play leaves shuffle as it is (with shuffle on, it starts on a random song).',
+  },
   'player.nextAtEnd': {
     title: 'Next on the last song',
     default: 'Nothing',

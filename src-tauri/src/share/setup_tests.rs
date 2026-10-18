@@ -54,7 +54,7 @@ fn opener<'a>(share: &'a TestShare) -> impl Fn(&ShareSetup, Option<&str>) -> Res
 }
 
 fn smb(store: PasswordStore) -> ShareSetup {
-    ShareSetup::Smb { host: "nas".into(), share: "music".into(), folder: "".into(), user: "simon".into(), password_store: store, home_host: None }
+    ShareSetup::Smb { host: "nas".into(), share: "music".into(), folder: "".into(), user: "user1".into(), password_store: store, home_host: None }
 }
 
 fn sync_into(t: &TestLibrary, name: &str) -> SyncFolderChoice {

@@ -40,9 +40,10 @@ const items = computed<Item[]>(() => {
   const out: Item[] = []
   let last: string | null = null
   for (const song of props.songs) {
+    // An empty heading shows nothing (a folder's own songs, before its subfolders').
     const heading = props.headingOf?.(song)
     if (heading != null && heading !== last) {
-      out.push({ key: `h:${heading}:${out.length}`, heading })
+      if (heading) out.push({ key: `h:${heading}:${out.length}`, heading })
       last = heading
     }
     out.push({ key: song.key ?? song.id, song })

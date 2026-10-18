@@ -239,7 +239,7 @@ const DEVICES = [
         <template #lead><span class="grid w-[34px] place-items-center"><Hint :icon="Copy" text="A copy: this song is also in your synced music, and Melue plays that one" /></span></template>
         <span class="text-[13px] text-muted-foreground">9,8 MB</span>
       </SettingsRow>
-      <SettingsRow title="simon@nas/music · Synced" description="Synced 12 min ago · 3 copied, 1 moved">
+      <SettingsRow title="me@nas/music · Synced" description="Synced 12 min ago · 3 copied, 1 moved">
         <template #lead><StatusDot kind="ok" /></template>
         <Button variant="outline" size="sm">Sync now</Button>
       </SettingsRow>

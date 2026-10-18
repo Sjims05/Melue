@@ -35,7 +35,7 @@ export const router = createRouter({
     { path: '/search', name: 'search', component: () => import('@/pages/SearchPage.vue'), meta: { title: 'Search' } },
     { path: '/artist/:id', name: 'artist', component: () => import('@/pages/ArtistPage.vue'), meta: { title: 'Artist' } },
     { path: '/album/:id', name: 'album', component: () => import('@/pages/AlbumPage.vue'), meta: { title: 'Album' } },
-    { path: '/folder/:id', name: 'folder', component: () => import('@/pages/ComingPage.vue'), meta: { title: 'Folder' } },
+    { path: '/folder/:id', name: 'folder', component: () => import('@/pages/FolderPage.vue'), meta: { title: 'Folder' } },
     { path: '/playlist/:id', name: 'playlist', component: () => import('@/pages/ComingPage.vue'), meta: { title: 'Playlist' } },
     ...(import.meta.env.DEV ? [{ path: '/dev', name: 'dev', component: () => import('@/pages/DevPage.vue'), meta: { main: 'Dev', title: 'Dev' } }] : []),
     { path: '/:rest(.*)*', redirect: '/' },

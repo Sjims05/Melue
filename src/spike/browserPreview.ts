@@ -24,10 +24,10 @@ const result = (copied: number, moved: number): SyncResult => ({
 let info: ShareInfo = {
   settings: status === 'none' ? null
     : status === 'streamed' ? { kind: 'drive', path: 'Z:\\Music', stream: true, syncFolderId: 3 }
-    : { kind: 'smb', host: 'nas', share: 'music', folder: '', user: 'simon', passwordStore: 'secure', syncFolderId: 3 },
+    : { kind: 'smb', host: 'nas', share: 'music', folder: '', user: 'me', passwordStore: 'secure', syncFolderId: 3 },
   syncFolder: null,
   needsPassword: status === 'password',
-  defaultSyncFolder: 'C:\\Users\\simon\\Music\\Melue',
+  defaultSyncFolder: 'C:\\Users\\me\\Music\\Melue',
 }
 
 let syncStatus: SyncStatus = {
@@ -149,9 +149,9 @@ const folder = (id: number, name: string, location: string, tracks: number, sync
   id, kind: 'path', location, name, enabled: true, synced, addedAt: day(30), lastScanAt: Date.now() - minutes(42), tracks,
 } as MusicFolder)
 let folders: MusicFolder[] = new URLSearchParams(location.search).get('library') === 'empty' ? [] : [
-  folder(1, 'Music', 'C:\Users\simon\Music', 1012),
+  folder(1, 'Music', 'C:\\Users\\me\\Music', 1012),
   folder(2, 'Music_Test', 'D:\Music_Test', 4),
-  folder(3, 'Synced music', 'C:\Users\simon\Music\Melue', 218, true),
+  folder(3, 'Synced music', 'C:\\Users\\me\\Music\\Melue', 218, true),
 ]
 let onlyHere: LocalSong[] = [
   { id: 101, title: 'The Sign', artist: 'Ace of Base', album: 'Happy Nation', folder: 'Music_Test', size: 7_400_000 },
@@ -296,6 +296,7 @@ export function installBrowserPreview() {
         case 'library_tracks_by_ids': return queueTracks(a.ids as number[])
         case 'library_tracks': return bigLibrary(a.sort as string).slice(a.offset as number, (a.offset as number) + (a.limit as number))
         case 'library_albums': return bigAlbums()
+        case 'library_folder_tracks': return bigLibrary('album').map((t) => ({ ...t, path: `${t.album ?? ''}${t.album ? '/' : ''}${t.title}.mp3` }))
         case 'library_artists': {
           const names = [...new Set(bigLibrary('artist').map((t) => t.artist as string))]
           return names.map((name, i) => ({ id: i + 1, name, tracks: bigLibrary('artist').filter((t) => t.artist === name).length, featured: i % 4, albums: i % 3 }))

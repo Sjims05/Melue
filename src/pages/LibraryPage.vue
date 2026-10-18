@@ -7,11 +7,12 @@
 import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PageHeader, PlannedCard } from '@/components/page'
+import { PageHeader } from '@/components/page'
 import { Segmented } from '@/components/settings'
 import { library, type AlbumSort, type ArtistSort, type LibraryStatus, type TrackSort } from '@/library'
 import AlbumsTab from './library/AlbumsTab.vue'
 import ArtistsTab from './library/ArtistsTab.vue'
+import FoldersTab from './library/FoldersTab.vue'
 import SongsTab from './library/SongsTab.vue'
 import SortMenu from './library/SortMenu.vue'
 
@@ -65,6 +66,6 @@ const counts = computed(() => {
     <SongsTab v-if="tab === 'songs'" :sort="songSort" />
     <AlbumsTab v-else-if="tab === 'albums'" :sort="albumSort" />
     <ArtistsTab v-else-if="tab === 'artists'" :sort="artistSort" />
-    <PlannedCard v-else :title="TABS.find(([t]) => t === tab)![1]" text="Your music folders, with their own pages: the coming step (Library)." />
+    <FoldersTab v-else />
   </div>
 </template>
