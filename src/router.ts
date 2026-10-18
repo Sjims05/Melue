@@ -36,7 +36,9 @@ export const router = createRouter({
     { path: '/artist/:id', name: 'artist', component: () => import('@/pages/ArtistPage.vue'), meta: { title: 'Artist' } },
     { path: '/album/:id', name: 'album', component: () => import('@/pages/AlbumPage.vue'), meta: { title: 'Album' } },
     { path: '/folder/:id', name: 'folder', component: () => import('@/pages/FolderPage.vue'), meta: { title: 'Folder' } },
-    { path: '/playlist/:id', name: 'playlist', component: () => import('@/pages/ComingPage.vue'), meta: { title: 'Playlist' } },
+    { path: '/playlist/:id(\\d+)', name: 'playlist', component: () => import('@/pages/PlaylistPage.vue'), meta: { title: 'Playlist' } },
+    // Made for you: All songs, Liked songs, the Top songs lists (/playlist/songs, /playlist/liked, /playlist/top-month).
+    { path: '/playlist/:auto', name: 'auto-playlist', component: () => import('@/pages/AutoPlaylistPage.vue'), meta: { title: 'Playlist' } },
     ...(import.meta.env.DEV ? [{ path: '/dev', name: 'dev', component: () => import('@/pages/DevPage.vue'), meta: { main: 'Dev', title: 'Dev' } }] : []),
     { path: '/:rest(.*)*', redirect: '/' },
   ],

@@ -17,7 +17,13 @@
 //! computer, by the end of the path (at least "ABBA/Waterloo.mp3"), then by the #EXTINF artist and title.
 //! Lines that match nothing stay as "not found" entries and match when the song turns up. A playlist whose
 //! file is gone stays, marked "file gone"; a file renamed or moved within its folder is followed. Files
-//! the user let go of (unlinked, or their playlist deleted) aren't linked again.
+//! the user let go of (unlinked, or their playlist deleted) aren't linked again, until followed again (Settings).
+//!
+//! A linked playlist can stop following its file ("Unfollowed", `following` off): scans leave it alone (only a
+//! renamed or gone file is still noticed) and write-back is off; edits are kept the usual way (songs removed here
+//! stay as removed_here), only not shown greyed, so following again shows how it differs from the file again.
+//! Deleting a linked playlist the user changed keeps it for 30 days (deleted_linked_playlists): restoring brings
+//! it back as it was, followed or not, replacing the file's playlist if that was followed again meanwhile.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -388,6 +394,7 @@ struct LinkedFile {
     size: Option<i64>,
     modified_at: Option<i64>,
     missing: bool,
+    following: bool,
 }
 
 fn stem(name: &str) -> String {
@@ -436,13 +443,13 @@ impl Library {
             let conn = self.conn();
             let mut stmt = conn
                 .prepare(
-                    "SELECT id, file_path, file_size, file_modified_at, file_missing_since IS NOT NULL FROM playlists
+                    "SELECT id, file_path, file_size, file_modified_at, file_missing_since IS NOT NULL, following FROM playlists
                      WHERE kind = 'linked' AND file_folder_id = ?1",
                 )
                 .map_err(err)?;
             let rows = stmt
                 .query_map([folder.id], |r| {
-                    Ok(LinkedFile { id: r.get(0)?, path: r.get(1)?, size: r.get(2)?, modified_at: r.get(3)?, missing: r.get(4)? })
+                    Ok(LinkedFile { id: r.get(0)?, path: r.get(1)?, size: r.get(2)?, modified_at: r.get(3)?, missing: r.get(4)?, following: r.get(5)? })
                 })
                 .map_err(err)?;
             rows.collect::<rusqlite::Result<_>>().map_err(err)?
@@ -461,6 +468,14 @@ impl Library {
         for file in files {
             let same = |k: &LinkedFile| k.size == Some(file.size) && k.modified_at == Some(file.modified_at);
             let playlist = match known.iter().find(|k| k.path == file.path) {
+                // Unfollowed: the file's changes don't come in; only that it's there again counts.
+                Some(k) if !k.following => {
+                    if k.missing {
+                        self.conn().execute("UPDATE playlists SET file_missing_since = NULL WHERE id = ?1", [k.id]).map_err(err)?;
+                        changed.push(k.id);
+                    }
+                    continue;
+                }
                 Some(k) if !k.missing && same(k) => continue,
                 Some(k) => Some(k.id),
                 None => {
@@ -573,7 +588,7 @@ impl Library {
     pub fn write_back_if_on(&self, id: i64, access: &dyn PlaylistFiles) -> Result<bool> {
         let on: Option<bool> = self
             .conn()
-            .query_row("SELECT write_back FROM playlists WHERE id = ?1 AND kind = 'linked'", [id], |r| r.get(0))
+            .query_row("SELECT write_back AND following FROM playlists WHERE id = ?1 AND kind = 'linked'", [id], |r| r.get(0))
             .optional()
             .map_err(err)?;
         if on == Some(true) {
@@ -714,7 +729,8 @@ impl Library {
     }
 
     /// Turns a linked playlist into an app playlist: Melue's version stays (greyed songs removed here or
-    /// only suggested go), the file is left alone, no longer followed and not linked again.
+    /// only suggested go), the file is left alone, no longer followed and not linked again. It stays only on this
+    /// device (not synced): the other devices have the file's playlist linked themselves, when they have the file.
     pub fn unlink_playlist(&self, id: i64) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
@@ -722,7 +738,7 @@ impl Library {
         let changed = tx
             .execute(
                 "UPDATE playlists SET kind = 'app', file_folder_id = NULL, file_path = NULL, file_size = NULL,
-                     file_modified_at = NULL, file_missing_since = NULL, write_back = 0, updated_at = ?2
+                     file_modified_at = NULL, file_missing_since = NULL, write_back = 0, local_only = 1, updated_at = ?2
                  WHERE id = ?1 AND kind = 'linked'",
                 params![id, now_ms()],
             )
@@ -757,5 +773,205 @@ impl Library {
             .optional()
             .map_err(err)?
             .ok_or_else(|| format!("entry {entry} isn't a greyed song of playlist {id}"))
+    }
+}
+
+/// A linked playlist being deleted: kept for 30 days when the user changed it (songs added, removed or kept here,
+/// suggestions waiting, its order or its name), with its settings, its entries and the file as last read. A newer
+/// copy of the same file's playlist replaces an older one.
+pub(crate) fn keep_deleted(tx: &Transaction, id: i64) -> Result<()> {
+    let row: Option<(String, bool, Option<i64>, String, String, String, bool, i64)> = tx
+        .query_row(
+            "SELECT name, following, file_folder_id, file_path, new_in_file, removed_from_file, write_back, created_at
+             FROM playlists WHERE id = ?1 AND kind = 'linked'",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
+        )
+        .optional()
+        .map_err(err)?;
+    let Some((name, following, Some(folder_id), path, new_in_file, removed_from_file, write_back, created_at)) = row else { return Ok(()) };
+    let entries: Vec<(Option<i64>, Option<String>, String, i64)> = {
+        let mut stmt = tx
+            .prepare("SELECT track_id, file_entry, state, added_at FROM playlist_entries WHERE playlist_id = ?1 ORDER BY position, id")
+            .map_err(err)?;
+        let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)?
+    };
+    let snapshot: Vec<String> = {
+        let mut stmt = tx.prepare("SELECT file_entry FROM playlist_snapshots WHERE playlist_id = ?1 ORDER BY position").map_err(err)?;
+        let rows = stmt.query_map([id], |r| r.get(0)).map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)?
+    };
+    let file_order: Vec<&str> = entries.iter().filter(|e| e.2 == "both").filter_map(|e| e.1.as_deref()).collect();
+    let snapshot_order: Vec<&str> = snapshot.iter().map(String::as_str).filter(|line| file_order.contains(line)).collect();
+    let file_name = path.rsplit(['/', '\\']).next().unwrap_or(&path);
+    let changed = entries.iter().any(|e| e.2 != "both") || file_order != snapshot_order || name != stem(file_name);
+    if !changed {
+        return Ok(());
+    }
+    let songs = entries.iter().filter(|e| e.2 != "suggested" && e.2 != "removed_here").count() as i64;
+    let data = serde_json::json!({
+        "following": following,
+        "newInFile": new_in_file,
+        "removedFromFile": removed_from_file,
+        "writeBack": write_back,
+        "createdAt": created_at,
+        "entries": entries.iter().map(|(track, line, state, added)| serde_json::json!([track, line, state, added])).collect::<Vec<_>>(),
+        "snapshot": snapshot,
+    });
+    tx.execute("DELETE FROM deleted_linked_playlists WHERE folder_id = ?1 AND file_path = ?2", params![folder_id, path]).map_err(err)?;
+    tx.execute(
+        "INSERT INTO deleted_linked_playlists (name, songs, deleted_at, folder_id, file_path, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![name, songs, now_ms(), folder_id, path, data.to_string()],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
+/// How long a deleted linked playlist is kept (30 days).
+const KEPT_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
+/// A linked playlist deleted with the user's changes, kept to restore (Recently deleted).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedLinkedPlaylist {
+    pub id: i64,
+    pub name: String,
+    pub songs: i64,
+    pub deleted_at: i64,
+    /// The playlist file's name.
+    pub file: String,
+}
+
+/// A playlist file let go of (its playlist unlinked or deleted): scans don't link it again, until it's followed again.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LetGoFile {
+    pub folder_id: i64,
+    /// Its music folder's name.
+    pub folder: String,
+    /// Where it is in that folder.
+    pub path: String,
+}
+
+impl Library {
+    /// The playlist files let go of, by folder and path (Settings: "Follow again").
+    pub fn let_go_files(&self) -> Result<Vec<LetGoFile>> {
+        let names: HashMap<i64, String> = self.folders()?.into_iter().map(|f| (f.id, f.name)).collect();
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT folder_id, path FROM playlist_files_ignored ORDER BY folder_id, path").map_err(err)?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
+        let files = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)?;
+        Ok(files
+            .into_iter()
+            .map(|(folder_id, path)| LetGoFile { folder: names.get(&folder_id).cloned().unwrap_or_default(), folder_id, path })
+            .collect())
+    }
+
+    /// Follows a let-go playlist file again: the next scan links it as a new playlist.
+    pub fn follow_file_again(&self, folder_id: i64, path: &str) -> Result<()> {
+        self.conn()
+            .execute("DELETE FROM playlist_files_ignored WHERE folder_id = ?1 AND path = ?2", params![folder_id, path])
+            .map(|_| ())
+            .map_err(err)
+    }
+
+    /// Stops or starts following a linked playlist's file. Following again: the next scan reads the file and shows
+    /// how the playlist differs from it (it's read even when unchanged since).
+    pub fn set_playlist_following(&self, id: i64, following: bool) -> Result<()> {
+        let changed = self
+            .conn()
+            .execute(
+                "UPDATE playlists SET following = ?2, write_back = CASE WHEN ?2 THEN write_back ELSE 0 END,
+                     file_size = CASE WHEN ?2 THEN NULL ELSE file_size END, updated_at = ?3
+                 WHERE id = ?1 AND kind = 'linked'",
+                params![id, following, now_ms()],
+            )
+            .map_err(err)?;
+        if changed == 0 {
+            return Err(format!("no linked playlist {id}"));
+        }
+        Ok(())
+    }
+
+    /// Linked playlists deleted with the user's changes in the last 30 days, latest first (older ones go).
+    pub fn deleted_linked_playlists(&self) -> Result<Vec<DeletedLinkedPlaylist>> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM deleted_linked_playlists WHERE deleted_at < ?1", [now_ms() - KEPT_MS]).map_err(err)?;
+        let mut stmt = conn
+            .prepare("SELECT id, name, songs, deleted_at, file_path FROM deleted_linked_playlists ORDER BY deleted_at DESC, id DESC")
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |r| {
+                let path: String = r.get(4)?;
+                Ok(DeletedLinkedPlaylist {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    songs: r.get(2)?,
+                    deleted_at: r.get(3)?,
+                    file: path.rsplit(['/', '\\']).next().unwrap_or(&path).to_string(),
+                })
+            })
+            .map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+
+    /// Restores a deleted linked playlist as it was (followed or not, with its changes), replacing the file's
+    /// playlist if it was followed again meanwhile; its file isn't let go of any more. The next scan reads the file
+    /// again. Returns the playlist's id.
+    pub fn restore_linked_playlist(&self, kept: i64) -> Result<i64> {
+        let mut conn = self.conn();
+        let tx = conn.transaction().map_err(err)?;
+        let (name, folder_id, path, data): (String, i64, String, String) = tx
+            .query_row("SELECT name, folder_id, file_path, data FROM deleted_linked_playlists WHERE id = ?1", [kept], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .optional()
+            .map_err(err)?
+            .ok_or_else(|| format!("no deleted playlist {kept}"))?;
+        let data: serde_json::Value = serde_json::from_str(&data).map_err(|e| format!("a deleted playlist that can't be read: {e}"))?;
+        let now = now_ms();
+        tx.execute("DELETE FROM playlists WHERE kind = 'linked' AND file_folder_id = ?1 AND file_path = ?2", params![folder_id, path])
+            .map_err(err)?;
+        tx.execute(
+            "INSERT INTO playlists (name, kind, created_at, updated_at, file_folder_id, file_path, new_in_file, removed_from_file, write_back, following)
+             VALUES (?1, 'linked', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                name,
+                data["createdAt"].as_i64().unwrap_or(now),
+                now,
+                folder_id,
+                path,
+                data["newInFile"].as_str().unwrap_or("added"),
+                data["removedFromFile"].as_str().unwrap_or("removed"),
+                data["writeBack"].as_bool().unwrap_or(false),
+                data["following"].as_bool().unwrap_or(true),
+            ],
+        )
+        .map_err(err)?;
+        let id = tx.last_insert_rowid();
+        let mut position = 0i64;
+        for entry in data["entries"].as_array().into_iter().flatten() {
+            // A song that left the library since: its file line stays (matched again when it's back).
+            let track = entry[0].as_i64().filter(|&t| tx.query_row("SELECT 1 FROM tracks WHERE id = ?1", [t], |_| Ok(())).optional().ok().flatten().is_some());
+            let line = entry[1].as_str();
+            if track.is_none() && line.is_none() {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO playlist_entries (playlist_id, position, track_id, file_entry, state, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![id, position, track, line, entry[2].as_str().unwrap_or("both"), entry[3].as_i64().unwrap_or(now)],
+            )
+            .map_err(err)?;
+            position += 1;
+        }
+        for (i, line) in data["snapshot"].as_array().into_iter().flatten().filter_map(|l| l.as_str()).enumerate() {
+            tx.execute("INSERT INTO playlist_snapshots (playlist_id, position, file_entry) VALUES (?1, ?2, ?3)", params![id, i as i64, line])
+                .map_err(err)?;
+        }
+        tx.execute("DELETE FROM playlist_files_ignored WHERE folder_id = ?1 AND path = ?2", params![folder_id, path]).map_err(err)?;
+        tx.execute("DELETE FROM deleted_linked_playlists WHERE id = ?1", [kept]).map_err(err)?;
+        tx.commit().map_err(err)?;
+        Ok(id)
     }
 }

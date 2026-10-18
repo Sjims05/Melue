@@ -120,7 +120,8 @@ export const current = computed(() => {
 /** The page of the list the queue plays from ("Playing from …" links to it), or null. */
 export const fromPage = computed((): RouteLocationRaw | null => {
   const [kind, id] = (nowPlaying.queue?.sourceId ?? '').split(':')
-  if (kind === 'songs') return { path: '/library', query: { tab: 'songs' } }
+  // All songs from the Songs tab (in its order: 'songs:plays') is the tab; All songs from Made for you, its page.
+  if (kind === 'songs') return id ? { path: '/library', query: { tab: 'songs' } } : '/playlist/songs'
   if (kind === 'liked') return '/playlist/liked'
   if (kind === 'top') return `/playlist/top-${id}`
   if (['album', 'artist', 'playlist', 'folder'].includes(kind) && id) return `/${kind}/${id}`

@@ -94,6 +94,20 @@ fn an_artists_page_has_albums_songs_and_featured() {
 }
 
 #[test]
+fn made_for_you_lists_have_their_songs_in_order() {
+    let t = library("pages-auto");
+    let all = t.library.auto_playlist_tracks("songs").unwrap();
+    assert_eq!(all.len(), 6);
+    let id = |title: &str| all.iter().find(|s| s.title == title).unwrap().id;
+    t.library.set_liked(id("Duet"), true).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    t.library.set_liked(id("Old one"), true).unwrap();
+    assert_eq!(titles(&t.library.auto_playlist_tracks("liked").unwrap()), ["Old one", "Duet"], "newest liked first");
+    assert!(t.library.auto_playlist_tracks("top:month").unwrap().is_empty(), "nothing played yet");
+    assert!(t.library.auto_playlist_tracks("album:1").is_err());
+}
+
+#[test]
 fn a_folders_songs_go_by_where_they_are() {
     let (t, m, f) = setup("pages-folder");
     m.add("B/01.wav", &song("Two", "Band", "B", 1));

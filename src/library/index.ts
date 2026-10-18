@@ -110,6 +110,8 @@ export interface Playlist {
   removedFromFile: 'removed' | 'kept'
   /** Linked: Melue's changes are written into the file (off by default). */
   writeBack: boolean
+  /** Linked: following its file. Off: "Unfollowed" (the file's changes don't come in; greyed songs not shown). */
+  following: boolean
   /** How long its available songs play. */
   durationMs: number
   /** Synced to the share (Melue's own playlists, once synced). */
@@ -133,6 +135,25 @@ export interface Playlist {
  * - file_removed: removed from the file, kept in Melue (marked)
  */
 export type PlaylistEntryState = 'both' | 'here_only' | 'removed_here' | 'suggested' | 'file_removed'
+
+/** A linked playlist deleted with your changes, kept 30 days on this device to restore. */
+export interface DeletedLinkedPlaylist {
+  id: number
+  name: string
+  songs: number
+  deletedAt: number
+  /** The playlist file's name. */
+  file: string
+}
+
+/** A playlist file let go of (its playlist unlinked or deleted). */
+export interface LetGoFile {
+  folderId: number
+  /** Its music folder's name. */
+  folder: string
+  /** Where it is in that folder. */
+  path: string
+}
 
 /** A song in a playlist. The same song can be in a playlist twice: each entry has its own id. */
 export interface PlaylistEntry {
@@ -400,6 +421,16 @@ export const library = {
     invoke<Playlist>('library_set_playlist_options', { id, ...options }),
   /** Linked: keeps it as an app playlist; the file is left alone and not linked again. */
   unlinkPlaylist: (id: number) => invoke<Playlist>('library_unlink_playlist', { id }),
+  /** Playlist files let go of (unlinked, or their playlist deleted): not linked again until followed again. */
+  letGoFiles: () => invoke<LetGoFile[]>('library_let_go_files'),
+  /** Stops or starts following a linked playlist's file (following again shows how it differs from the file). */
+  setPlaylistFollowing: (id: number, following: boolean) => invoke<void>('library_set_playlist_following', { id, following }),
+  /** Linked playlists deleted with your changes in the last 30 days (this device). */
+  deletedLinkedPlaylists: () => invoke<DeletedLinkedPlaylist[]>('library_deleted_linked_playlists'),
+  /** Restores one as it was (replacing the file's playlist if it was followed again). Resolves with its id. */
+  restoreLinkedPlaylist: (id: number) => invoke<number>('library_restore_linked_playlist', { id }),
+  /** Follows a let-go playlist file again: it's linked as a new playlist (scans now). */
+  followFileAgain: (folderId: number, path: string) => invoke<void>('library_follow_file_again', { folderId, path }),
 
   /** Songs that are there, by title. */
   /** Songs that are there, sorted (by title unless asked otherwise). */
@@ -439,6 +470,8 @@ export const library = {
   albumPage: (id: number) => invoke<AlbumPage | null>('library_album_page', { id }),
   /** An artist's page (null: no such artist). */
   artistPage: (id: number) => invoke<ArtistPage | null>('library_artist_page', { id }),
+  /** A Made for you list's songs, in its order: 'songs' (A–Z), 'liked' (newest liked first), 'top:<period>'. */
+  autoPlaylistTracks: (source: Source) => invoke<Track[]>('library_auto_playlist_tracks', { source }),
   /** A music folder's songs, by where they are in it. */
   folderTracks: (id: number) => invoke<Track[]>('library_folder_tracks', { id }),
   /** Desktop: opens the song's folder in the file manager with the file selected. */

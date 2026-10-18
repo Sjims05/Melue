@@ -19,6 +19,7 @@ import SettingsBadge from '@/components/settings/SettingsBadge.vue'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { artistParts } from './artistParts'
+import { Button } from '@/components/ui/button'
 import PlayingBars from './PlayingBars.vue'
 import { songMenu, type Song, type SongAction, type SongMenuPlace } from './songMenu'
 
@@ -102,12 +103,12 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
     <ContextMenuTrigger as-child :disabled="unavailable">
       <div
         v-bind="$attrs"
-        class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none"
+        class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none *:transition-[opacity,color,background-color] *:duration-300"
         :class="
           unavailable
-            ? 'opacity-45'
+            ? '[&>*:not(.song-keep)]:opacity-45'
             : song.later
-              ? 'opacity-50'
+              ? '[&>*:not(.song-keep)]:opacity-50'
               : [
                   fading && 'transition-colors duration-300 [&_*]:transition-colors [&_*]:duration-300',
                   'group/song hover:bg-song-highlight hover:text-song-highlight-foreground data-[highlight]:bg-song-highlight data-[highlight]:text-song-highlight-foreground',
@@ -155,24 +156,31 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
           <template v-else>{{ song.album }}</template>
         </span>
         <span class="hidden w-14 flex-none text-right text-sm tabular-nums @md:block" :class="MUTED">{{ length }}</span>
-        <span class="ml-2 flex flex-none items-center gap-1">
-          <!-- A missing song keeps the button's space (invisible), so its album and length line up with the others. -->
-          <button type="button" :class="[BUTTON, unavailable ? 'invisible' : ON_HIGHLIGHT]" :disabled="unavailable" :aria-label="current && playing ? 'Pause' : 'Play'" @click="playOrPause">
-            <!-- Smaller than the other icons, as drawn: filled shapes look bigger than outlines. -->
-            <PauseIcon v-if="current && playing" class="size-4!" />
-            <PlayIcon v-else class="size-4!" />
-          </button>
-          <button
-            type="button"
-            :class="[BUTTON, song.liked ? '' : ON_HIGHLIGHT]"
-            :aria-label="song.liked ? 'Remove from liked' : 'Add to liked'"
-            :aria-pressed="!!song.liked"
-            @click="(e: MouseEvent) => (popHeart(e.currentTarget, !song.liked), emit('like', !song.liked))"
-          >
-            <Heart class="heart" :class="song.liked && 'fill-current'" />
-          </button>
+        <!-- A greyed song that can come back (a linked playlist's) has its button in place of ▶ ♥, not greyed (the
+             rest of the row is). -->
+        <span class="ml-2 flex flex-none items-center gap-1" :class="song.restore && 'song-keep'">
+          <span v-if="song.restore" class="grid w-[68px] place-items-center">
+            <Button variant="outline" size="xs" @click.stop="emit('action', 'restore')">{{ song.restore }}</Button>
+          </span>
+          <template v-else>
+            <!-- A missing song keeps the button's space (invisible), so its album and length line up with the others. -->
+            <button type="button" :class="[BUTTON, unavailable ? 'invisible' : ON_HIGHLIGHT]" :disabled="unavailable" :aria-label="current && playing ? 'Pause' : 'Play'" @click="playOrPause">
+              <!-- Smaller than the other icons, as drawn: filled shapes look bigger than outlines. -->
+              <PauseIcon v-if="current && playing" class="size-4!" />
+              <PlayIcon v-else class="size-4!" />
+            </button>
+            <button
+              type="button"
+              :class="[BUTTON, song.liked ? '' : ON_HIGHLIGHT]"
+              :aria-label="song.liked ? 'Remove from liked' : 'Add to liked'"
+              :aria-pressed="!!song.liked"
+              @click="(e: MouseEvent) => (popHeart(e.currentTarget, !song.liked), emit('like', !song.liked))"
+            >
+              <Heart class="heart" :class="song.liked && 'fill-current'" />
+            </button>
+          </template>
           <DropdownMenu @update:open="(open) => (menuOpen = open)">
-            <DropdownMenuTrigger :class="BUTTON" :aria-label="`${song.title}: more`"><Ellipsis /></DropdownMenuTrigger>
+            <DropdownMenuTrigger :class="[BUTTON, song.restore && 'opacity-45']" :aria-label="`${song.title}: more`"><Ellipsis /></DropdownMenuTrigger>
             <DropdownMenuContent align="end" class="min-w-48">
               <template v-for="item in items" :key="item.action">
                 <DropdownMenuSeparator v-if="item.apart" />
@@ -182,7 +190,7 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
               </template>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button v-if="removable" type="button" :class="[BUTTON, song.later && 'invisible']" :disabled="!!song.later" aria-label="Take out" @click="emit('remove')">
+          <button v-if="removable" type="button" :class="[BUTTON, song.later && 'invisible', song.restore && 'opacity-45']" :disabled="!!song.later" aria-label="Take out" @click="emit('remove')">
             <X />
           </button>
         </span>

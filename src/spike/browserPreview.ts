@@ -112,11 +112,25 @@ function bigAlbums() {
   }))
 }
 
+// Your playlists: synced, only here, linked, one with a missing song, one waiting for a choice.
+const playlist = (id: number, name: string, extra: Record<string, unknown>) => ({
+  id, name, kind: 'app', entries: 8, available: 8, suggested: 0, removedHere: 0, file: null, fileMissing: false, newInFile: 'added',
+  removedFromFile: 'removed', writeBack: false, following: true, durationMs: 31 * 60_000, synced: true, localOnly: false, notHere: 0, covers: [],
+  createdAt: 0, updatedAt: 0, ...extra,
+})
+let playlists = [
+  playlist(10, 'Night Drive', {}),
+  playlist(11, 'Focus', { synced: false, localOnly: true }),
+  playlist(12, 'Road trip', { entries: 9, available: 8 }),
+  playlist(13, 'Melue test', { kind: 'linked', synced: false, file: 'Melue test.m3u' }),
+]
+
 // Playlists: the auto ones (one hidden), and two deleted lately.
 let autoPlaylists: AutoPlaylist[] = [
+  { source: 'songs', name: 'All songs', kind: 'songs', songs: 1508, size: null, hidden: false },
   { source: 'liked', name: 'Liked songs', kind: 'liked', songs: 86, size: null, hidden: false },
-  { source: 'top:month', name: 'Top songs this month', kind: 'top', songs: 50, size: 50, hidden: true },
-  { source: 'top:year', name: 'Top songs this year', kind: 'top', songs: 50, size: 50, hidden: false },
+  { source: 'top:month', name: 'Top songs: last month', kind: 'top', songs: 50, size: 50, hidden: true },
+  { source: 'top:year', name: 'Top songs: last year', kind: 'top', songs: 50, size: 50, hidden: false },
 ] as AutoPlaylist[]
 let deleted: DeletedPlaylist[] = [
   { syncId: 'gym', name: 'Gym', songs: 12, deletedAt: Date.now() - minutes(14 * 24 * 60) },
@@ -231,6 +245,29 @@ export function installBrowserPreview() {
           return autoPlaylists
         }
         case 'deleted_playlists': return deleted
+        case 'library_playlists': return playlists
+        case 'library_playlist': return playlists.find((p) => p.id === a.id)
+        case 'library_set_playlist_following': playlists = playlists.map((p) => (p.id === a.id ? { ...p, following: a.following as boolean } : p)); return null
+        case 'library_deleted_linked_playlists': return [{ id: 1, name: 'Old mix', songs: 14, deletedAt: Date.now() - 3 * 86_400_000, file: 'Old mix.m3u' }]
+        case 'library_let_go_files': return [{ folderId: 1, folder: 'Music', path: 'Lists/Old mix.m3u' }]
+        case 'library_playlist_entries': {
+          const songs = bigLibrary('title').slice(0, 8)
+          const states = ['both', 'both', 'suggested', 'both', 'removed_here', 'both', 'file_removed', 'both']
+          const linked = playlists.find((p) => p.id === a.id)?.kind === 'linked'
+          return [
+            ...songs.map((t, i) => ({ id: 500 + i, position: i, addedAt: 0, state: linked ? states[i] : 'both', fileEntry: null, syncTitle: null, syncArtist: null, track: { ...t, available: i !== 3 } })),
+            { id: 600, position: 8, addedAt: 0, state: 'both', fileEntry: null, syncTitle: 'Song from the phone', syncArtist: 'Phone Band', track: null },
+          ]
+        }
+        case 'library_move_in_playlist': case 'library_remove_from_playlist': case 'library_restore_playlist_entry': return null
+        case 'library_create_playlist': {
+          const made = { ...playlists[0], id: Date.now(), name: a.name as string, kind: 'app', entries: 0, available: 0, durationMs: 0, covers: [], synced: false, localOnly: true, notHere: 0 }
+          playlists = [made, ...playlists]
+          return made
+        }
+        case 'library_rename_playlist': playlists = playlists.map((p) => (p.id === a.id ? { ...p, name: a.name as string } : p)); return playlists.find((p) => p.id === a.id)
+        case 'library_delete_playlist': playlists = playlists.filter((p) => p.id !== a.id); return null
+        case 'playlist_conflicts': return [{ syncId: 's1', kind: 'changed', name: 'Road trip', deviceName: 'Phone', playlistId: 12, foundAt: 0 }]
         case 'restore_playlist': deleted = deleted.filter((p) => p.syncId !== a.syncId); return 1
         case 'library_music_access': return { permission: 'prompt', songs: null }
         case 'library_folder_covers': return { enabled: false, permission: 'granted' }
@@ -296,6 +333,7 @@ export function installBrowserPreview() {
         case 'library_tracks_by_ids': return queueTracks(a.ids as number[])
         case 'library_tracks': return bigLibrary(a.sort as string).slice(a.offset as number, (a.offset as number) + (a.limit as number))
         case 'library_albums': return bigAlbums()
+        case 'library_auto_playlist_tracks': return a.source === 'songs' ? bigLibrary('title') : bigLibrary('plays').slice(0, 25)
         case 'library_folder_tracks': return bigLibrary('album').map((t) => ({ ...t, path: `${t.album ?? ''}${t.album ? '/' : ''}${t.title}.mp3` }))
         case 'library_artists': {
           const names = [...new Set(bigLibrary('artist').map((t) => t.artist as string))]

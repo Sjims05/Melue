@@ -8,7 +8,7 @@
 import { Cloud } from '@lucide/vue'
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
-import { AUTO_COVERS } from '@/components/covers'
+import { AUTO_COVERS, coverMenu, type CoverAction } from '@/components/covers'
 import { ListHeader } from '@/components/page'
 import { SettingsBadge } from '@/components/settings'
 import { VirtualSongList, type Song } from '@/components/songs'
@@ -16,7 +16,7 @@ import { library, type MusicFolder, type Source, type Track } from '@/library'
 import { count, totalLength } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { playList, songAction, trackSong } from '@/player/songs'
+import { listAction, playList, songAction, trackSong } from '@/player/songs'
 import { setPageTitle } from '@/router'
 
 const route = useRoute()
@@ -52,6 +52,9 @@ const headingOf = computed(() =>
     : undefined,
 )
 
+// The heading's right-click menu: the folder row's.
+const MENU = coverMenu({ kind: 'list' })
+
 function play(song: Song) {
   if (song.id === current.value?.id) togglePlay()
   else playList(source, { startAt: Number(song.id) })
@@ -67,6 +70,8 @@ function play(song: Song) {
         :colors="AUTO_COVERS.folder.colors"
         :icon="AUTO_COVERS.folder.icon"
         :empty="!songs.length"
+        :menu="MENU"
+        @action="(action) => listAction(source, action as CoverAction)"
         @play="playList(source)"
         @shuffle="playList(source, { shuffle: true })"
       >

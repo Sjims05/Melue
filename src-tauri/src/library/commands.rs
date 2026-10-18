@@ -155,6 +155,46 @@ pub fn library_queue_items_for(library: State<'_, Library>, ids: Vec<i64>) -> Re
     library.queue_items_for(&ids)
 }
 
+/// Playlist files let go of (unlinked, or their playlist deleted): Settings' "Follow again".
+#[tauri::command(async)]
+pub fn library_let_go_files(library: State<'_, Library>) -> Result<Vec<super::linked::LetGoFile>> {
+    library.let_go_files()
+}
+
+/// Stops or starts following a linked playlist's file; following again scans, to show how it differs from the file.
+#[tauri::command(async)]
+pub fn library_set_playlist_following(app: AppHandle, library: State<'_, Library>, id: i64, following: bool) -> Result<()> {
+    library.set_playlist_following(id, following)?;
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    if following {
+        scanner::scan_all(&app)?;
+    }
+    Ok(())
+}
+
+/// Linked playlists deleted with the user's changes in the last 30 days (Recently deleted, this device).
+#[tauri::command(async)]
+pub fn library_deleted_linked_playlists(library: State<'_, Library>) -> Result<Vec<super::linked::DeletedLinkedPlaylist>> {
+    library.deleted_linked_playlists()
+}
+
+/// Restores a deleted linked playlist as it was, and scans so it's in step with its file. Resolves with its id.
+#[tauri::command(async)]
+pub fn library_restore_linked_playlist(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<i64> {
+    let restored = library.restore_linked_playlist(id)?;
+    changes::emit(&app, LibraryChange::playlist(restored, Vec::new()));
+    scanner::scan_all(&app)?;
+    Ok(restored)
+}
+
+/// Follows a let-go playlist file again, and scans so it's linked as a playlist now.
+#[tauri::command(async)]
+pub fn library_follow_file_again(app: AppHandle, library: State<'_, Library>, folder_id: i64, path: String) -> Result<()> {
+    library.follow_file_again(folder_id, &path)?;
+    scanner::scan_all(&app)?;
+    Ok(())
+}
+
 /// An album's page: the album and its songs (null: no such album).
 #[tauri::command(async)]
 pub fn library_album_page(library: State<'_, Library>, id: i64) -> Result<Option<AlbumPage>> {
@@ -165,6 +205,12 @@ pub fn library_album_page(library: State<'_, Library>, id: i64) -> Result<Option
 #[tauri::command(async)]
 pub fn library_artist_page(library: State<'_, Library>, id: i64) -> Result<Option<ArtistPage>> {
     library.artist_page(id)
+}
+
+/// A Made for you list's songs, in its order ("songs", "liked", "top:<period>").
+#[tauri::command(async)]
+pub fn library_auto_playlist_tracks(library: State<'_, Library>, source: String) -> Result<Vec<Track>> {
+    library.auto_playlist_tracks(&source)
 }
 
 /// A music folder's songs, by where they are in it.

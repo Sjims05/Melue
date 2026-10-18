@@ -17,6 +17,10 @@ const props = defineProps<{
   queue?: boolean
   az?: boolean
   removable?: boolean
+  /** A playlist's songs: drag handles, numbers and ✕ like the queue (without its strong highlight). */
+  reorderable?: boolean
+  /** Songs that stay when taken out (a linked playlist's: they turn greyed, "Removed here"): no folding away. */
+  keepOnRemove?: (song: Song) => boolean
   /** The song playing (or paused on). */
   currentId?: Song['id'] | null
   playing?: boolean
@@ -77,7 +81,7 @@ function putDown() {
 const list = ref<HTMLElement>()
 
 function grab(event: PointerEvent, index: number) {
-  if (!props.queue || props.songs[index].later || !(event.target as HTMLElement).closest('.song-handle')) return
+  if (!(props.queue || props.reorderable) || props.songs[index].later || !(event.target as HTMLElement).closest('.song-handle')) return
   event.preventDefault()
   const wrapper = event.currentTarget as HTMLElement
   const rows = [...list.value!.querySelectorAll<HTMLElement>(':scope > [role=listitem]')]
@@ -119,7 +123,7 @@ async function letGo() {
     row.style.transition = 'none'
     row.style.translate = `0 ${offset}px`
     row.style.scale = String(LIFT)
-    row.classList.add('z-10', 'shadow-lg')
+    row.classList.add('z-10', 'bg-card', 'shadow-lg')
     void row.offsetHeight
     row.style.transition = 'translate 260ms cubic-bezier(.2,.8,.2,1), scale 260ms cubic-bezier(.2,.8,.2,1), box-shadow 260ms ease-out'
     row.style.translate = ''
@@ -127,7 +131,7 @@ async function letGo() {
     row.classList.remove('shadow-lg')
     setTimeout(() => {
       row.style.transition = ''
-      row.classList.remove('z-10')
+      row.classList.remove('z-10', 'bg-card')
       putDown()
     }, 280)
   } else putDown()
@@ -152,6 +156,7 @@ async function foldAway(keys: Song['id'][]) {
   }
 }
 async function remove(song: Song, index: number) {
+  if (props.keepOnRemove?.(song)) return emit('remove', song, index)
   const undo = await foldAway([song.key ?? song.id])
   emit('remove', song, index)
   await nextTick()
@@ -207,7 +212,7 @@ function moved(index: number): string | undefined {
         :class="[
           lifted !== null && lifted !== (song.key ?? song.id) && 'pointer-events-none [&_*]:pointer-events-none!',
           drag?.from === index
-            ? 'z-10 shadow-lg transition-[scale,box-shadow] duration-200 ease-[cubic-bezier(.2,.8,.2,1)]'
+            ? 'z-10 bg-card shadow-lg transition-[scale,box-shadow] duration-200 ease-[cubic-bezier(.2,.8,.2,1)]'
             : !settling && 'transition-[translate] duration-200 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
         ]"
         :style="{ translate: moved(index), scale: drag?.from === index ? LIFT : undefined }"
@@ -219,16 +224,16 @@ function moved(index: number): string | undefined {
       >
         <SongRow
           :song="song"
-          :number="queue ? placeOf(index) + 1 : numberOf?.(song, index)"
+          :number="queue || reorderable ? placeOf(index) + 1 : numberOf?.(song, index)"
           :no-cover="albumPage"
           :no-album="albumPage"
-          :handle="queue"
-          :removable="queue || removable"
+          :handle="queue || reorderable"
+          :removable="queue || reorderable || removable"
           :current="song.id === currentId"
           :lifted="lifted === (song.key ?? song.id)"
           :fading="fading === (song.key ?? song.id)"
           :playing="playing"
-          :note="song.later && !songs[index - 1]?.later ? song.later : nextNote(index)"
+          :note="song.later && !songs[index - 1]?.later ? song.later : (song.note ?? nextNote(index))"
           :unavailable="unavailable?.includes(song.id)"
           :local-only="localOnly?.includes(song.id)"
           :place="place"

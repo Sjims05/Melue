@@ -12,7 +12,8 @@ import { coverUrl, library, type AlbumPage, type Source } from '@/library'
 import { count, totalLength } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { playList, songAction, trackSong } from '@/player/songs'
+import { coverMenu, type CoverAction } from '@/components/covers'
+import { listAction, playList, songAction, trackSong } from '@/player/songs'
 import { setPageTitle } from '@/router'
 
 const route = useRoute()
@@ -40,6 +41,9 @@ const discOf = (song: Song) => tracks.value.get(Number(song.id))?.discNo ?? 1
 const headingOf = computed(() => (new Set(songs.value.map(discOf)).size > 1 ? (s: Song) => `Disc ${discOf(s)}` : undefined))
 const numberOf = (song: Song, index: number) => tracks.value.get(Number(song.id))?.trackNo ?? index + 1
 
+// The heading's right-click menu: the album card's.
+const MENU = coverMenu({ kind: 'album' })
+
 function play(song: Song) {
   if (song.id === current.value?.id) togglePlay()
   else playList(source, { startAt: Number(song.id) })
@@ -54,6 +58,8 @@ function play(song: Song) {
         :title="album.title"
         :image="album.cover ? coverUrl(album.cover, 'large') : undefined"
         :empty="!songs.length"
+        :menu="MENU"
+        @action="(action) => listAction(source, action as CoverAction, album!.artistId)"
         @play="playList(source)"
         @shuffle="playList(source, { shuffle: true })"
       >

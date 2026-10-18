@@ -38,6 +38,8 @@ pub struct Playlist {
     pub new_in_file: String,
     pub removed_from_file: String,
     pub write_back: bool,
+    /// Linked: following its file (false: "Unfollowed", the file's changes don't come in; see linked.rs).
+    pub following: bool,
     /// How long its available songs play.
     pub duration_ms: i64,
     /// Synced to the share (Melue's own playlists, once synced).
@@ -140,6 +142,8 @@ impl Library {
         self.archive_before_delete(id)?;
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
+        // A linked one changed by the user: kept for 30 days, restorable as it was (Recently deleted).
+        super::linked::keep_deleted(&tx, id)?;
         super::linked::ignore_file(&tx, id)?;
         let deleted = tx.execute("DELETE FROM playlists WHERE id = ?1", [id]).map_err(err)?;
         if deleted == 0 {
@@ -170,7 +174,7 @@ impl Library {
                     count(e.id) FILTER (WHERE e.state = 'removed_here'),
                     p.file_path, p.file_missing_since IS NOT NULL, p.new_in_file, p.removed_from_file, p.write_back,
                     p.sync_id IS NOT NULL, p.local_only,
-                    count(e.id) FILTER (WHERE p.kind = 'app' AND e.track_id IS NULL)
+                    count(e.id) FILTER (WHERE p.kind = 'app' AND e.track_id IS NULL), p.following
              FROM playlists p
              LEFT JOIN playlist_entries e ON e.playlist_id = p.id
              LEFT JOIN tracks t ON t.id = e.track_id AND t.missing_since IS NULL
@@ -198,6 +202,7 @@ impl Library {
                     synced: r.get(15)?,
                     local_only: r.get(16)?,
                     not_here: r.get(17)?,
+                    following: r.get(18)?,
                     covers: Vec::new(),
                 })
             })

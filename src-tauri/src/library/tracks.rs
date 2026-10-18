@@ -351,6 +351,25 @@ impl Library {
         Ok(Some(ArtistPage { artist, albums, tracks, featured }))
     }
 
+    /// The songs of a Made for you list, in its order (what it plays): "songs" (all, by title), "liked" (newest
+    /// liked first), "top:<period>" (most played first).
+    pub fn auto_playlist_tracks(&self, source: &str) -> Result<Vec<Track>> {
+        if let Some(period) = source.strip_prefix("top:") {
+            let period = super::auto_playlists::TopPeriod::parse(period).ok_or_else(|| format!("not a list: {source}"))?;
+            let ids = self.top_songs(period)?;
+            let mut found: std::collections::HashMap<i64, Track> = self.tracks_by_ids(&ids)?.into_iter().map(|t| (t.id, t)).collect();
+            return Ok(ids.iter().filter_map(|id| found.remove(id)).filter(|t| t.available).collect());
+        }
+        match source {
+            "songs" => self.tracks(0, u32::MAX, TrackSort::Title),
+            "liked" => self.select_tracks(
+                &format!("JOIN likes l ON l.track_id = t.id WHERE {PRESENT} ORDER BY l.liked_at DESC, t.id"),
+                [],
+            ),
+            _ => Err(format!("not a list: {source}")),
+        }
+    }
+
     /// A music folder's songs that are there, by where they are in it (subfolders together).
     pub fn folder_tracks(&self, folder_id: i64) -> Result<Vec<Track>> {
         self.select_tracks(&format!("WHERE t.folder_id = ?1 AND {PRESENT} ORDER BY t.path, t.id"), [folder_id])

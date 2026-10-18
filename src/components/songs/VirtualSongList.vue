@@ -6,7 +6,7 @@
  * one shows where it changes). The rows are the usual SongRow: the playing song highlighted with its bars, ▶ ♥ ⋯.
  */
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { computed, onActivated, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import SongRow from './SongRow.vue'
 import type { Song, SongAction, SongMenuPlace } from './songMenu'
 
@@ -53,16 +53,29 @@ const items = computed<Item[]>(() => {
 
 const list = ref<HTMLElement>()
 const scroller = ref<HTMLElement | null>(null)
-// Where the list starts in the page's scrolling content (the page's header is above it).
+// Where the list starts in the page's scrolling content (the page's header is above it). Measured again as the page
+// scrolls, and once it has slid in: measured while the page it replaces is still there, it'd be off by that page's
+// height (rows would appear and go in view).
 const margin = ref(0)
 function locate() {
   const el = list.value
-  scroller.value = el?.closest<HTMLElement>('[data-scroller]') ?? null
-  if (!el || !scroller.value) return
-  margin.value = el.getBoundingClientRect().top - scroller.value.getBoundingClientRect().top + scroller.value.scrollTop
+  const found = el?.closest<HTMLElement>('[data-scroller]') ?? null
+  if (found !== scroller.value) {
+    scroller.value?.removeEventListener('scroll', locate)
+    found?.addEventListener('scroll', locate, { passive: true })
+    scroller.value = found
+  }
+  if (!el || !found || !el.isConnected) return
+  const top = Math.round(el.getBoundingClientRect().top - found.getBoundingClientRect().top + found.scrollTop)
+  if (top !== margin.value) margin.value = top
 }
-onMounted(locate)
-onActivated(locate)
+const settle = () => {
+  locate()
+  setTimeout(locate, 400)
+}
+onMounted(settle)
+onActivated(settle)
+onBeforeUnmount(() => scroller.value?.removeEventListener('scroll', locate))
 watch(() => props.songs, () => requestAnimationFrame(locate))
 
 const virtualizer = useVirtualizer(

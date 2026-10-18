@@ -19,6 +19,10 @@ export interface Song {
   /** How often it was played, and when the library first saw it (ms): the Songs tab's numbers by plays or date. */
   plays?: number
   addedAt?: number
+  /** A grey note after its title ("Not on this device yet", "Removed from the file"). */
+  note?: string
+  /** A greyed song that can come back: its button's word ("Restore", "Add"); the row stays greyed, the button not. */
+  restore?: string
   /** Its album's page (Go to album, the album link). */
   albumId?: number | null
   /** Its artists with their pages' ids: each name in `artist` links to its artist (see artistParts). */
@@ -42,6 +46,7 @@ export type SongAction =
   | 'showInFolder'
   | 'moveToSync'
   | 'removeFromPlaylist'
+  | 'restore'
 
 /** Where the song is, for the menu's extras. */
 export interface SongMenuPlace {

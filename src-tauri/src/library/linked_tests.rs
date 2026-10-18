@@ -240,10 +240,88 @@ fn unlinking_drops_the_greyed_songs() {
     t.library.add_to_playlist(p, &[track(&t, 3)], None).unwrap();
     t.library.unlink_playlist(p).unwrap();
     assert_eq!(entries(&t, p), list(&[("2", "both"), ("3", "both")]));
+    assert!(t.library.playlist(p).unwrap().local_only, "kept only on this device, not synced");
     // The file is still there, and isn't linked again (not even when it changes).
     write_list(&m, "Mix.m3u", &[1, 2, 3]);
     t.scan(f, &m);
     assert_eq!(t.library.playlists().unwrap().len(), 1);
+}
+
+#[test]
+fn a_file_let_go_of_can_be_followed_again() {
+    let (t, m, f) = setup("linked-follow-again", 2);
+    write_list(&m, "Mix.m3u", &[1, 2]);
+    t.scan(f, &m);
+    t.library.unlink_playlist(playlist(&t, "Mix").id).unwrap();
+    let let_go = t.library.let_go_files().unwrap();
+    assert_eq!(let_go.len(), 1);
+    assert!(let_go[0].path.ends_with("Mix.m3u"), "{}", let_go[0].path);
+    t.library.follow_file_again(let_go[0].folder_id, &let_go[0].path).unwrap();
+    t.scan(f, &m);
+    // Linked again as a new playlist; the unlinked one stays, an ordinary playlist.
+    let kinds: Vec<String> = t.library.playlists().unwrap().into_iter().map(|p| p.kind).collect();
+    assert_eq!(kinds.len(), 2);
+    assert!(kinds.contains(&"linked".to_string()) && kinds.contains(&"app".to_string()));
+    assert!(t.library.let_go_files().unwrap().is_empty());
+}
+
+#[test]
+fn an_unfollowed_playlist_keeps_its_changes_and_shows_them_when_followed_again() {
+    let (t, m, f) = setup("linked-unfollow", 3);
+    write_list(&m, "Mix.m3u", &[1, 2]);
+    t.scan(f, &m);
+    let p = playlist(&t, "Mix").id;
+    t.library.set_playlist_following(p, false).unwrap();
+    assert!(!playlist(&t, "Mix").following);
+    // Changes while unfollowed: one taken out here, the file gets a new song (it doesn't come in).
+    t.library.remove_from_playlist(p, &[entry_id(&t, p, 1)]).unwrap();
+    write_list(&m, "Mix.m3u", &[1, 2, 3]);
+    t.scan(f, &m);
+    assert_eq!(entries(&t, p), list(&[("1", "removed_here"), ("2", "both")]), "the file's new song stays out");
+    // Followed again: the file's new song comes in, the one taken out here shows as such.
+    t.library.set_playlist_following(p, true).unwrap();
+    t.scan(f, &m);
+    assert_eq!(entries(&t, p), list(&[("1", "removed_here"), ("2", "both"), ("3", "both")]));
+}
+
+#[test]
+fn a_changed_linked_playlist_deleted_is_kept_and_restored_over_the_files() {
+    let (t, m, f) = setup("linked-keep", 3);
+    write_list(&m, "Mix.m3u", &[1, 2]);
+    t.scan(f, &m);
+    let p = playlist(&t, "Mix").id;
+    t.library.add_to_playlist(p, &[track(&t, 3)], None).unwrap();
+    t.library.set_playlist_following(p, false).unwrap();
+    t.library.delete_playlist(p).unwrap();
+    // In both lists: Recently deleted (with the change) and the files let go of.
+    let kept = t.library.deleted_linked_playlists().unwrap();
+    assert_eq!((kept.len(), kept[0].name.as_str(), kept[0].songs), (1, "Mix", 3));
+    let let_go = t.library.let_go_files().unwrap();
+    assert_eq!(let_go.len(), 1);
+    // Followed again first: the file's playlist, without the change.
+    t.library.follow_file_again(let_go[0].folder_id, &let_go[0].path).unwrap();
+    t.scan(f, &m);
+    let base = playlist(&t, "Mix");
+    assert_eq!(entries(&t, base.id), list(&[("1", "both"), ("2", "both")]));
+    // Then restored: it replaces the file's playlist, as it was (unfollowed, with the song added here).
+    let restored = t.library.restore_linked_playlist(kept[0].id).unwrap();
+    t.scan(f, &m);
+    let all = t.library.playlists().unwrap();
+    assert_eq!(all.len(), 1);
+    assert!(!all[0].following);
+    assert_eq!(entries(&t, restored), list(&[("1", "both"), ("2", "both"), ("3", "here_only")]));
+    assert!(t.library.deleted_linked_playlists().unwrap().is_empty());
+    assert!(t.library.let_go_files().unwrap().is_empty());
+}
+
+#[test]
+fn an_unchanged_linked_playlist_deleted_is_only_let_go_of() {
+    let (t, m, f) = setup("linked-keep-unchanged", 2);
+    write_list(&m, "Mix.m3u", &[1, 2]);
+    t.scan(f, &m);
+    t.library.delete_playlist(playlist(&t, "Mix").id).unwrap();
+    assert!(t.library.deleted_linked_playlists().unwrap().is_empty(), "nothing of the user's to keep");
+    assert_eq!(t.library.let_go_files().unwrap().len(), 1);
 }
 
 #[test]

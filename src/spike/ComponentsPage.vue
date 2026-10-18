@@ -52,6 +52,7 @@ const picked = ref('Right-click a song, or use its ⋯ menu.')
 const ACTION_WORDS: Record<SongAction, string> = {
   playNext: 'Play next', addToQueue: 'Add to queue', like: 'Add to liked', goToAlbum: 'Go to album', goToArtist: 'Go to artist',
   addToPlaylist: 'Add to playlist', showInFolder: 'Show in folder', moveToSync: 'Move to sync', removeFromPlaylist: 'Remove from playlist',
+  restore: 'Restore',
 }
 function play(song: Song) {
   now.id = song.id
