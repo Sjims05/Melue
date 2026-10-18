@@ -106,6 +106,15 @@ pub fn scan_all(app: &AppHandle) -> Result<Option<ScanSummary>> {
     scanner.running.store(false, Ordering::SeqCst);
     if result.is_ok() {
         crate::sync::moving::after_scan(app);
+        // Songs added from elsewhere that go into a playlist (adding.rs).
+        match app.state::<Library>().add_waiting_songs() {
+            Ok(changed) => {
+                for id in changed {
+                    super::changes::emit(app, super::changes::LibraryChange::playlist(id, Vec::new()));
+                }
+            }
+            Err(e) => eprintln!("melue: can't add the new songs to their playlist: {e}"),
+        }
     }
     // Asked for between the last check and now: run once more.
     if scanner.again.swap(false, Ordering::SeqCst) {

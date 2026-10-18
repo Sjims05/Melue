@@ -16,12 +16,19 @@ export type PlaylistAsk = { what: 'delete' | 'unlink' | 'about'; playlist: Playl
 export function usePlaylistActions(changed: () => unknown, deleted?: () => unknown) {
   const renaming = ref<number | null>(null)
   const asking = ref<PlaylistAsk | null>(null)
+  // Change cover: the playlist whose cover is being chosen (the crop window).
+  const covering = ref<Playlist | null>(null)
 
   async function act(p: Playlist, action: CoverAction) {
     if (action === 'rename') renaming.value = p.id
     else if (action === 'delete' || action === 'unlink' || action === 'about') asking.value = { what: action, playlist: p }
     else if (action === 'keepHereOnly' || action === 'syncEverywhere') {
       await librarySync.setPlaylistLocalOnly(p.id, action === 'keepHereOnly')
+      await changed()
+    } else if (action === 'changeCover') {
+      covering.value = p
+    } else if (action === 'revertCover') {
+      await library.clearPlaylistCover(p.id)
       await changed()
     } else if (action === 'export') {
       await exportList(`playlist:${p.id}`, p.name)
@@ -44,5 +51,9 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
       await changed()
     }
   }
-  return { renaming, asking, act, rename, confirm }
+  async function saveCover(p: Playlist, picture: Uint8Array) {
+    await library.setPlaylistCover(p.id, picture)
+    await changed()
+  }
+  return { renaming, asking, covering, act, rename, confirm, saveCover }
 }

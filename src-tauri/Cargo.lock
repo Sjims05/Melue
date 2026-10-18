@@ -2889,7 +2889,7 @@ dependencies = [
 
 [[package]]
 name = "melue"
-version = "0.5.10"
+version = "0.5.11"
 dependencies = [
  "fs4",
  "futures-executor",
@@ -5398,7 +5398,7 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-native-audio"
-version = "1.9.0"
+version = "1.9.1"
 dependencies = [
  "cpal",
  "rtrb",

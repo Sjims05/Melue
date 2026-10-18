@@ -161,8 +161,8 @@ pub async fn sync_not_on_share(app: AppHandle) -> Result<Vec<LocalSong>, String>
 /// Moves songs (or copies files) to sync: to the share and into the synced folder; a song's original goes
 /// once its synced copy is in the library.
 #[tauri::command]
-pub async fn sync_move_to_sync(app: AppHandle, items: Vec<ToMove>) -> Result<MoveResult, SyncFailure> {
-    on_share_thread(move || moving::move_to_sync(&app, items)).await
+pub async fn sync_move_to_sync(app: AppHandle, items: Vec<ToMove>, playlist: Option<i64>) -> Result<MoveResult, SyncFailure> {
+    on_share_thread(move || moving::move_to_sync(&app, items, playlist)).await
 }
 
 /// Hidden copies of synced songs waiting for a choice (also sent as `song-copies` events).

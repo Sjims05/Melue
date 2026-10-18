@@ -122,6 +122,10 @@ export interface Playlist {
   notHere: number
   /** The first (up to 4) different covers of its songs, for its picture (coverUrl). */
   covers: string[]
+  /** Its own cover (set in Melue, for coverUrl), shown instead of its songs' covers. */
+  customCover: string | null
+  /** Linked: its file is in the synced folder (every device has it; its cover syncs too). */
+  fileSynced: boolean
   createdAt: number
   updatedAt: number
 }
@@ -425,6 +429,18 @@ export const library = {
   unlinkPlaylist: (id: number) => invoke<Playlist>('library_unlink_playlist', { id }),
   /** Playlist files let go of (unlinked, or their playlist deleted): not linked again until followed again. */
   letGoFiles: () => invoke<LetGoFile[]>('library_let_go_files'),
+  /** Gives a playlist its own cover: a picture (JPEG, PNG or WebP), cropped square. */
+  setPlaylistCover: (id: number, picture: Uint8Array) => invoke<Playlist>('library_set_playlist_cover', { id, picture: Array.from(picture) }),
+  /** Back to a playlist's default cover (its songs' covers). */
+  clearPlaylistCover: (id: number) => invoke<Playlist>('library_clear_playlist_cover', { id }),
+  /**
+   * Copies music files into a music folder on this computer (`Artist/Album/`; the files stay where they are), then
+   * scans them in; `playlist`: they go into it too, once found. `failed`: (file name, why).
+   */
+  addSongsToFolder: (folder: number, files: string[], playlist: number | null) =>
+    invoke<{ added: number; failed: [string, string][] }>('library_add_songs_to_folder', { folder, files, playlist }),
+  /** A picture file's bytes (JPEG, PNG or WebP, up to 30 MB): one dropped on Melue. */
+  readPicture: (path: string) => invoke<number[]>('library_read_picture', { path }).then((bytes) => new Uint8Array(bytes)),
   /** Takes a let-go file whose file is gone off the list. */
   forgetLetGoFile: (folderId: number, path: string) => invoke<void>('library_forget_let_go_file', { folderId, path }),
   /** Search: songs (the first `limit`, and how many in all), albums, artists and playlists whose names have `query`. */

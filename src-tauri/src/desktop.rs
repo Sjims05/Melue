@@ -1,6 +1,6 @@
 //! Desktop: the tray icon, closing the window (hidden, the music keeps playing; or quit), starting with the system
-//! (in the tray, without the window), and one Melue at a time. The Display settings "Start Melue with Windows" and
-//! "Closing the window".
+//! (in the tray, without the window; or with it), and one Melue at a time. The Display settings "Start Melue with
+//! Windows", "When Windows starts it" and "Closing the window".
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::plugin::TauriPlugin;
@@ -16,6 +16,8 @@ const CLOSE_SETTING: &str = "close_window";
 const AUTOSTART_SET: &str = "autostart_set";
 /// What the system starts Melue with: it starts in the tray, without its window.
 const HIDDEN: &str = "--hidden";
+/// The library setting for starting with the system: "tray" (the default: no window) or "window" (shown).
+const AUTOSTART_WINDOW_SETTING: &str = "autostart_window";
 
 /// Starting with the system (the frontend switches it with @tauri-apps/plugin-autostart).
 pub fn autostart() -> TauriPlugin<Wry> {
@@ -60,6 +62,11 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     }
     tray.build(app)?;
     first_autostart(app);
+    // Started by the system, set to start with its window: shown now (show_at_start couldn't read the setting yet).
+    let with_window = app.state::<Library>().setting(AUTOSTART_WINDOW_SETTING).ok().flatten();
+    if std::env::args().any(|a| a == HIDDEN) && with_window.as_deref() == Some("window") {
+        show_window(app);
+    }
     Ok(())
 }
 

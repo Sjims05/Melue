@@ -16,7 +16,7 @@ import { AUTO_PLAYLIST_SIZES, library, type AutoPlaylist, type Source, type Trac
 import { count, totalLength } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { exportList, listAction, playList, songAction, trackSong } from '@/player/songs'
+import { exportList, listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
 import { goBack, setPageTitle } from '@/router'
 import { autoCard } from './playlists/playlists'
 
@@ -60,10 +60,6 @@ async function resize(size: number) {
   await load()
 }
 
-function play(song: Song) {
-  if (song.id === current.value?.id) togglePlay()
-  else playList(source, { startAt: Number(song.id) })
-}
 const MENU = coverMenu({ kind: 'auto' }, isDesktop)
 async function pick(action: CoverAction) {
   if (action === 'export') return exportList(source, auto.value?.name.replace(': ', ', ') ?? 'Playlist')
@@ -105,7 +101,7 @@ async function pick(action: CoverAction) {
         :current-id="current?.id"
         :playing="!!nowPlaying.state?.isPlaying"
         :place="{ showInFolder: isDesktop }"
-        @play="play"
+        @play="playSong"
         @pause="togglePlay"
         @like="(song, liked) => like(Number(song.id), liked)"
         @action="songAction"

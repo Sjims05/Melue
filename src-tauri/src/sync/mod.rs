@@ -9,6 +9,7 @@
 //! (synced playback, playlists, likes...) is in its own hidden folder, synced by its own steps.
 
 pub mod commands;
+pub mod cover_sync;
 pub mod car;
 #[cfg(test)]
 mod car_tests;

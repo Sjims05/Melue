@@ -41,10 +41,13 @@ const props = defineProps<{
   albumPage?: boolean
 }>()
 const emit = defineEmits<{
-  play: [song: Song]
+  /** `via`: its play button, or a double-click on the row. */
+  play: [song: Song, via: 'button' | 'doubleClick']
   pause: []
   like: [song: Song, liked: boolean]
   remove: [song: Song, index: number]
+  /** Songs start folding away (taken out, or Clear): how many, so what comes after can make room as they close. */
+  folding: [count: number]
   move: [from: number, to: number]
   action: [song: Song, action: SongAction]
 }>()
@@ -146,6 +149,7 @@ async function foldAway(keys: Song['id'][]) {
   const rows = keys
     .map((key) => list.value?.querySelector<HTMLElement>(`:scope > [data-song="${CSS.escape(String(key))}"]`))
     .filter((row): row is HTMLElement => !!row)
+  emit('folding', rows.length)
   const folds = rows.map((row) => {
     row.style.overflow = 'hidden'
     return row.animate([{ height: `${row.offsetHeight}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { ...FOLD, fill: 'forwards' })
@@ -238,7 +242,7 @@ function moved(index: number): string | undefined {
           :unavailable="unavailable?.includes(song.id)"
           :local-only="localOnly?.includes(song.id)"
           :place="place"
-          @play="emit('play', song)"
+          @play="(via) => emit('play', song, via)"
           @pause="emit('pause')"
           @like="(liked) => emit('like', song, liked)"
           @remove="remove(song, index)"

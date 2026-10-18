@@ -16,7 +16,7 @@ import { coverUrl, library, type ArtistPage, type Source } from '@/library'
 import { count } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { listAction, playList, songAction, trackSong } from '@/player/songs'
+import { listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
 import { setPageTitle } from '@/router'
 
 const route = useRoute()
@@ -46,10 +46,6 @@ const line = computed(() => {
 })
 const ALBUM_MENU = coverMenu({ kind: 'album' })
 
-function play(song: Song) {
-  if (song.id === current.value?.id) togglePlay()
-  else playList(source, { startAt: Number(song.id) })
-}
 </script>
 
 <template>
@@ -86,7 +82,7 @@ function play(song: Song) {
           :current-id="current?.id"
           :playing="!!nowPlaying.state?.isPlaying"
           :place="{ showInFolder: isDesktop }"
-          @play="play"
+          @play="playSong"
           @pause="togglePlay"
           @like="(song, liked) => like(Number(song.id), liked)"
           @action="songAction"
@@ -100,7 +96,7 @@ function play(song: Song) {
           :current-id="current?.id"
           :playing="!!nowPlaying.state?.isPlaying"
           :place="{ showInFolder: isDesktop }"
-          @play="play"
+          @play="playSong"
           @pause="togglePlay"
           @like="(song, liked) => like(Number(song.id), liked)"
           @action="songAction"

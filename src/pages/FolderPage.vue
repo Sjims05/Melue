@@ -16,7 +16,7 @@ import { library, type MusicFolder, type Source, type Track } from '@/library'
 import { count, totalLength } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { listAction, playList, songAction, trackSong } from '@/player/songs'
+import { listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
 import { setPageTitle } from '@/router'
 
 const route = useRoute()
@@ -55,10 +55,6 @@ const headingOf = computed(() =>
 // The heading's right-click menu: the folder row's.
 const MENU = coverMenu({ kind: 'list' })
 
-function play(song: Song) {
-  if (song.id === current.value?.id) togglePlay()
-  else playList(source, { startAt: Number(song.id) })
-}
 </script>
 
 <template>
@@ -87,7 +83,7 @@ function play(song: Song) {
         :current-id="current?.id"
         :playing="!!nowPlaying.state?.isPlaying"
         :place="{ showInFolder: isDesktop }"
-        @play="play"
+        @play="playSong"
         @pause="togglePlay"
         @like="(song, liked) => like(Number(song.id), liked)"
         @action="songAction"

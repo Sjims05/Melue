@@ -339,3 +339,73 @@ fn a_device_plays_its_own_copy_of_a_song_it_doesnt_have_from_the_share() {
     }
     assert_eq!(desktop.playlist("Mix").unwrap(), vec!["A", "New"]);
 }
+
+/// The covers' sync, as data.rs runs it after the playlists'.
+fn sync_covers(device: &Device, share: &TestShare) -> Vec<i64> {
+    let (_, ahead) = sync_device_data(device.lib(), &share.share, &device.folder, &device.id, &device.name).unwrap();
+    super::cover_sync::sync_covers(device.lib(), &share.share, &device.folder, &device.id, ahead).unwrap()
+}
+
+fn custom_cover(device: &Device, playlist: &str) -> Option<String> {
+    device.lib().playlist(device.playlist_id(playlist)).unwrap().custom_cover
+}
+
+#[test]
+fn a_synced_playlists_cover_goes_to_the_other_devices_and_so_does_reverting_it() {
+    let share = TestShare::new("devices-covers");
+    let desktop = Device::new("desktop", &["A"]);
+    let phone = Device::new("phone", &["A"]);
+    let mix = desktop.make_playlist("Mix", &["A"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    // Only on this device: its cover stays here.
+    let mine = desktop.make_playlist("Mine", &["A"]);
+    desktop.lib().set_playlist_local_only(mine, true).unwrap();
+
+    let picture = std::fs::read(crate::library::testkit::sample("cover.png")).unwrap();
+    desktop.lib().set_playlist_cover(mix, &picture).unwrap();
+    desktop.lib().set_playlist_cover(mine, &picture).unwrap();
+    assert!(sync_covers(&desktop, &share).is_empty());
+    assert_eq!(sync_covers(&phone, &share), [phone.playlist_id("Mix")]);
+    assert!(custom_cover(&phone, "Mix").is_some(), "the phone has the cover");
+    assert!(phone.playlist("Mine").is_none());
+    // Nothing more to do on either side.
+    assert!(sync_covers(&phone, &share).is_empty());
+    assert!(sync_covers(&desktop, &share).is_empty());
+
+    // Reverted on the phone, later: the desktop goes back to the default too.
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    phone.lib().clear_playlist_cover(phone.playlist_id("Mix")).unwrap();
+    sync_covers(&phone, &share);
+    assert_eq!(sync_covers(&desktop, &share), [mix]);
+    assert!(custom_cover(&desktop, "Mix").is_none());
+    assert!(custom_cover(&desktop, "Mine").is_some(), "the one only here keeps its own");
+}
+
+#[test]
+fn a_linked_playlist_in_the_synced_folder_shares_its_cover_one_elsewhere_keeps_it() {
+    let share = TestShare::new("devices-linked-covers");
+    let desktop = Device::new("desktop", &["A"]);
+    let phone = Device::new("phone", &["A"]);
+    // The same playlist file in both synced folders (the share brought it), and one only on the desktop.
+    for device in [&desktop, &phone] {
+        // Marked as the synced folder, as setting up the share does.
+        device.lib().set_folder_synced(device.folder.id, true).unwrap();
+        device.music.add_text("Road.m3u", "A.wav\n");
+        device.t.scan(device.folder.id, &device.music);
+    }
+    let elsewhere = desktop.t.music_folder("Local");
+    elsewhere.add_text("Here.m3u", "");
+    let local = desktop.t.add_folder(&elsewhere);
+    desktop.t.scan(local.id, &elsewhere);
+    assert!(desktop.lib().playlist(desktop.playlist_id("Road")).unwrap().file_synced);
+    assert!(!desktop.lib().playlist(desktop.playlist_id("Here")).unwrap().file_synced);
+
+    let picture = std::fs::read(crate::library::testkit::sample("cover.png")).unwrap();
+    desktop.lib().set_playlist_cover(desktop.playlist_id("Road"), &picture).unwrap();
+    desktop.lib().set_playlist_cover(desktop.playlist_id("Here"), &picture).unwrap();
+    sync_covers(&desktop, &share);
+    assert_eq!(sync_covers(&phone, &share), [phone.playlist_id("Road")]);
+    assert!(custom_cover(&phone, "Road").is_some());
+    assert_eq!(share.all_files().iter().filter(|f| f.starts_with(".melue/covers/") && f.ends_with(".json")).count(), 1);
+}

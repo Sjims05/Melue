@@ -6,8 +6,8 @@
  * queue after the playing song): white or like the cards (Display settings), opened with its chevron or the player
  * bar's queue button (?queue=open), with drag, ✕, Clear and double-click to play.
  */
-import { ChevronDown, Ellipsis, Heart, Library, MonitorSpeaker, Music, Repeat, Search, Shuffle, Volume1, Volume2, VolumeX } from '@lucide/vue'
-import { popHeart } from '@/components/player/heart'
+import { ChevronDown, Ellipsis, Library, MonitorSpeaker, Music, Repeat, Search, Shuffle, Volume1, Volume2, VolumeX } from '@lucide/vue'
+import LikeHeart from '@/components/player/LikeHeart.vue'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player/icons'
 import { useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onActivated, ref, watch } from 'vue'
@@ -48,17 +48,39 @@ const state = computed(() => nowPlaying.state)
 const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 // Up next: opened with its chevron, or by the player bar's queue button.
-// The player bar's queue button (?queue=open) opens it and shows the page scrolled down to it from the start (while
-// the page fades in; after the frame has put back where the page was scrolled).
+// The player bar's queue button (?queue=open) opens it, and the page scrolls down to it from the first frame it shows
+// (as it slides in), so it's clear where Up next is on the page. Aimed again each frame: Up next is still opening, so
+// how far the page can scroll grows as it goes. It goes only as far as it takes to show all of Up next (the player
+// stays in view above a short one), or its top just under the top bar when it's taller than the window.
 const router = useRouter()
 const open = ref(route.query.queue === 'open')
 const upNextPanel = ref<HTMLElement>()
+const SCROLL_MS = 600
+const ROOM = 16
 async function showQueue() {
   if (route.query.queue !== 'open') return
   open.value = true
   router.replace({ query: {} })
   await nextTick()
-  requestAnimationFrame(() => upNextPanel.value?.scrollIntoView({ block: 'start' }))
+  const panel = upNextPanel.value
+  const scroller = panel?.closest<HTMLElement>('[data-scroller]')
+  if (!panel || !scroller) return
+  // After the frame has put back where the page was scrolled (its own nextTick), from there.
+  requestAnimationFrame((start) => {
+    const from = scroller.scrollTop
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3)
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / SCROLL_MS)
+      const box = panel.getBoundingClientRect()
+      const view = scroller.getBoundingClientRect()
+      const top = box.top - view.top + scroller.scrollTop - ROOM
+      const allShown = box.bottom - view.top + scroller.scrollTop + ROOM - scroller.clientHeight
+      const to = Math.max(from, Math.min(top, allShown))
+      scroller.scrollTop = from + (to - from) * ease(t)
+      if (t < 1) requestAnimationFrame(step)
+    }
+    step(start)
+  })
 }
 watch(() => route.query.queue, showQueue)
 onActivated(showQueue)
@@ -83,6 +105,19 @@ useResizeObserver(title, () => {
 
 // Clear: the songs fold away together (shown open), then they're taken out.
 const upNextList = ref<InstanceType<typeof SongList> | null>(null)
+// Up next's last songs folding away (Clear, or the last one taken out): "Nothing queued" opens as they close, so the
+// space stops where it will be. (With repeat all the next pass shows after them: not empty.)
+const emptying = ref(false)
+// Shown by what's in the list as shown: on the last song with repeat all, Up next itself is empty, but the next pass
+// shows (greyed).
+const emptyShown = computed(() => emptying.value || !upNextShown.value.length)
+function folding(count: number) {
+  if (count >= upNextShown.value.length && nowPlaying.state?.repeatMode !== 'all') emptying.value = true
+}
+watch(
+  () => upNextShown.value.length,
+  (n) => n === 0 && (emptying.value = false),
+)
 function clear() {
   if (open.value && upNextList.value) upNextList.value.foldAwayAll(upNextShown.value.map((u) => u.song), clearUpNext)
   else clearUpNext()
@@ -161,8 +196,8 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
         </div>
         <div class="flex flex-wrap justify-center gap-4">
           <Button variant="outline" disabled title="Planned: play on another device (Phase 4)"><MonitorSpeaker />Connect device</Button>
-          <Button variant="outline" @click="(e: MouseEvent) => (popHeart(e.currentTarget, !current!.liked), like(Number(current!.id), !current!.liked))">
-            <Heart class="heart" :class="current.liked && 'fill-current'" />
+          <Button variant="outline" @click="like(Number(current!.id), !current!.liked)">
+            <LikeHeart :liked="!!current.liked" />
             <!-- Both words in one place (the button keeps its width), the one shown fading in. -->
             <span class="grid">
               <span class="col-start-1 row-start-1 transition-opacity duration-200" :class="current.liked && 'opacity-0'">Like</span>
@@ -216,7 +251,10 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
     >
       <div class="flex items-center gap-4 p-4 pl-5">
         <button type="button" class="flex min-w-0 flex-1 flex-col text-left" :aria-expanded="open" @click="open = !open">
-          <b class="text-[15px] font-semibold">Up next · {{ upNext.length }} song{{ upNext.length === 1 ? '' : 's' }}</b>
+          <!-- On the last song with repeat all: nothing before it starts over (the next pass shows, greyed). -->
+          <b class="text-[15px] font-semibold">{{
+            !upNext.length && upNextShown.length ? 'Up next · Starts over next' : `Up next · ${upNext.length} song${upNext.length === 1 ? '' : 's'}`
+          }}</b>
           <span class="text-[15px] text-muted-foreground">
             From {{ nowPlaying.from }}<template v-if="state?.repeatMode === 'one'"> · Repeating this song</template>
           </span>
@@ -235,21 +273,29 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
         <!-- Clipped as it opens and closes; open, with room around it for a picked-up song (it grows) and its shadow. -->
         <div class="min-h-0" :class="open ? 'overflow-clip [overflow-clip-margin:32px]' : 'overflow-hidden'">
           <SongList
-            v-if="upNext.length"
+            v-if="upNextShown.length"
             ref="upNextList"
-            class="px-2 pb-3"
+            class="px-2 transition-[padding] duration-[260ms] ease-[cubic-bezier(.2,.8,.2,1)]"
+            :class="emptying ? 'pb-0' : 'pb-3'"
             :songs="upNextShown.map((u) => u.song)"
             queue
             plays-next
             on-card
             @play="(song) => playFromUpNext(upNextShown.find((u) => u.song.key === song.key)!.index)"
             @remove="(_, i) => removeFromUpNext(i)"
+            @folding="folding"
             @move="moveInUpNext"
             @like="(song, liked) => like(Number(song.id), liked)"
             @action="songAction"
             :place="{ showInFolder: isDesktop }"
           />
-          <p v-else class="px-5 pb-5 text-sm text-muted-foreground">Nothing queued after this song.</p>
+          <!-- Opens as the last songs fold away (the same time and curve as their fold: SongList's FOLD). -->
+          <div
+            class="grid transition-[grid-template-rows,opacity] duration-[260ms] ease-[cubic-bezier(.2,.8,.2,1)]"
+            :class="emptyShown ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'"
+          >
+            <div class="min-h-0 overflow-hidden"><p class="px-5 pb-5 text-sm text-muted-foreground">Nothing queued after this song.</p></div>
+          </div>
         </div>
       </div>
     </section>

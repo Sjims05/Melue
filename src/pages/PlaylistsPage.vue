@@ -22,6 +22,7 @@ import { isDesktop } from '@/platform/platform'
 import { exportList, listAction } from '@/player/songs'
 import { usePlaylistActions } from './playlists/actions'
 import ConflictDialog from './playlists/ConflictDialog.vue'
+import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
 import { autoCard, autoPage, playlistBadge, playlistCover, playlistKind, playlistLine } from './playlists/playlists'
 
@@ -51,7 +52,7 @@ const subtitle = computed(() => [count(playlists.value.length, 'playlist'), `${s
 const conflictOf = (p: Playlist) => conflicts.value.find((c) => c.playlistId === p.id)
 
 // ---- Your playlists: new, and the menu (shared with a playlist's page)
-const { renaming, asking, act, rename, confirm } = usePlaylistActions(load)
+const { renaming, asking, covering, act, rename, confirm, saveCover } = usePlaylistActions(load)
 async function create() {
   const made = await library.createPlaylist('New playlist')
   await load()
@@ -104,7 +105,7 @@ const choosing = ref<PlaylistConflict | null>(null)
         >
           <template #badge>
             <CoverBadge v-if="conflictOf(p)" :icon="CircleAlert" label="Needs a choice" open />
-            <CoverBadge v-else-if="playlistBadge(p)" v-bind="playlistBadge(p)!" />
+            <CoverBadge v-else-if="playlistBadge(p, sync.available)" v-bind="playlistBadge(p, sync.available)!" />
           </template>
         </CoverCard>
       </div>
@@ -129,6 +130,13 @@ const choosing = ref<PlaylistConflict | null>(null)
     </section>
 
     <PlaylistDialogs v-model="asking" @confirm="confirm" />
+      <CoverCropDialog
+        v-if="covering"
+        :name="covering.name"
+        :open="!!covering"
+        @update:open="covering = null"
+        @save="(picture) => saveCover(covering!, picture)"
+      />
     <ConflictDialog v-if="choosing" :conflict="choosing" :open="!!choosing" @update:open="choosing = null" @answered="load" />
   </div>
 </template>

@@ -26,6 +26,7 @@ const CHOICES = {
   order: [['playlist', 'The list’s'], ['queue', 'The queue’s own']],
 } as const
 const AT_END = [['nothing', 'Nothing'], ['first', 'First song, paused']] as const
+const SONG_PLAYS = [['now', 'Now'], ['next', 'Next']] as const
 
 const follow = ref<QueueFollow | null>(null)
 const customizing = ref(false)
@@ -118,6 +119,20 @@ const summary = computed(() => (follow.value ? followSummary(follow.value) : '')
       <Switch v-model="listPlay.playFromStart" />
     </SettingsRow>
     <SettingsRow
+      title="A song from All songs plays"
+      :description="
+        listPlay.songPlays === 'now'
+          ? 'Its play button plays it now; the playing song ends, Up next stays'
+          : 'Its play button plays it after the playing song; Up next stays'
+      "
+      wide
+      setting="queue.songPlays"
+      :reset="() => (listPlay.songPlays = LIST_PLAY_DEFAULTS.songPlays)"
+      :is-default="listPlay.songPlays === LIST_PLAY_DEFAULTS.songPlays"
+    >
+      <Segmented v-model="listPlay.songPlays" :options="SONG_PLAYS" />
+    </SettingsRow>
+    <SettingsRow
       title="Next on the last song"
       :description="playerSettings.value.nextAtEnd === 'first' ? 'With repeat off: back to the first song, paused' : 'With repeat off: nothing happens'"
       wide
@@ -127,7 +142,11 @@ const summary = computed(() => (follow.value ? followSummary(follow.value) : '')
     </SettingsRow>
     <SettingsRow
       title="Keep added songs when it repeats"
-      :description="playerSettings.value.repeatAddedTracks ? 'Songs you added to the queue play every time it starts over' : 'Songs you added to the queue play once, then leave it'"
+      :description="
+        playerSettings.value.repeatAddedTracks
+          ? 'Songs added to a list’s queue play every time it starts over'
+          : 'Songs added to a list’s queue play once, then leave it'
+      "
       v-bind="resetPlayer('repeatAddedTracks')"
     >
       <Switch :model-value="playerSettings.value.repeatAddedTracks" @update:model-value="(repeatAddedTracks) => savePlayerSettings({ repeatAddedTracks })" />

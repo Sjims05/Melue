@@ -23,7 +23,8 @@ const props = defineProps<{
   numberOf?: (song: Song) => { text: string; title: string }
 }>()
 const emit = defineEmits<{
-  play: [song: Song]
+  /** `via`: its play button, or a double-click on the row. */
+  play: [song: Song, via: 'button' | 'doubleClick']
   pause: []
   like: [song: Song, liked: boolean]
   action: [song: Song, action: SongAction]
@@ -110,7 +111,7 @@ const virtualizer = useVirtualizer(
           :current="item.song.id === currentId"
           :playing="playing"
           :place="place"
-          @play="emit('play', item.song)"
+          @play="(via) => emit('play', item.song, via)"
           @pause="emit('pause')"
           @like="(liked) => emit('like', item.song, liked)"
           @action="(action) => emit('action', item.song, action)"

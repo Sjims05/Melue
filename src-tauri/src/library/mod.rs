@@ -1,6 +1,9 @@
 //! Melue's music library: an SQLite database in the app's data folder, owned by the Rust side. The UI
 //! asks it things through the commands in commands.rs (wrapped for TypeScript in src/library/).
 
+pub mod adding;
+#[cfg(test)]
+mod adding_tests;
 pub mod android;
 pub mod auto;
 pub mod auto_playlists;

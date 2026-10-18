@@ -113,6 +113,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: 'On',
     help: 'Play on an album, playlist or folder starts on its first song and turns shuffle off; its Shuffle button turns shuffle on. Off: Play leaves shuffle as it is (with shuffle on, it starts on a random song).',
   },
+  'queue.songPlays': {
+    title: 'A song from All songs plays',
+    default: 'Now',
+    help: 'A song’s play button in Library’s Songs plays just that song, and Up next stays after it: now (the playing song ends) or next (after it). A double-click adds it to the end of Up next.',
+  },
   'player.nextAtEnd': {
     title: 'Next on the last song',
     default: 'Nothing',
@@ -121,7 +126,7 @@ export const SETTINGS: Record<string, SettingInfo> = {
   'player.repeatAddedTracks': {
     title: 'Keep added songs when it repeats',
     default: 'Off',
-    help: 'Songs you added with “Add to queue” play once and leave. On: they stay and play every time the queue starts over.',
+    help: 'With an album, playlist or other list playing, songs you added with “Add to queue” play once and leave. On: they stay and play every time the queue starts over. A queue of songs you put together one by one (no list started) always repeats them all.',
   },
   'player.volumeCurve': {
     title: 'Volume curve',
@@ -195,6 +200,12 @@ export const SETTINGS: Record<string, SettingInfo> = {
     title: 'Start Melue with Windows',
     default: 'On',
     help: 'Melue starts with Windows, in the tray (no window), so the media keys work right away.',
+    perDevice: true,
+  },
+  'display.autostartWindow': {
+    title: 'When Windows starts it',
+    default: 'In the tray',
+    help: 'Started with Windows, Melue waits in the tray (no window), or opens its window too.',
     perDevice: true,
   },
   'display.closeWindow': {

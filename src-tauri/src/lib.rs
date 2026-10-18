@@ -106,6 +106,11 @@ pub fn run() {
             desktop::show_at_start(app.handle());
             // The music library, in the app's data folder.
             let library = library::Library::open(&app.path().app_data_dir()?.join("library.db"))?;
+            // A fresh install on a computer starts with the Music folder (folders.rs).
+            #[cfg(desktop)]
+            if let Err(e) = library.add_music_folder_once(app.path().audio_dir().ok().as_deref()) {
+                eprintln!("melue: can't add the Music folder: {e}");
+            }
             app.manage(library);
             // Scanning: once now (start-up, in the background), and after changes on Android.
             app.manage(library::scanner::Scanner::default());
@@ -261,6 +266,10 @@ pub fn run() {
             library::library_forget_let_go_file,
             library::library_playlists_with_track,
             library::library_search,
+            library::library_set_playlist_cover,
+            library::library_clear_playlist_cover,
+            library::library_read_picture,
+            library::library_add_songs_to_folder,
             library::library_export_playlist,
             library::library_deleted_linked_playlists,
             library::library_restore_linked_playlist,

@@ -35,9 +35,59 @@
 }
 
 @layer components {
-  /* A like button's heart: fills in and out softly (popHeart, components/player/heart.ts, pops it as it's liked). */
-  .heart {
-    transition: fill 200ms ease-out, color 200ms ease-out;
+  /* A like button's heart (LikeHeart.vue): the outline, and the filled heart over it, shown from the bottom up as it's
+     liked (it drains away, top down, as it's unliked); a burst of eight short lines flies out as it's liked. */
+  .like-heart {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+  }
+  .like-heart > svg {
+    grid-area: 1 / 1;
+  }
+  .like-heart-fill {
+    clip-path: inset(100% 0 0 0);
+    transition: clip-path 260ms cubic-bezier(.4, 0, .6, 1);
+  }
+  .like-heart.is-liked .like-heart-fill {
+    clip-path: inset(0 0 0 0);
+    transition: clip-path 420ms cubic-bezier(.2, .8, .2, 1);
+  }
+  /* The lines are measured in the heart's size (cqh): they start just outside it and fly a little further out. */
+  .like-heart-burst {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    container-type: size;
+  }
+  .like-heart-burst > i {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 28cqh;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: currentColor;
+    opacity: 0;
+    transform-origin: 50% 0;
+    animation: like-burst 520ms cubic-bezier(.2, .8, .2, 1) 80ms;
+  }
+  @keyframes like-burst {
+    from {
+      opacity: 1;
+      transform: rotate(var(--turn)) translateY(48cqh) scaleY(1);
+    }
+    to {
+      opacity: 0;
+      transform: rotate(var(--turn)) translateY(95cqh) scaleY(0.3);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .like-heart-fill,
+    .like-heart.is-liked .like-heart-fill {
+      transition: none;
+    }
   }
 
   /* The song playing: three bars (PlayingBars.vue moves them: the playground's rise and fall while playing, and

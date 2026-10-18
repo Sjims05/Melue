@@ -7,8 +7,13 @@
  * with the name in it (Rename): Enter or leaving it saves (`rename`), Escape doesn't (`cancel`). Its spacing and how it
  * shows it's under the pointer: covers.css (the highlight behind the whole card). Put cards in a `.cover-grid`
  * (`--cover-min`: the narrowest a card may get).
+ *
+ * A song's card (`song`: whether it's the one playing, and playing) works like a song row: a play button on its cover
+ * (shown under the pointer, or while it's the song playing) plays it (`play`), a double-click adds it to the queue
+ * (`queue`); a click alone does nothing. It's not one button then (the play button is in it): Enter plays it.
  */
 import { nextTick, ref, watch, type Component } from 'vue'
+import { PauseIcon, PlayIcon } from '@/components/player/icons'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import Cover from './Cover.vue'
 import type { MenuItem } from './coverMenu'
@@ -23,8 +28,9 @@ const props = defineProps<{
   collage?: readonly (string | CoverColors)[]
   menu?: MenuItem[]
   editing?: boolean
+  song?: { current: boolean; playing: boolean }
 }>()
-const emit = defineEmits<{ open: []; action: [action: string]; rename: [name: string]; cancel: [] }>()
+const emit = defineEmits<{ open: []; play: []; queue: []; action: [action: string]; rename: [name: string]; cancel: [] }>()
 
 // Renaming: the field starts with the name, all of it selected.
 const field = ref<HTMLInputElement>()
@@ -42,6 +48,14 @@ watch(
   },
   { immediate: true },
 )
+// A trial: a click alone on a song's card (it doesn't play: rows don't either) gives its play button a little bounce,
+// showing where playing is. To take it out: this, `playButton`'s ref, and `hintPlay` in the card's @click.
+const playButton = ref<HTMLElement>()
+function hintPlay() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  playButton.value?.animate([{ scale: 1 }, { scale: 1.18, offset: 0.4 }, { scale: 1 }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' })
+}
+
 function finish(save: boolean) {
   if (done) return
   done = true
@@ -54,10 +68,15 @@ function finish(save: boolean) {
   <ContextMenu :modal="false">
     <ContextMenuTrigger as-child :disabled="!menu?.length || editing">
       <component
-        :is="editing ? 'div' : 'button'"
-        :type="editing ? undefined : 'button'"
+        :is="editing || song ? 'div' : 'button'"
+        :type="editing || song ? undefined : 'button'"
+        :tabindex="song ? 0 : undefined"
+        :role="song ? 'group' : undefined"
+        :aria-label="song ? title : undefined"
         class="group/cover cover-card min-w-0 text-left outline-none"
-        @click="!editing && emit('open')"
+        @click="!editing && (song ? hintPlay() : emit('open'))"
+        @dblclick="song && emit('queue')"
+        @keydown.enter.self="song && emit('play')"
       >
         <Cover
           :image="image"
@@ -67,6 +86,19 @@ function finish(save: boolean) {
           class="group-focus-visible/cover:ring-2 group-focus-visible/cover:ring-ring/50"
         >
           <slot name="badge" />
+          <button
+            v-if="song"
+            ref="playButton"
+            type="button"
+            class="absolute right-2.5 bottom-2.5 grid size-11 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-[opacity,translate,scale] duration-200 ease-out outline-none hover:scale-105 active:scale-95 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-5"
+            :class="song.current ? 'opacity-100' : 'translate-y-1 opacity-0 group-hover/cover:translate-y-0 group-hover/cover:opacity-100'"
+            :aria-label="song.current && song.playing ? 'Pause' : 'Play'"
+            @click.stop="emit('play')"
+            @dblclick.stop
+          >
+            <PauseIcon v-if="song.current && song.playing" />
+            <PlayIcon v-else class="translate-x-px" />
+          </button>
         </Cover>
         <span class="cover-card-text min-w-0">
           <input

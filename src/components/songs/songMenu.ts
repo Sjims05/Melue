@@ -34,6 +34,8 @@ export interface Song {
    * first such row ("After the queue starts over"). It can't be moved or taken out.
    */
   later?: string
+  /** Only on this device (a share is set up, it isn't on it): the "This device" badge, and Move to sync. */
+  localOnly?: boolean
 }
 
 export type SongAction =
@@ -54,7 +56,7 @@ export interface SongMenuPlace {
   inPlaylist?: boolean
   /** Desktop: Show in folder. */
   showInFolder?: boolean
-  /** A local song, with a share: Move to sync. */
+  /** A local song, with a share: Move to sync (also shown for a song marked `localOnly`). */
   moveToSync?: boolean
 }
 
@@ -73,7 +75,7 @@ export function songMenu(song: Song, place: SongMenuPlace = {}): SongMenuItem[] 
   ]
   const extras: SongMenuItem[] = [
     ...(place.showInFolder ? [{ action: 'showInFolder' as const, label: 'Show in folder', icon: FolderOpen }] : []),
-    ...(place.moveToSync ? [{ action: 'moveToSync' as const, label: 'Move to sync', icon: CloudUpload }] : []),
+    ...(place.moveToSync || song.localOnly ? [{ action: 'moveToSync' as const, label: 'Move to sync', icon: CloudUpload }] : []),
     ...(place.inPlaylist ? [{ action: 'removeFromPlaylist' as const, label: 'Remove from playlist', icon: ListX, danger: true }] : []),
   ]
   if (extras.length) extras[0].apart = true

@@ -6,7 +6,8 @@
  */
 import type { Component } from 'vue'
 
-defineProps<{ icon: Component; label: string; open?: boolean }>()
+// `also`: a second icon after the first (a linked playlist's link, after where it lives).
+defineProps<{ icon: Component; also?: Component; label: string; open?: boolean }>()
 </script>
 
 <template>
@@ -15,6 +16,7 @@ defineProps<{ icon: Component; label: string; open?: boolean }>()
     :aria-label="label"
   >
     <component :is="icon" class="size-4 flex-none" :stroke-width="1.75" />
+    <component :is="also" v-if="also" class="ml-1 size-4 flex-none" :stroke-width="1.75" />
     <span
       class="grid transition-[grid-template-columns,opacity] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none"
       :class="open ? 'grid-cols-[1fr] opacity-100' : 'grid-cols-[0fr] opacity-0 group-hover/cover:grid-cols-[1fr] group-hover/cover:opacity-100 group-focus-visible/cover:grid-cols-[1fr] group-focus-visible/cover:opacity-100'"

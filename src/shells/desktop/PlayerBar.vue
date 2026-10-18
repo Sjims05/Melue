@@ -7,13 +7,14 @@
  * player). Always there: with nothing in the queue it's empty ("Nothing playing", the note icon for a cover, as a
  * song that can't play has), only shuffle and repeat on (they're for what's played next).
  */
-import { popHeart } from '@/components/player/heart'
-import { Heart, ListMusic, MonitorSpeaker, Music, Repeat, Shuffle, X } from '@lucide/vue'
+import LikeHeart from '@/components/player/LikeHeart.vue'
+import { ListMusic, MonitorSpeaker, Music, Repeat, Shuffle, X } from '@lucide/vue'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player/icons'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import Slider from '@/components/player/Slider.vue'
 import { PlayingBars } from '@/components/songs'
+import VolumeButton from './VolumeButton.vue'
 import { clearPlayer, current, cycleRepeat, like, next, nowPlaying, position, previous, seek, toggleShuffle, togglePlay } from '@/player/nowPlaying'
 
 const router = useRouter()
@@ -98,13 +99,14 @@ const OFF = 'pointer-events-none opacity-40'
         :class="[ICON, tone(!!current?.liked), empty && OFF]"
         :disabled="empty"
         :aria-label="current?.liked ? 'Remove from liked' : 'Add to liked'"
-        @click="(e: MouseEvent) => (popHeart(e.currentTarget, !current!.liked), like(Number(current!.id), !current!.liked))"
+        @click="like(Number(current!.id), !current!.liked)"
       >
-        <Heart class="heart" :class="current?.liked && 'fill-current'" />
+        <LikeHeart :liked="!!current?.liked" />
       </button>
       <button type="button" :class="[ICON, tone(false), 'cursor-default opacity-40 hover:text-muted-foreground']" title="Planned: play on another device (Phase 4)" disabled>
         <MonitorSpeaker />
       </button>
+      <VolumeButton :icon-class="[ICON, tone(false)].join(' ')" />
       <button
         type="button"
         :class="[ICON, tone(false), empty && OFF]"

@@ -11,7 +11,7 @@
 //! Times in the files are on the share's clock (see handoff.rs): this device's own file tells how far the
 //! share's clock is from its own.
 //!
-//! Playlists are synced after this, with the same share (playlist_sync.rs). Both run a few seconds after a
+//! Playlists are synced after this, with the same share (playlist_sync.rs), then their covers (cover_sync.rs). Both run a few seconds after a
 //! change here, after each sync, when the share says one of their files changed, and at start-up.
 
 use std::collections::HashMap;
@@ -313,7 +313,7 @@ pub struct LibrarySync {
 
 /// Whether a changed file on the share is library data or a playlist.
 pub fn is_library_file(path: &str) -> bool {
-    [DIR, super::playlist_sync::DIR].iter().any(|dir| path.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/') && rest.ends_with(".json")))
+    [DIR, super::playlist_sync::DIR, super::cover_sync::DIR].iter().any(|dir| path.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/') && rest.ends_with(".json")))
 }
 
 /// Something changed (here: likes, playlists, plays; or on the share): the library data is synced once
@@ -337,7 +337,8 @@ pub fn run(app: &AppHandle) -> Result<()> {
     let name = handoff::settings(app)?.device_name.unwrap_or_default();
     let (data, playlists) = with_share(app, |share| {
         let (data, ahead) = sync_device_data(&library, share, &folder, &me, &name)?;
-        let playlists = super::playlist_sync::sync_playlists(&library, share, &folder, &me, &name, ahead)?;
+        let mut playlists = super::playlist_sync::sync_playlists(&library, share, &folder, &me, &name, ahead)?;
+        playlists.changed.extend(super::cover_sync::sync_covers(&library, share, &folder, &me, ahead)?);
         Ok((data, playlists))
     })?;
     if !data.likes_changed.is_empty() {

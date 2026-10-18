@@ -17,7 +17,7 @@ import { coverUrl, library, type Track } from '@/library'
 import { count } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { listAction, playSongs, songAction, trackSong } from '@/player/songs'
+import { listAction, playSong, songAction, trackSong } from '@/player/songs'
 import { goBack } from '@/router'
 import { SETTINGS } from '@/settings/registry'
 import { LINK } from '@/settings/settingsMenu'
@@ -101,10 +101,6 @@ const nothing = computed(
   () => found.value && !found.value.trackCount && !found.value.albums.length && !found.value.artists.length && !found.value.playlists.length && !settings.value.length,
 )
 
-function playFound(song: Song) {
-  if (song.id === current.value?.id) togglePlay()
-  else playSongs((found.value?.tracks ?? []).map((t) => t.id), Number(song.id))
-}
 const ALBUM_MENU = coverMenu({ kind: 'album' })
 const LIST_MENU = coverMenu({ kind: 'list' })
 </script>
@@ -149,7 +145,9 @@ const LIST_MENU = coverMenu({ kind: 'list' })
             :subtitle="song.artist"
             :image="song.cover"
             :menu="cardMenu(song)"
-            @open="playSongs(added.map((t) => t.id), Number(song.id))"
+            :song="{ current: song.id === current?.id, playing: !!nowPlaying.state?.isPlaying }"
+            @play="playSong(song)"
+            @queue="playSong(song, 'doubleClick')"
             @action="(action) => songAction(song, action as SongAction)"
           />
         </div>
@@ -185,7 +183,7 @@ const LIST_MENU = coverMenu({ kind: 'list' })
             :current-id="current?.id"
             :playing="!!nowPlaying.state?.isPlaying"
             :place="{ showInFolder: isDesktop }"
-            @play="playFound"
+            @play="playSong"
             @pause="togglePlay"
             @like="(song, liked) => like(Number(song.id), liked)"
             @action="songAction"

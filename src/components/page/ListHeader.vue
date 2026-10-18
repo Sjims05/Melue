@@ -26,8 +26,10 @@ const props = defineProps<{
   empty?: boolean
   editable?: boolean
   menu?: MenuItem[]
+  /** The cover is a button (a playlist's: Change cover), with this as its words for screen readers and the pointer. */
+  coverLabel?: string
 }>()
-const emit = defineEmits<{ play: []; shuffle: []; rename: [name: string]; action: [action: string] }>()
+const emit = defineEmits<{ play: []; shuffle: []; rename: [name: string]; action: [action: string]; cover: [] }>()
 
 const editing = ref(false)
 const name = ref('')
@@ -52,7 +54,17 @@ defineExpose({ rename })
   <ContextMenu :modal="false">
     <ContextMenuTrigger as-child :disabled="!menu?.length || editing">
       <div class="mb-10 flex items-center gap-12 pt-2">
-        <div class="w-[min(16.5rem,30%)] flex-none"><Cover :image="image" :colors="colors" :icon="icon" :collage="collage" /></div>
+        <button
+          v-if="coverLabel"
+          type="button"
+          class="w-[min(16.5rem,30%)] flex-none rounded-lg transition-opacity outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring/50"
+          :aria-label="coverLabel"
+          :title="coverLabel"
+          @click="emit('cover')"
+        >
+          <Cover :image="image" :colors="colors" :icon="icon" :collage="collage" />
+        </button>
+        <div v-else class="w-[min(16.5rem,30%)] flex-none"><Cover :image="image" :colors="colors" :icon="icon" :collage="collage" /></div>
         <div class="min-w-0 flex-1">
           <div v-if="$slots.badges" class="mb-4 flex flex-wrap gap-2"><slot name="badges" /></div>
           <input

@@ -5,7 +5,7 @@
  * lives (About syncing / "This device" / following a file); an auto playlist hides. A song's card uses the
  * song's own menu (songMenu): Add to playlist is for songs only.
  */
-import { Cloud, EyeOff, FileDown, Info, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
+import { Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
 import { NextIcon, PlayIcon } from '@/components/player/icons'
 import type { Component } from 'vue'
 
@@ -24,11 +24,14 @@ export type CoverAction =
   | 'hide'
   | 'about'
   | 'export'
+  | 'changeCover'
+  | 'revertCover'
 
 /** What the card is; a playlist also says where it lives. */
 export type CoverKind =
   | { kind: 'album' }
-  | { kind: 'playlist'; lives: 'synced' | 'here' | 'linked' | 'unfollowed' | 'plain' }
+  /** A playlist; `customCover`: it has its own cover (Revert to default cover). */
+  | { kind: 'playlist'; lives: 'synced' | 'here' | 'linked' | 'unfollowed' | 'plain'; customCover?: boolean }
   | { kind: 'auto' }
   /** An artist or a music folder (their rows): only playing them. */
   | { kind: 'list' }
@@ -73,6 +76,8 @@ export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAc
     ]
     items.push(
       { action: 'rename', label: 'Rename', icon: Pencil, apart: true },
+      { action: 'changeCover', label: 'Change cover…', icon: ImagePlus },
+      ...(what.customCover ? [{ action: 'revertCover' as const, label: 'Revert to default cover', icon: ImageMinus }] : []),
       ...lives,
       { action: 'delete', label: 'Delete…', icon: Trash2, danger: true, apart: true },
       ...(about ? [{ action: 'about' as const, label: about, icon: Info, apart: true }] : []),

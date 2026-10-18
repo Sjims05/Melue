@@ -9,6 +9,7 @@ import { computed, reactive } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { artistParts, type Song } from '@/components/songs'
 import { coverUrl, library, type Track } from '@/library'
+import { onlyHere } from '@/library/onlyHere'
 import { setLiked } from '@/library/playback'
 import { player, type PlayerQueue, type PlayerState, type PlayerTrack, type RepeatMode } from '@/platform'
 
@@ -38,8 +39,10 @@ export async function startNowPlaying() {
     if (change.reason === 'likes') nowPlaying.liked = new Set(await library.likedIds().catch(() => []))
   })
   await player.onState(applyState)
+  // Every frame while playing, also with the window in the background (on a second screen: WebView2 is told not to
+  // pause it, tauri.windows.conf.json); not while the window is hidden (in the tray), where nothing shows.
   const frame = () => {
-    if (nowPlaying.state?.isPlaying) nowPlaying.tick++
+    if (nowPlaying.state?.isPlaying && !document.hidden) nowPlaying.tick++
     requestAnimationFrame(frame)
   }
   requestAnimationFrame(frame)
@@ -57,6 +60,8 @@ function applyState(state: PlayerState) {
   const stale =
     (shown?.items.length ?? 0) !== state.queueLength ||
     (state.queueIndex >= 0 && shown?.items[shown.currentIndex]?.id !== state.currentId)
+  // While Up next is changed in several steps (Clear), not read half-done: once, at the end (holdingQueue).
+  if (holding) return
   if (key !== lastQueueKey || (stale && !refreshing)) {
     lastQueueKey = key
     refreshQueue()
@@ -66,6 +71,22 @@ function applyState(state: PlayerState) {
 /** Reads the player again: after it has resumed the last queue at start (a queue resumed paused sends nothing). */
 export async function syncNowPlaying() {
   applyState(await player.getState())
+}
+
+let holding = 0
+/** Makes several changes to the queue, then reads it once (what's shown doesn't jump back between them). */
+async function holdingQueue(change: () => Promise<unknown>) {
+  holding++
+  try {
+    await change()
+  } finally {
+    holding--
+  }
+  const state = await player.getState()
+  lastQueueKey = `${state.queueLength}:${state.queueIndex}:${state.currentId}:${state.shuffle}:${state.repeatMode}`
+  nowPlaying.state = state
+  nowPlaying.stateAt = performance.now()
+  await refreshQueue()
 }
 
 let refreshing = false
@@ -105,6 +126,7 @@ export function songOf(item: PlayerTrack): Song {
     duration: (t?.durationMs ?? 0) / 1000,
     cover: t?.cover ? coverUrl(t.cover) : undefined,
     liked: nowPlaying.liked.has(item.id),
+    localOnly: onlyHere.value.has(item.id),
     artists: t?.artists,
     albumId: t?.albumId,
   }
@@ -239,12 +261,21 @@ export async function removeFromUpNext(at: number) {
   await player.removeFromQueue(index)
   await refreshQueue()
 }
+/** Takes these queue items out (by their place in the queue's list), shown at once and read back once at the end. */
+export async function takeOutOfQueue(indexes: number[]) {
+  if (!indexes.length) return
+  takeOut(indexes)
+  await holdingQueue(async () => {
+    for (const index of [...indexes].sort((a, b) => b - a)) await player.removeFromQueue(index)
+  })
+}
 export async function clearUpNext() {
   const indexes = upNext.value.map((u) => u.index)
   takeOut(indexes)
   // From the end, so the indexes before stay right.
-  for (const index of indexes.sort((a, b) => b - a)) await player.removeFromQueue(index)
-  await refreshQueue()
+  await holdingQueue(async () => {
+    for (const index of indexes.sort((a, b) => b - a)) await player.removeFromQueue(index)
+  })
 }
 // Taken out of the queue as shown at once (the list closes up as the songs fold away), not only once the player has
 // answered: the items go, and the indexes after them move down.

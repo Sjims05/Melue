@@ -6,7 +6,7 @@
  * songs another device added that aren't on this device yet; a linked playlist's songs new in the file or removed here
  * are greyed with Add / Restore. It follows the library.
  */
-import { CircleAlert, Cloud, FileText, Link, Lock, Unlink } from '@lucide/vue'
+import { CircleAlert, FileText } from '@lucide/vue'
 import { computed, nextTick, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
@@ -18,12 +18,13 @@ import { library, type Playlist, type PlaylistEntry, type Source } from '@/libra
 import { librarySync, sync, type PlaylistConflict } from '@/library/sync'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { playList, songAction, trackSong } from '@/player/songs'
+import { playList, playSong, songAction, trackSong } from '@/player/songs'
 import { goBack, setPageTitle } from '@/router'
 import { usePlaylistActions } from './playlists/actions'
 import ConflictDialog from './playlists/ConflictDialog.vue'
+import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
-import { playlistCover, playlistKind, playlistLine } from './playlists/playlists'
+import { playlistCover, playlistKind, playlistLine, playlistLink, playlistWhere } from './playlists/playlists'
 
 const route = useRoute()
 // This page's own address and playlist (the route moves on when another page opens on top of it).
@@ -84,10 +85,6 @@ const greyed = computed(() =>
 )
 const entryOf = (song: Song) => entries.value.find((e) => `e${e.id}` === song.key)
 
-function play(song: Song) {
-  if (song.id === current.value?.id) togglePlay()
-  else playList(source, { startAt: Number(song.id) })
-}
 // Taken out (✕ or the menu) and moved: shown at once, then done. A song of a followed file's stays, greyed ("Removed
 // here"): it fades to grey in its place instead of folding away.
 const following = computed(() => playlist.value?.kind === 'linked' && playlist.value.following)
@@ -121,8 +118,10 @@ async function act(song: Song, action: SongAction) {
 
 // ---- The playlist itself: rename (its name, or the menu), the rest of its menu
 const header = ref<InstanceType<typeof ListHeader> | null>(null)
-const { asking, act: actOnPlaylist, rename, confirm } = usePlaylistActions(load, goBack)
+const { asking, covering, act: actOnPlaylist, rename, confirm, saveCover } = usePlaylistActions(load, goBack)
 const menu = computed(() => (playlist.value ? coverMenu(playlistKind(playlist.value, sync.available), isDesktop) : []))
+// Its badges: where it lives (a linked one: where its file is), and a linked one's link.
+const badges = computed(() => (playlist.value ? [playlistWhere(playlist.value, sync.available), playlistLink(playlist.value)].filter((b) => !!b) : []))
 function pick(action: CoverAction) {
   if (!playlist.value) return
   if (action === 'rename') header.value?.rename()
@@ -138,7 +137,9 @@ const choosing = ref(false)
       <ListHeader
         ref="header"
         :title="playlist.name"
-        v-bind="playlistCover(playlist)"
+        v-bind="playlistCover(playlist, 'large')"
+        cover-label="Change cover"
+        @cover="covering = playlist"
         :empty="!playlist.available"
         editable
         :menu="menu"
@@ -148,10 +149,9 @@ const choosing = ref(false)
         @shuffle="playList(source, { shuffle: true })"
       >
         <template #badges>
-          <SettingsBadge v-if="playlist.kind === 'linked' && playlist.following" class="h-7 gap-1.5 px-2.5 text-[13px]"><Link class="size-3.5" />Linked</SettingsBadge>
-          <SettingsBadge v-else-if="playlist.kind === 'linked'" class="h-7 gap-1.5 px-2.5 text-[13px]"><Unlink class="size-3.5" />Unfollowed</SettingsBadge>
-          <SettingsBadge v-else-if="playlist.synced && !playlist.localOnly" class="h-7 gap-1.5 px-2.5 text-[13px]"><Cloud class="size-3.5" />Synced</SettingsBadge>
-          <SettingsBadge v-else-if="playlist.localOnly" class="h-7 gap-1.5 px-2.5 text-[13px]"><Lock class="size-3.5" />This device</SettingsBadge>
+          <SettingsBadge v-for="badge in badges" :key="badge.label" class="h-7 gap-1.5 px-2.5 text-[13px]">
+            <component :is="badge.icon" class="size-3.5" />{{ badge.label }}
+          </SettingsBadge>
           <SettingsBadge v-if="playlist.file" class="h-7 gap-1.5 px-2.5 text-[13px]"><FileText class="size-3.5" />{{ playlist.file }}</SettingsBadge>
           <SettingsBadge v-if="playlist.fileMissing" class="h-7 gap-1.5 px-2.5 text-[13px] text-destructive"><CircleAlert class="size-3.5" />File gone</SettingsBadge>
         </template>
@@ -174,7 +174,7 @@ const choosing = ref(false)
         :current-id="current?.id"
         :playing="!!nowPlaying.state?.isPlaying"
         :place="{ inPlaylist: true, showInFolder: isDesktop }"
-        @play="play"
+        @play="playSong"
         @pause="togglePlay"
         @like="(song, liked) => like(Number(song.id), liked)"
         @remove="(song) => remove(song)"
@@ -184,6 +184,13 @@ const choosing = ref(false)
       <p v-else class="text-muted-foreground">No songs yet: add some with a song’s menu, Add to playlist.</p>
 
       <PlaylistDialogs v-model="asking" @confirm="confirm" />
+      <CoverCropDialog
+        v-if="covering"
+        :name="covering.name"
+        :open="!!covering"
+        @update:open="covering = null"
+        @save="(picture) => saveCover(covering!, picture)"
+      />
       <ConflictDialog v-if="conflict" v-model:open="choosing" :conflict="conflict" @answered="load" />
     </template>
     <p v-else-if="playlist === null" class="pt-2 text-lg text-muted-foreground">This playlist isn't in your library (any more).</p>

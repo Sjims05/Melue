@@ -37,6 +37,10 @@ const homeCards = computed({ get: () => (appearance.homeCardsPrimary ? 'primary'
 
 type Close = 'tray' | 'quit'
 const CLOSES = [['tray', 'Keep playing'], ['quit', 'Quit']] as const
+// Started by Windows: in the tray, or with its window (desktop.rs).
+type AutostartWindow = 'tray' | 'window'
+const AUTOSTART_WINDOW_SETTING = 'autostart_window'
+const AUTOSTART_WINDOWS = [['tray', 'In the tray'], ['window', 'With its window']] as const
 const CLOSE_LINE: Record<Close, string> = {
   tray: 'Melue keeps playing in the tray; quit from its menu there',
   quit: 'Closing the window quits Melue: the music stops',
@@ -48,6 +52,7 @@ const CLOSE_SETTING = 'close_window'
 const startOn = ref<(typeof STARTS)[number][0]>('home')
 const autostart = ref<boolean | null>(null)
 const close = ref<Close>('tray')
+const autostartWindow = ref<AutostartWindow>('tray')
 const error = ref('')
 
 onPageLoad(async () => {
@@ -55,6 +60,7 @@ onPageLoad(async () => {
   try {
     autostart.value = await isEnabled()
     close.value = (await library.setting(CLOSE_SETTING)) === 'quit' ? 'quit' : 'tray'
+    autostartWindow.value = (await library.setting(AUTOSTART_WINDOW_SETTING)) === 'window' ? 'window' : 'tray'
   } catch (e) {
     error.value = `Can’t read these settings: ${e}`
   }
@@ -67,6 +73,18 @@ async function setAutostart(on: boolean) {
     autostart.value = await isEnabled()
   } catch (e) {
     error.value = `Not changed: ${e}`
+  }
+}
+
+async function setAutostartWindow(mode: AutostartWindow) {
+  const before = autostartWindow.value
+  autostartWindow.value = mode
+  error.value = ''
+  try {
+    await library.setSetting(AUTOSTART_WINDOW_SETTING, mode)
+  } catch (e) {
+    autostartWindow.value = before
+    error.value = `Not saved: ${e}`
   }
 }
 
@@ -144,12 +162,23 @@ async function setClose(mode: Close) {
         v-if="autostart !== null"
         title="Start Melue with Windows"
         setting="display.autostart"
-        description="In the tray, ready for the media keys"
+        :description="autostartWindow === 'window' ? 'With its window open' : 'In the tray, ready for the media keys'"
         :reset="() => setAutostart(true)"
         :is-default="autostart"
       >
         <Switch :model-value="autostart" @update:model-value="setAutostart" />
       </SettingsRow>
+      <Reveal :show="!!autostart">
+        <SettingsRow
+          title="When Windows starts it"
+          wide
+          setting="display.autostartWindow"
+          :reset="() => setAutostartWindow('tray')"
+          :is-default="autostartWindow === 'tray'"
+        >
+          <Segmented :model-value="autostartWindow" :options="AUTOSTART_WINDOWS" @update:model-value="setAutostartWindow" />
+        </SettingsRow>
+      </Reveal>
       <SettingsRow title="Closing the window" wide setting="display.closeWindow" :reset="() => setClose('tray')" :is-default="close === 'tray'">
         <template #description>
           <Transition name="swap" mode="out-in"><span :key="close">{{ CLOSE_LINE[close] }}</span></Transition>

@@ -8,8 +8,12 @@ import { AUTO_COVERS, type CoverKind } from '@/components/covers'
 import { coverUrl, type AutoPlaylist, type Playlist } from '@/library'
 import { count, totalLength } from '@/lib/format'
 
-/** Its picture: one cover, or a 2×2 collage of up to four (repeated to fill it); none: the note. */
-export function playlistCover(p: Playlist): { image?: string; collage?: string[] } {
+/**
+ * Its picture: its own cover, or else its songs': one, or a 2×2 collage of up to four (repeated to fill it); none: the
+ * note. `size`: 'large' for a page's big cover.
+ */
+export function playlistCover(p: Playlist, size: 'small' | 'large' = 'small'): { image?: string; collage?: string[] } {
+  if (p.customCover) return { image: coverUrl(p.customCover, size) }
   const covers = p.covers.map((c) => coverUrl(c))
   if (covers.length === 0) return {}
   if (covers.length === 1) return { image: covers[0] }
@@ -28,19 +32,39 @@ export function playlistLine(p: Playlist): string {
   ].join(' · ')
 }
 
-/** The corner badge: Synced, This device, Linked or Unfollowed (none without a share, for an app playlist). */
-export function playlistBadge(p: Playlist): { icon: Component; label: string } | null {
-  if (p.kind === 'linked') return p.following ? { icon: Link, label: 'Linked' } : { icon: Unlink, label: 'Unfollowed' }
+type Badge = { icon: Component; label: string }
+
+/**
+ * Where it lives, with a share: Synced or This device. A linked one by where its file is: in the synced folder (every
+ * device has it), or a folder only here.
+ */
+export function playlistWhere(p: Playlist, shareSetUp: boolean): Badge | null {
+  if (p.kind === 'linked') return shareSetUp ? (p.fileSynced ? { icon: Cloud, label: 'Synced' } : { icon: Lock, label: 'This device' }) : null
   if (p.synced && !p.localOnly) return { icon: Cloud, label: 'Synced' }
   if (p.localOnly) return { icon: Lock, label: 'This device' }
   return null
 }
 
+/** A linked one's link: Linked, or Unfollowed. */
+export function playlistLink(p: Playlist): Badge | null {
+  if (p.kind !== 'linked') return null
+  return p.following ? { icon: Link, label: 'Linked' } : { icon: Unlink, label: 'Unfollowed' }
+}
+
+/** The corner badge: where it lives, and a linked one's link next to it ("Synced · Linked"). */
+export function playlistBadge(p: Playlist, shareSetUp: boolean): (Badge & { also?: Component }) | null {
+  const where = playlistWhere(p, shareSetUp)
+  const link = playlistLink(p)
+  if (where && link) return { icon: where.icon, also: link.icon, label: `${where.label} · ${link.label}` }
+  return where ?? link
+}
+
 /** Where it lives, for its menu: linked, synced or kept here (with a share), or nothing to choose (no share). */
 export function playlistKind(p: Playlist, shareSetUp: boolean): CoverKind {
-  if (p.kind === 'linked') return { kind: 'playlist', lives: p.following ? 'linked' : 'unfollowed' }
-  if (!shareSetUp) return { kind: 'playlist', lives: 'plain' }
-  return { kind: 'playlist', lives: p.localOnly ? 'here' : 'synced' }
+  const customCover = !!p.customCover
+  if (p.kind === 'linked') return { kind: 'playlist', lives: p.following ? 'linked' : 'unfollowed', customCover }
+  if (!shareSetUp) return { kind: 'playlist', lives: 'plain', customCover }
+  return { kind: 'playlist', lives: p.localOnly ? 'here' : 'synced', customCover }
 }
 
 /** An auto playlist's card: its cover, title and line ("Top songs" / "Last month · 50 songs"). */

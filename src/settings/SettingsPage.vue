@@ -16,7 +16,6 @@ import AcrossDevices from './AcrossDevices.vue'
 import AndroidSource from './AndroidSource.vue'
 import AudioSettings from './AudioSettings.vue'
 import DisplaySettings from './DisplaySettings.vue'
-import DropSongs from './DropSongs.vue'
 import LibraryStatus from './LibraryStatus.vue'
 import MobileData from './MobileData.vue'
 import MusicFolders from './MusicFolders.vue'
@@ -122,7 +121,6 @@ const toShare = () => shareSection.value?.scrollIntoView({ behavior: 'smooth', b
         <StorageSettings />
 
         <AboutSettings />
-        <DropSongs />
       </div>
     </div>
   </div>

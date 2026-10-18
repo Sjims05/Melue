@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
  * Library's Songs: every song, in the chosen order, A–Z headings when sorted by title, artist or album. Only the rows on
- * screen are drawn (VirtualSongList), so a big library scrolls smoothly. Playing one plays all songs in this order from
- * it ("Playing from All songs"). It follows the library: a scan or a folder change shows at once.
+ * screen are drawn (VirtualSongList), so a big library scrolls smoothly. A song's play button plays just it (now or
+ * next: Queue settings), a double-click adds it to Up next; Play and Shuffle above play them all. It follows the
+ * library: a scan or a folder change shows at once.
  */
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { letterOf, VirtualSongList, type Song } from '@/components/songs'
 import { library, type Track, type TrackSort } from '@/library'
-import { playSource } from '@/library/playback'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { songAction, trackSong } from '@/player/songs'
+import { playSong, songAction, trackSong } from '@/player/songs'
 
 const props = defineProps<{ sort: TrackSort }>()
 
@@ -50,11 +50,6 @@ const numberOf = computed<((song: Song) => { text: string; title: string }) | un
   return undefined
 })
 
-function play(song: Song) {
-  // The song shown paused is resumed, not started over.
-  if (song.id === current.value?.id) togglePlay()
-  else playSource(`songs:${props.sort}`, { startAt: Number(song.id) })
-}
 const place = { showInFolder: isDesktop }
 </script>
 
@@ -69,7 +64,7 @@ const place = { showInFolder: isDesktop }
       :current-id="current?.id"
       :playing="!!nowPlaying.state?.isPlaying"
       :place="place"
-      @play="play"
+      @play="playSong"
       @pause="togglePlay"
       @like="(song, liked) => like(Number(song.id), liked)"
       @action="songAction"

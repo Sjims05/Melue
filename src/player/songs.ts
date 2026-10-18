@@ -3,14 +3,20 @@
  * (Play next, Add to queue, like, Go to album / artist, Show in folder), the same in every list. And what a whole
  * list's buttons and card menu do (an album's Play and Shuffle; Play next, Add to queue, Go to artist).
  */
+import { CloudUpload, ListEnd, ListStart } from '@lucide/vue'
 import type { CoverAction } from '@/components/covers'
 import type { Song, SongAction } from '@/components/songs'
-import { coverUrl, library, type Source, type Track } from '@/library'
+import { coverUrl, library, type QueueItem, type Source, type Track } from '@/library'
+import { onlyHere } from '@/library/onlyHere'
 import { playSource } from '@/library/playback'
+import { describeSyncFailure, moving } from '@/library/sync'
+import { ask } from '@/lib/confirm'
+import { count } from '@/lib/format'
 import { listPlay } from '@/lib/listPlay'
-import { player } from '@/platform'
+import { toast } from '@/lib/toast'
+import { isMobile, player } from '@/platform'
 import { router } from '@/router'
-import { like, nowPlaying, refreshQueue, setShuffle } from './nowPlaying'
+import { current, like, next, nowPlaying, refreshQueue, setShuffle, takeOutOfQueue, togglePlay } from './nowPlaying'
 
 /** A library song as a song row shows it (liked as the player knows it, so a like shows everywhere at once). */
 export function trackSong(t: Track): Song {
@@ -23,6 +29,7 @@ export function trackSong(t: Track): Song {
     duration: (t.durationMs ?? 0) / 1000,
     cover: t.cover ? coverUrl(t.cover) : undefined,
     liked: nowPlaying.liked.has(t.id),
+    localOnly: onlyHere.value.has(t.id),
     artists: t.artists,
     plays: t.playCount,
     addedAt: t.addedAt,
@@ -54,11 +61,81 @@ export async function exportList(source: Source, name: string): Promise<string |
   return path
 }
 
-/** Plays these songs (a list with no page of its own: Home's recent songs) from the one picked. */
-export async function playSongs(ids: number[], startAt: number) {
-  const items = await library.queueItemsFor(ids)
-  await player.setQueue(items, { startIndex: Math.max(0, items.findIndex((i) => i.id === startAt)) })
-  await player.play()
+/**
+ * One song (its play button): it plays and Up next stays after it; nothing else from its list is lined up. Queue
+ * settings: it plays now (the playing song ends) or next. Nothing playing: it plays on its own.
+ */
+export async function playOne(id: number) {
+  if (id === current.value?.id) return togglePlay()
+  const items = await library.queueItemsFor([id])
+  if (!current.value) {
+    await player.setQueue(items, { startIndex: 0 })
+    await player.play()
+    return
+  }
+  const now = listPlay.songPlays === 'now'
+  await addItems(items, true, !now)
+  if (now) {
+    await next()
+    if (!nowPlaying.state?.isPlaying) await player.play()
+  }
+  await refreshQueue()
+}
+
+/**
+ * A song's own play in any list (not the list's big Play): its play button plays just it (playOne), a double-click
+ * adds it to the end of Up next (queueOne). The song playing (or paused on) is paused or resumed.
+ */
+export const playSong = (song: Song, via: 'button' | 'doubleClick' = 'button') => (via === 'doubleClick' ? queueOne : playOne)(Number(song.id))
+
+/** One song (a double-click): to the end of Up next; nothing playing: it plays. */
+export async function queueOne(id: number) {
+  if (id === current.value?.id) return togglePlay()
+  if (!current.value) return playOne(id)
+  await addItems(await library.queueItemsFor([id]), false)
+  await refreshQueue()
+}
+
+/**
+ * Adds to the queue: right after the playing song (`playNext`) or at the end. `note`: says what went in ("“Song” plays
+ * next", "Added 12 songs to the queue"), with Undo.
+ */
+async function addItems(items: QueueItem[], playNext: boolean, note = true) {
+  if (!items.length) return
+  // Where they go in the queue's list, for Undo.
+  const before = await player.getQueue().catch(() => null)
+  const at = playNext ? (before?.currentIndex ?? -1) + 1 : (before?.items.length ?? 0)
+  await player.addToQueue(items, { playNext })
+  if (!note) return
+  const what = items.length === 1 ? `“${items[0].title ?? 'The song'}”` : count(items.length, 'song')
+  const undo = { label: 'Undo', run: () => undoAdd(items.map((i) => i.id), at) }
+  if (playNext) toast(`${what} ${items.length === 1 ? 'plays' : 'play'} next`, ListStart, undo)
+  else toast(`Added ${what} to the queue`, ListEnd, undo)
+}
+
+/**
+ * Undo: takes the songs just added out again: from where they went, or (the queue changed since) their last places in
+ * it. Not the song playing (it may be one of them by now).
+ */
+async function undoAdd(ids: number[], at: number) {
+  await refreshQueue()
+  const q = nowPlaying.queue
+  if (!q) return
+  let indexes = ids.map((_, i) => at + i)
+  if (!ids.every((id, i) => q.items[at + i]?.id === id)) {
+    const taken = new Set<number>()
+    indexes = ids.map((id) => {
+      for (let i = q.items.length - 1; i >= 0; i--) {
+        if (q.items[i].id === id && !taken.has(i)) {
+          taken.add(i)
+          return i
+        }
+      }
+      return -1
+    })
+  }
+  await takeOutOfQueue(indexes.filter((i) => i >= 0 && i !== q.currentIndex))
+  toast(ids.length === 1 ? 'Taken out of the queue again' : `${count(ids.length, 'song')} taken out of the queue again`, ListEnd)
 }
 
 /** Does what a list's card menu item (or button) says; `artistId`: its artist's page (an album's Go to artist). */
@@ -69,10 +146,11 @@ export async function listAction(source: Source, action: CoverAction, artistId?:
       await playList(source, { shuffle: action === 'shuffle' })
       break
     case 'playNext':
-    case 'addToQueue':
-      await player.addToQueue(await library.queueItems(source), { playNext: action === 'playNext' })
+    case 'addToQueue': {
+      await addItems(await library.queueItems(source), action === 'playNext')
       await refreshQueue()
       break
+    }
     case 'goToArtist':
       if (artistId != null) router.push(`/artist/${artistId}`)
       break
@@ -84,10 +162,11 @@ export async function songAction(song: Song, action: SongAction) {
   const id = Number(song.id)
   switch (action) {
     case 'playNext':
-    case 'addToQueue':
-      await player.addToQueue(await library.queueItemsFor([id]), { playNext: action === 'playNext' })
+    case 'addToQueue': {
+      await addItems(await library.queueItemsFor([id]), action === 'playNext')
       await refreshQueue()
       break
+    }
     case 'like':
       await like(id, !song.liked)
       break
@@ -100,5 +179,31 @@ export async function songAction(song: Song, action: SongAction) {
     case 'showInFolder':
       await library.showInFolder(id)
       break
+    case 'moveToSync':
+      await moveToSync(song)
+      break
+  }
+}
+
+/**
+ * Move to sync (a song only on this device): asked first, since the original goes (the Recycle Bin; on Android its
+ * trash, after Android asks). It's copied into the synced music, then the original is removed; a note says how it went.
+ */
+async function moveToSync(song: Song) {
+  const yes = await ask({
+    title: `Move “${song.title}” to sync?`,
+    text: `It’s copied into your synced music first, so every device gets it. Then the original ${
+      isMobile ? 'is removed: Android asks you to move it to its trash (kept 30 days).' : 'goes to the Recycle Bin.'
+    }`,
+    action: 'Move',
+  })
+  if (!yes) return
+  toast(`Moving “${song.title}” to sync…`, CloudUpload)
+  try {
+    const r = await moving.moveToSync([{ kind: 'song', id: Number(song.id) }])
+    if (r.failed.length) toast(`Couldn’t move “${song.title}”: ${r.failed[0][1]}`)
+    else toast(`Moved “${song.title}” to sync`, CloudUpload)
+  } catch (e) {
+    toast(describeSyncFailure(e))
   }
 }

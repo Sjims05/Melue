@@ -25,6 +25,12 @@
     opacity: 0;
     transform: translateY(calc(var(--page-from, 1) * 32px));
   }
+  /* The old one is out of the way at once: not shown, and not taking room above the new one for the moment it's still
+     there (the new one would be laid out, scrolled and measured below it, then jump up). */
+  .page-leave-active {
+    position: absolute;
+    visibility: hidden;
+  }
 
   /* A page opened on top (an artist, a folder, Search), its own layer with its own top bar (the playground's overlay):
      opening, it slides in from the right over what's there, which stays put under it (layer-in); going back, it slides

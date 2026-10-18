@@ -11,8 +11,8 @@
  * the one under the pointer, and the one whose menu is open. Play and the heart show on a highlighted row; a liked
  * song keeps its filled heart.
  */
-import { Ellipsis, GripVertical, Heart, Music, X } from '@lucide/vue'
-import { popHeart } from '@/components/player/heart'
+import { Ellipsis, GripVertical, Music, X } from '@lucide/vue'
+import LikeHeart from '@/components/player/LikeHeart.vue'
 import { PauseIcon, PlayIcon } from '@/components/player/icons'
 import { computed, ref } from 'vue'
 import SettingsBadge from '@/components/settings/SettingsBadge.vue'
@@ -60,7 +60,8 @@ const props = defineProps<{
   /** Only on this device (not on the share): the "This device" badge after the title. */
   localOnly?: boolean
 }>()
-const emit = defineEmits<{ play: []; pause: []; like: [liked: boolean]; remove: []; action: [action: SongAction] }>()
+// play: how it was asked for (its play button, or a double-click on the row), for lists where they differ.
+const emit = defineEmits<{ play: [via: 'button' | 'doubleClick']; pause: []; like: [liked: boolean]; remove: []; action: [action: SongAction] }>()
 
 const menuOpen = ref(false)
 const contextOpen = ref(false)
@@ -83,11 +84,11 @@ function pick(action: SongAction) {
 function playOnDoubleClick(e: MouseEvent) {
   if (props.unavailable || props.song.later) return
   if ((e.target as HTMLElement).closest('button, a, input, [role=button], [role=menuitem], .song-handle')) return
-  emit('play')
+  emit('play', 'doubleClick')
 }
 function playOrPause() {
   if (props.current && props.playing) emit('pause')
-  else emit('play')
+  else emit('play', 'button')
 }
 
 // Text that dims on a plain row and turns light on a highlighted one (light mode's dark highlight).
@@ -136,7 +137,7 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
           <span class="flex min-w-0 items-center gap-2">
             <PlayingBars v-if="current" :paused="!playing" class="flex-none" />
             <span class="truncate text-[15px] font-medium">{{ song.title }}</span>
-            <SettingsBadge v-if="localOnly" class="flex-none" title="Only on this device, not on your share">This device</SettingsBadge>
+            <SettingsBadge v-if="localOnly || song.localOnly" class="flex-none" title="Only on this device, not on your share">This device</SettingsBadge>
             <Transition name="drop">
               <span v-if="note" class="flex-none text-xs" :class="MUTED">{{ note }}</span>
             </Transition>
@@ -175,9 +176,9 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
               :class="[BUTTON, song.liked ? '' : ON_HIGHLIGHT]"
               :aria-label="song.liked ? 'Remove from liked' : 'Add to liked'"
               :aria-pressed="!!song.liked"
-              @click="(e: MouseEvent) => (popHeart(e.currentTarget, !song.liked), emit('like', !song.liked))"
+              @click="emit('like', !song.liked)"
             >
-              <Heart class="heart" :class="song.liked && 'fill-current'" />
+              <LikeHeart :liked="!!song.liked" />
             </button>
           </template>
           <DropdownMenu @update:open="(open) => (menuOpen = open)">

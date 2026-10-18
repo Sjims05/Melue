@@ -96,7 +96,7 @@ impl Library {
         entries.flatten().filter_map(|e| e.metadata().ok()).filter(|m| m.is_file()).map(|m| m.len()).sum()
     }
 
-    /// Deletes the covers no song or album uses any more (songs that are missing keep theirs), and files in
+    /// Deletes the covers no song, album or playlist uses any more (songs that are missing keep theirs), and files in
     /// the covers folder that aren't a stored cover's (left over from an interrupted scan). Returns how
     /// many files were deleted.
     pub fn clean_covers(&self) -> Result<u32> {
@@ -104,7 +104,8 @@ impl Library {
             let conn = self.conn();
             conn.execute(
                 "DELETE FROM covers WHERE id NOT IN (SELECT cover_id FROM tracks WHERE cover_id IS NOT NULL)
-                                     AND id NOT IN (SELECT cover_id FROM albums WHERE cover_id IS NOT NULL)",
+                                     AND id NOT IN (SELECT cover_id FROM albums WHERE cover_id IS NOT NULL)
+                                     AND id NOT IN (SELECT cover_id FROM playlists WHERE cover_id IS NOT NULL)",
                 [],
             )
             .map_err(err)?;

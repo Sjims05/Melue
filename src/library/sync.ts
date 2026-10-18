@@ -426,7 +426,7 @@ export const moving = {
    * once its synced copy is in the library (Recycle Bin; on Android its trash, after Android asks). Its likes,
    * plays and playlist entries go with it. Progress shows in sync.status. Rejects with a SyncFailure.
    */
-  moveToSync: (items: ToMove[]) => invoke<MoveResult>('sync_move_to_sync', { items }),
+  moveToSync: (items: ToMove[], playlist: number | null = null) => invoke<MoveResult>('sync_move_to_sync', { items, playlist }),
   copies: () => invoke<Copies>('sync_copies'),
   /** Calls `listener` when hidden copies wait for a choice. Resolves to a function that stops listening. */
   onCopies: (listener: (copies: Copies) => void) => listen<Copies>('song-copies', (e) => listener(e.payload)),

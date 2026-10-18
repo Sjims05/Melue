@@ -327,6 +327,9 @@ pub struct MoveResult {
     /// Songs that couldn't be moved: (title or file, why). Left as they were.
     pub failed: Vec<(String, String)>,
     pub cancelled: bool,
+    /// Files put in the synced folder: where (with "/"), in order (for a playlist they go into).
+    #[serde(skip)]
+    pub placed: Vec<String>,
 }
 
 /// What to move: a song in the library (it's removed after), or a file (copied: it stays where it is).
@@ -340,7 +343,7 @@ pub enum ToMove {
 /// Moves songs to sync: to the share, and into the synced folder here; a song's original goes once its synced
 /// copy is in the library (after the scan this starts). One at a time with the sync (its progress shows like
 /// a sync's).
-pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>) -> std::result::Result<MoveResult, SyncFailure> {
+pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>, playlist: Option<i64>) -> std::result::Result<MoveResult, SyncFailure> {
     let (settings, share) = with_stores(app, |library, stores| setup::current(library, stores, &setup::open))
         .and_then(|r| r)
         .map_err(|error| SyncFailure::Setup { error })?;
@@ -367,13 +370,22 @@ pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>) -> std::result::Result<
             };
             report(&Progress { files_done: done as u32, files_total: total, current: Some(label.clone()), ..Default::default() });
             match move_one(app, &library, share.as_ref(), target.as_deref(), &songs, layout, item) {
-                Ok(true) => result.moved += 1,
-                Ok(false) => result.already_there += 1,
+                Ok(Some(dest)) => {
+                    result.moved += 1;
+                    if matches!(item, ToMove::File { .. }) {
+                        result.placed.push(dest);
+                    }
+                }
+                Ok(None) => result.already_there += 1,
                 Err(e) => result.failed.push((label, e)),
             }
         }
         Ok(result)
     })?;
+    // Files that go into a playlist too: once the scan has found them (library/adding.rs).
+    if let Some(playlist) = playlist.filter(|_| !result.placed.is_empty()) {
+        library.wait_for_songs(folder.id, &result.placed, playlist)?;
+    }
     // The synced copies come into the library; then the originals go (see after_scan).
     scanner::scan_soon(app);
     Ok(result)
@@ -382,8 +394,8 @@ pub fn move_to_sync(app: &AppHandle, items: Vec<ToMove>) -> std::result::Result<
 /// Opens the file to move (once for the share, once for the synced folder here).
 type OpenFile = dyn Fn() -> Result<std::fs::File>;
 
-/// Moves one: returns whether it was put on the share (false: the same song was there already).
-fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Option<&dyn Share>, songs: &Songs, layout: Layout, item: &ToMove) -> Result<bool> {
+/// Moves one: returns where it was put on the share (None: the same song was there already).
+fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Option<&dyn Share>, songs: &Songs, layout: Layout, item: &ToMove) -> Result<Option<String>> {
     // A song on this computer's disk can be moved into the synced folder itself (no second copy).
     let mut original: Option<std::path::PathBuf> = None;
     let (open, dest, song): (Box<OpenFile>, String, Option<i64>) = match item {
@@ -394,7 +406,7 @@ fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Optio
                 let path = library.conn().query_row("SELECT path FROM tracks WHERE id = ?1", [synced], |r| r.get::<_, String>(0)).map_err(err)?;
                 let folder = library.synced_folder()?.ok_or("no share is set up")?;
                 library.record_move(*id, &share_path(&folder, &path).unwrap_or(path))?;
-                return Ok(false);
+                return Ok(None);
             }
             let file = library.song_file(*id)?;
             let dest = layout_path(layout, file.album_artist.as_deref(), file.artist.as_deref(), file.album.as_deref(), &file.file_name());
@@ -437,7 +449,7 @@ fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Optio
     if let Some(song) = song {
         library.record_move(song, &dest)?;
     }
-    Ok(true)
+    Ok(Some(dest))
 }
 
 /// Moves a song's file on this computer into the synced folder (a disk folder), when they're on the same drive.
@@ -571,7 +583,7 @@ fn move_new_songs(app: &AppHandle, folder: &Folder, songs: &Songs) -> Result<()>
         return Ok(());
     }
     let app = app.clone();
-    std::thread::spawn(move || match move_to_sync(&app, items) {
+    std::thread::spawn(move || match move_to_sync(&app, items, None) {
         Ok(r) => eprintln!("melue: moved {} new songs to sync ({} failed)", r.moved, r.failed.len()),
         Err(e) => eprintln!("melue: can't move new songs to sync: {e:?}"),
     });

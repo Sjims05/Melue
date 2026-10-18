@@ -13,7 +13,7 @@ import { count, totalLength } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { coverMenu, type CoverAction } from '@/components/covers'
-import { listAction, playList, songAction, trackSong } from '@/player/songs'
+import { listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
 import { setPageTitle } from '@/router'
 
 const route = useRoute()
@@ -44,10 +44,6 @@ const numberOf = (song: Song, index: number) => tracks.value.get(Number(song.id)
 // The heading's right-click menu: the album card's.
 const MENU = coverMenu({ kind: 'album' })
 
-function play(song: Song) {
-  if (song.id === current.value?.id) togglePlay()
-  else playList(source, { startAt: Number(song.id) })
-}
 </script>
 
 <template>
@@ -79,7 +75,7 @@ function play(song: Song) {
         :current-id="current?.id"
         :playing="!!nowPlaying.state?.isPlaying"
         :place="{ showInFolder: isDesktop }"
-        @play="play"
+        @play="playSong"
         @pause="togglePlay"
         @like="(song, liked) => like(Number(song.id), liked)"
         @action="songAction"

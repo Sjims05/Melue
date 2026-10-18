@@ -189,6 +189,22 @@ impl Library {
         self.add_folder_as(kind, &location, name, true)
     }
 
+    /// A fresh install on a computer starts with the Music folder (`music`), once: a library that has folders
+    /// already isn't given it, and removing it keeps it gone. (Computers only: a phone starts with all its music.)
+    #[cfg(any(desktop, test))]
+    pub fn add_music_folder_once(&self, music: Option<&std::path::Path>) -> Result<()> {
+        const OFFERED: &str = "music_folder_offered";
+        if self.setting(OFFERED)?.is_some() {
+            return Ok(());
+        }
+        if let Some(music) = music.filter(|m| m.is_dir()) {
+            if self.folders()?.is_empty() {
+                self.add_folder(FolderKind::Path, &music.to_string_lossy(), None)?;
+            }
+        }
+        self.set_setting(OFFERED, "1")
+    }
+
     /// Marks a folder as the synced one, or a normal folder again (the share removed: its songs stay).
     pub fn set_folder_synced(&self, id: i64, synced: bool) -> Result<Folder> {
         let changed = self.conn().execute("UPDATE folders SET synced = ?2 WHERE id = ?1", params![id, synced]).map_err(err)?;

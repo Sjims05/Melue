@@ -50,6 +50,10 @@ pub struct Playlist {
     pub not_here: i64,
     /// The first different covers of its songs, in order, for its picture.
     pub covers: Vec<String>,
+    /// Its own cover (set in Melue), shown instead of its songs' covers.
+    pub custom_cover: Option<String>,
+    /// Linked: its file is in the synced folder (every device has it; its cover syncs too).
+    pub file_synced: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -152,6 +156,28 @@ impl Library {
         tx.commit().map_err(err)
     }
 
+    /// Gives a playlist its own cover: a picture (JPEG, PNG or WebP, already cropped square; from a file, or later a
+    /// picture another service has for it), stored like songs' covers.
+    pub fn set_playlist_cover(&self, id: i64, picture: &[u8]) -> Result<Playlist> {
+        let cover = self.cover_for(picture)?.ok_or("that isn't a picture Melue can read (JPEG, PNG or WebP)")?;
+        let changed = self
+            .conn()
+            .execute("UPDATE playlists SET cover_id = ?2, updated_at = ?3, cover_changed_at = ?3 WHERE id = ?1", params![id, cover, now_ms()])
+            .map_err(err)?;
+        if changed == 0 {
+            return Err(format!("no playlist {id}"));
+        }
+        self.playlist(id)
+    }
+
+    /// Back to the playlist's default cover (its songs' covers).
+    pub fn clear_playlist_cover(&self, id: i64) -> Result<Playlist> {
+        self.conn()
+            .execute("UPDATE playlists SET cover_id = NULL, updated_at = ?2, cover_changed_at = ?2 WHERE id = ?1", params![id, now_ms()])
+            .map_err(err)?;
+        self.playlist(id)
+    }
+
     /// The playlists a song is in (as one of their songs: not greyed ones), for Add to playlist's ✓.
     pub fn playlists_with_track(&self, track_id: i64) -> Result<Vec<i64>> {
         let conn = self.conn();
@@ -183,7 +209,9 @@ impl Library {
                     count(e.id) FILTER (WHERE e.state = 'removed_here'),
                     p.file_path, p.file_missing_since IS NOT NULL, p.new_in_file, p.removed_from_file, p.write_back,
                     p.sync_id IS NOT NULL, p.local_only,
-                    count(e.id) FILTER (WHERE p.kind = 'app' AND e.track_id IS NULL), p.following
+                    count(e.id) FILTER (WHERE p.kind = 'app' AND e.track_id IS NULL), p.following,
+                    (SELECT c.file FROM covers c WHERE c.id = p.cover_id),
+                    coalesce((SELECT f.synced FROM folders f WHERE f.id = p.file_folder_id), 0)
              FROM playlists p
              LEFT JOIN playlist_entries e ON e.playlist_id = p.id
              LEFT JOIN tracks t ON t.id = e.track_id AND t.missing_since IS NULL
@@ -212,6 +240,8 @@ impl Library {
                     local_only: r.get(16)?,
                     not_here: r.get(17)?,
                     following: r.get(18)?,
+                    custom_cover: r.get(19)?,
+                    file_synced: r.get(20)?,
                     covers: Vec::new(),
                 })
             })

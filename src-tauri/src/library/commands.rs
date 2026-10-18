@@ -175,6 +175,57 @@ pub fn library_search(library: State<'_, Library>, query: String, limit: usize) 
     library.search(&query, limit)
 }
 
+/// Gives a playlist its own cover (`picture`: a JPEG, PNG or WebP, cropped square).
+#[tauri::command(async)]
+pub fn library_set_playlist_cover(app: AppHandle, library: State<'_, Library>, id: i64, picture: Vec<u8>) -> Result<Playlist> {
+    let playlist = library.set_playlist_cover(id, &picture)?;
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    Ok(playlist)
+}
+
+/// Back to a playlist's default cover.
+#[tauri::command(async)]
+pub fn library_clear_playlist_cover(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<Playlist> {
+    let playlist = library.clear_playlist_cover(id)?;
+    changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
+    Ok(playlist)
+}
+
+/// Adds music files (dropped on Melue, or picked) to a music folder on this computer: copied into
+/// `Artist/Album/`, then scanned in; `playlist`: they go into it too, once the scan has found them.
+#[tauri::command(async)]
+pub fn library_add_songs_to_folder(
+    app: AppHandle,
+    library: State<'_, Library>,
+    folder: i64,
+    files: Vec<String>,
+    playlist: Option<i64>,
+) -> Result<super::adding::AddResult> {
+    let result = library.copy_songs_into(folder, &files)?;
+    if let Some(playlist) = playlist {
+        library.wait_for_songs(folder, &result.placed, playlist)?;
+    }
+    scanner::scan_soon(&app);
+    Ok(result)
+}
+
+/// A picture dropped on Melue (a playlist's Change cover): its bytes. Only JPEG, PNG and WebP files up to 30 MB, so
+/// this can't read other files.
+#[tauri::command(async)]
+pub fn library_read_picture(path: String) -> Result<Vec<u8>> {
+    const PICTURES: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
+    let path = std::path::Path::new(&path);
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_lowercase();
+    if !PICTURES.contains(&extension.as_str()) {
+        return Err("that isn't a picture Melue can read (JPEG, PNG or WebP)".into());
+    }
+    let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+    if size > 30 * 1024 * 1024 {
+        return Err("that picture is too big (over 30 MB)".into());
+    }
+    std::fs::read(path).map_err(|e| e.to_string())
+}
+
 /// The playlists a song is in (Add to playlist's ✓).
 #[tauri::command(async)]
 pub fn library_playlists_with_track(library: State<'_, Library>, id: i64) -> Result<Vec<i64>> {

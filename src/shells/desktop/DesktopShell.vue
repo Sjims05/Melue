@@ -16,14 +16,20 @@ import { backLabel, goBack, MAIN_PAGES } from '@/router'
 import { PLAYLIST_PICKER } from '@/components/songs'
 import { startNowPlaying } from '@/player/nowPlaying'
 import { playlistPicker } from '@/player/playlistPicker'
+import { followOnlyHere } from '@/library/onlyHere'
+import ConfirmHost from './ConfirmHost.vue'
+import DropSongs from '@/settings/DropSongs.vue'
 import DotsNav from './DotsNav.vue'
 import PlayerBar from './PlayerBar.vue'
+import Toasts from './Toasts.vue'
 import TopBar from './TopBar.vue'
 
 const route = useRoute()
 const router = useRouter()
 // What's playing, for the player bar and Now playing; the song menus' Add to playlist.
 startNowPlaying()
+// Which songs are only on this device (their badge, Move to sync).
+followOnlyHere()
 provide(PLAYLIST_PICKER, playlistPicker)
 
 // The main page shown (under a page opened on top, the one it was opened from), and which way the dots went.
@@ -110,6 +116,8 @@ router.afterEach((to, from) => {
             </div>
           </Transition>
         </RouterView>
+        <!-- Notes like "Added to the queue", just above the player bar (over any page). -->
+        <Toasts />
       </div>
       <!-- The player bar, except on Now playing itself (not under a page opened from it): it slides away down. -->
       <div
@@ -118,6 +126,10 @@ router.afterEach((to, from) => {
       >
         <div class="min-h-0 overflow-hidden"><PlayerBar /></div>
       </div>
+      <!-- Music files dragged over Melue, on any page: the drop area, then the question. -->
+      <DropSongs />
+      <!-- Questions asked from anywhere (lib/confirm.ts: a song's Move to sync). -->
+      <ConfirmHost />
     </div>
   </TooltipProvider>
 </template>

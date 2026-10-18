@@ -149,3 +149,16 @@ fn changes_to_a_playlists_songs_name_the_playlist() {
     let edit = LibraryChange::playlist(p, vec![s[1], s[0], s[1]]);
     assert_eq!((edit.reason, edit.tracks, edit.sources), (ChangeReason::Playlists, vec![s[0], s[1]], vec![format!("playlist:{p}")]));
 }
+
+#[test]
+fn a_playlist_gets_its_own_cover_and_keeps_it_when_covers_are_cleaned() {
+    let t = TestLibrary::new("playlist-cover");
+    let p = t.library.create_playlist("Mix").unwrap().id;
+    assert!(t.library.set_playlist_cover(p, b"not a picture").is_err());
+    let picture = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/testdata/cover.png")).unwrap();
+    let with = t.library.set_playlist_cover(p, &picture).unwrap();
+    let cover = with.custom_cover.clone().expect("its own cover");
+    t.library.clean_covers().unwrap();
+    assert!(t.library.covers_dir().join(super::covers::file_name(&cover, 300)).exists(), "kept by the cleaning");
+    assert_eq!(t.library.clear_playlist_cover(p).unwrap().custom_cover, None);
+}

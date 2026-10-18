@@ -116,13 +116,13 @@ function bigAlbums() {
 const playlist = (id: number, name: string, extra: Record<string, unknown>) => ({
   id, name, kind: 'app', entries: 8, available: 8, suggested: 0, removedHere: 0, file: null, fileMissing: false, newInFile: 'added',
   removedFromFile: 'removed', writeBack: false, following: true, durationMs: 31 * 60_000, synced: true, localOnly: false, notHere: 0, covers: [],
-  createdAt: 0, updatedAt: 0, ...extra,
+  customCover: null as string | null, fileSynced: false, createdAt: 0, updatedAt: 0, ...extra,
 })
 let playlists = [
   playlist(10, 'Night Drive', {}),
   playlist(11, 'Focus', { synced: false, localOnly: true }),
   playlist(12, 'Road trip', { entries: 9, available: 8 }),
-  playlist(13, 'Melue test', { kind: 'linked', synced: false, file: 'Melue test.m3u' }),
+  playlist(13, 'Melue test', { kind: 'linked', synced: false, file: 'Melue test.m3u', fileSynced: true }),
 ]
 
 // Playlists: the auto ones (one hidden), and two deleted lately.
@@ -207,6 +207,10 @@ async function pretendSync() {
 }
 
 export function installBrowserPreview() {
+  // Covers set here are blob addresses (library_set_playlist_cover): the picture, whatever size is asked for.
+  ;(window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__ ??= {}
+  ;(window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__.convertFileSrc = (path: string) =>
+    path.startsWith('blob:') ? path.replace(/-(300|1000)\.jpg$/, '') : `https://cover.localhost/${encodeURIComponent(path)}`
   mockIPC(
     async (cmd, args) => {
       const a = (args ?? {}) as Record<string, unknown>
@@ -267,6 +271,13 @@ export function installBrowserPreview() {
           playlists = [made, ...playlists]
           return made
         }
+        case 'library_set_playlist_cover': {
+          // Its cover: the picture itself, as a blob address (convertFileSrc below hands it back as it is).
+          const cover = URL.createObjectURL(new Blob([new Uint8Array(a.picture as number[])], { type: 'image/jpeg' }))
+          playlists = playlists.map((p) => (p.id === a.id ? { ...p, customCover: cover } : p))
+          return playlists.find((p) => p.id === a.id)
+        }
+        case 'library_clear_playlist_cover': playlists = playlists.map((p) => (p.id === a.id ? { ...p, customCover: null } : p)); return playlists.find((p) => p.id === a.id)
         case 'library_rename_playlist': playlists = playlists.map((p) => (p.id === a.id ? { ...p, name: a.name as string } : p)); return playlists.find((p) => p.id === a.id)
         case 'library_delete_playlist': playlists = playlists.filter((p) => p.id !== a.id); return null
         case 'playlist_conflicts': return [{ syncId: 's1', kind: 'changed', name: 'Road trip', deviceName: 'Phone', playlistId: 12, foundAt: 0 }]
@@ -310,6 +321,14 @@ export function installBrowserPreview() {
           queueItems = []
           playerState = { ...playerState, isPlaying: false, queueIndex: -1, queueLength: 0, currentId: 0, currentTime: 0, duration: 0 }
           return null
+        case 'plugin:native-audio|add_to_queue': {
+          // Play next: right after the playing song; else at the end.
+          const items = a.items as typeof queueItems
+          const at = a.playNext ? playerState.queueIndex + 1 : queueItems.length
+          queueItems = [...queueItems.slice(0, at), ...items, ...queueItems.slice(at)]
+          playerState = { ...playerState, queueLength: queueItems.length }
+          return playerState
+        }
         case 'plugin:native-audio|play': playerState = { ...playerState, isPlaying: true }; return playerState
         case 'plugin:native-audio|pause': playerState = { ...playerState, isPlaying: false }; return playerState
         case 'plugin:native-audio|next': return atIndex(Math.min(queueItems.length - 1, playerState.queueIndex + 1))
@@ -333,6 +352,10 @@ export function installBrowserPreview() {
         }
         case 'library_liked_ids': return [202]
         case 'library_tracks_by_ids': return queueTracks(a.ids as number[])
+        case 'library_queue_items_for': {
+          const all = bigLibrary('title')
+          return (a.ids as number[]).map((id) => all.find((t) => t.id === id)).filter((t) => !!t).map((t) => ({ id: t.id, src: `C:/Music/${t.title}.mp3`, title: t.title, artist: t.artist, album: t.album }))
+        }
         case 'library_tracks': return bigLibrary(a.sort as string).slice(a.offset as number, (a.offset as number) + (a.limit as number))
         case 'library_albums': return bigAlbums()
         case 'library_search': {
