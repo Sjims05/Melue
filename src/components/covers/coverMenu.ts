@@ -5,7 +5,7 @@
  * lives (About syncing / "This device" / following a file); an auto playlist hides. A song's card uses the
  * song's own menu (songMenu): Add to playlist is for songs only.
  */
-import { Cloud, EyeOff, Info, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
+import { Cloud, EyeOff, FileDown, Info, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
 import { NextIcon, PlayIcon } from '@/components/player/icons'
 import type { Component } from 'vue'
 
@@ -23,6 +23,7 @@ export type CoverAction =
   | 'delete'
   | 'hide'
   | 'about'
+  | 'export'
 
 /** What the card is; a playlist also says where it lives. */
 export type CoverKind =
@@ -45,7 +46,8 @@ export interface MenuItem<A extends string = string> {
   apart?: boolean
 }
 
-export function coverMenu(what: CoverKind): MenuItem<CoverAction>[] {
+/** `exportable`: a playlist's or a Made for you list's Export as .m3u8 (desktop). */
+export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAction>[] {
   const items: MenuItem<CoverAction>[] = [
     { action: 'play', label: 'Play', icon: PlayIcon },
     { action: 'shuffle', label: 'Shuffle', icon: Shuffle },
@@ -77,6 +79,12 @@ export function coverMenu(what: CoverKind): MenuItem<CoverAction>[] {
     )
   } else if (what.kind === 'auto') {
     items.push({ action: 'hide', label: 'Hide', icon: EyeOff, apart: true })
+  }
+  if (exportable && (what.kind === 'playlist' || what.kind === 'auto')) {
+    // After Rename (a playlist), before Delete.
+    const at = items.findIndex((i) => i.action === 'delete' || i.action === 'hide')
+    items.splice(at, 0, { action: 'export', label: 'Export as .m3u8…', icon: FileDown, apart: what.kind === 'playlist' })
+    if (what.kind === 'auto') items[at + 1] = { ...items[at + 1], apart: false }
   }
   return items
 }

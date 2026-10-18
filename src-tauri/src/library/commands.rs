@@ -161,6 +161,26 @@ pub fn library_let_go_files(library: State<'_, Library>) -> Result<Vec<super::li
     library.let_go_files()
 }
 
+/// Takes a let-go playlist file whose file is gone off the list.
+#[tauri::command(async)]
+pub fn library_forget_let_go_file(app: AppHandle, library: State<'_, Library>, folder_id: i64, path: String) -> Result<()> {
+    library.forget_let_go_file(folder_id, &path)?;
+    changes::emit(&app, LibraryChange::playlist(0, Vec::new()));
+    Ok(())
+}
+
+/// The playlists a song is in (Add to playlist's ✓).
+#[tauri::command(async)]
+pub fn library_playlists_with_track(library: State<'_, Library>, id: i64) -> Result<Vec<i64>> {
+    library.playlists_with_track(id)
+}
+
+/// Exports a list's songs as an .m3u8 playlist file at `path`. Resolves with how many songs it holds.
+#[tauri::command(async)]
+pub fn library_export_playlist(library: State<'_, Library>, source: String, path: String) -> Result<usize> {
+    library.export_m3u(&source, std::path::Path::new(&path))
+}
+
 /// Stops or starts following a linked playlist's file; following again scans, to show how it differs from the file.
 #[tauri::command(async)]
 pub fn library_set_playlist_following(app: AppHandle, library: State<'_, Library>, id: i64, following: bool) -> Result<()> {

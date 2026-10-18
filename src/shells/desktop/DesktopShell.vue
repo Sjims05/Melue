@@ -9,19 +9,22 @@
  * opened from it slides in over it the same way. The player bar sits at the bottom, except on Now playing.
  */
 import { onKeyStroke } from '@vueuse/core'
-import { computed, nextTick, ref, shallowRef, watch, type Component } from 'vue'
+import { computed, nextTick, provide, ref, shallowRef, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { backLabel, goBack, MAIN_PAGES } from '@/router'
+import { PLAYLIST_PICKER } from '@/components/songs'
 import { startNowPlaying } from '@/player/nowPlaying'
+import { playlistPicker } from '@/player/playlistPicker'
 import DotsNav from './DotsNav.vue'
 import PlayerBar from './PlayerBar.vue'
 import TopBar from './TopBar.vue'
 
 const route = useRoute()
 const router = useRouter()
-// What's playing, for the player bar and Now playing.
+// What's playing, for the player bar and Now playing; the song menus' Add to playlist.
 startNowPlaying()
+provide(PLAYLIST_PICKER, playlistPicker)
 
 // The main page shown (under a page opened on top, the one it was opened from), and which way the dots went.
 const main = shallowRef<{ path: string; component: Component } | null>(null)
@@ -96,7 +99,8 @@ router.afterEach((to, from) => {
         <!-- A page opened on top: a layer with its own top bar, sliding in from the right over everything. -->
         <RouterView v-slot="{ Component, route: shown }">
           <Transition :name="motion" :duration="340">
-            <div v-if="!shown.meta.main" :key="layerKey" class="absolute inset-0 z-20 flex flex-col bg-background">
+            <!-- Not before a page is known (starting, or a reload): the blank starting point isn't a page on top. -->
+            <div v-if="shown.matched.length && !shown.meta.main" :key="layerKey" class="absolute inset-0 z-20 flex flex-col bg-background">
               <TopBar :back="backLabel" :search="shown.name !== 'search'" />
               <div data-scroller class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
                 <main class="app-column pb-24"><component :is="Component" /></main>

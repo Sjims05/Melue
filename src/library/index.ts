@@ -153,6 +153,8 @@ export interface LetGoFile {
   folder: string
   /** Where it is in that folder. */
   path: string
+  /** The file isn't there any more: it can be forgotten, not followed. */
+  gone: boolean
 }
 
 /** A song in a playlist. The same song can be in a playlist twice: each entry has its own id. */
@@ -423,6 +425,12 @@ export const library = {
   unlinkPlaylist: (id: number) => invoke<Playlist>('library_unlink_playlist', { id }),
   /** Playlist files let go of (unlinked, or their playlist deleted): not linked again until followed again. */
   letGoFiles: () => invoke<LetGoFile[]>('library_let_go_files'),
+  /** Takes a let-go file whose file is gone off the list. */
+  forgetLetGoFile: (folderId: number, path: string) => invoke<void>('library_forget_let_go_file', { folderId, path }),
+  /** The playlists a song is in (Add to playlist's ✓). */
+  playlistsWithTrack: (id: number) => invoke<number[]>('library_playlists_with_track', { id }),
+  /** Exports a list's songs as an .m3u8 file at `path`. Resolves with how many songs it holds. */
+  exportPlaylist: (source: Source, path: string) => invoke<number>('library_export_playlist', { source, path }),
   /** Stops or starts following a linked playlist's file (following again shows how it differs from the file). */
   setPlaylistFollowing: (id: number, following: boolean) => invoke<void>('library_set_playlist_following', { id, following }),
   /** Linked playlists deleted with your changes in the last 30 days (this device). */

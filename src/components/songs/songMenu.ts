@@ -2,7 +2,7 @@
  * A song's menu (its ⋯ button and right-click): what it offers depends on the song and where it is (in a playlist,
  * on a desktop, with a share). The same items for both menus.
  */
-import { CloudUpload, Disc3, FolderOpen, Heart, ListEnd, ListX, User } from '@lucide/vue'
+import { CloudUpload, Disc3, FolderOpen, Heart, ListEnd, ListMusic, ListX, User } from '@lucide/vue'
 import { NextIcon } from '@/components/player/icons'
 import type { MenuItem } from '@/components/covers/coverMenu'
 
@@ -68,7 +68,8 @@ export function songMenu(song: Song, place: SongMenuPlace = {}): SongMenuItem[] 
     { action: 'like', label: song.liked ? 'Remove from liked' : 'Add to liked', icon: Heart, filled: song.liked },
     ...(song.album ? [{ action: 'goToAlbum' as const, label: 'Go to album', icon: Disc3 }] : []),
     { action: 'goToArtist', label: 'Go to artist', icon: User },
-    // Add to playlist comes with the Playlists page.
+    // A submenu (AddToPlaylist.vue), only for songs in the library.
+    ...(typeof song.id === 'number' ? [{ action: 'addToPlaylist' as const, label: 'Add to playlist', icon: ListMusic }] : []),
   ]
   const extras: SongMenuItem[] = [
     ...(place.showInFolder ? [{ action: 'showInFolder' as const, label: 'Show in folder', icon: FolderOpen }] : []),

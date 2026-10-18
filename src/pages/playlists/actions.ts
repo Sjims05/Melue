@@ -8,7 +8,7 @@ import { ref } from 'vue'
 import type { CoverAction } from '@/components/covers'
 import { library, type Playlist } from '@/library'
 import { librarySync } from '@/library/sync'
-import { listAction } from '@/player/songs'
+import { exportList, listAction } from '@/player/songs'
 
 /** A question or explanation about a playlist: delete it? stop following its file? about how it lives. */
 export type PlaylistAsk = { what: 'delete' | 'unlink' | 'about'; playlist: Playlist }
@@ -23,6 +23,8 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
     else if (action === 'keepHereOnly' || action === 'syncEverywhere') {
       await librarySync.setPlaylistLocalOnly(p.id, action === 'keepHereOnly')
       await changed()
+    } else if (action === 'export') {
+      await exportList(`playlist:${p.id}`, p.name)
     } else if (action === 'follow') {
       await library.setPlaylistFollowing(p.id, true)
       await changed()

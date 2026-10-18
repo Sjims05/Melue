@@ -852,19 +852,26 @@ pub struct LetGoFile {
     pub folder: String,
     /// Where it is in that folder.
     pub path: String,
+    /// The file isn't there any more (deleted or moved): it can be forgotten, not followed. Only known for folders
+    /// on a disk; a file that comes back is an ordinary let-go file again (and still not linked unasked).
+    pub gone: bool,
 }
 
 impl Library {
     /// The playlist files let go of, by folder and path (Settings: "Follow again").
     pub fn let_go_files(&self) -> Result<Vec<LetGoFile>> {
-        let names: HashMap<i64, String> = self.folders()?.into_iter().map(|f| (f.id, f.name)).collect();
+        let folders: HashMap<i64, Folder> = self.folders()?.into_iter().map(|f| (f.id, f)).collect();
         let conn = self.conn();
         let mut stmt = conn.prepare("SELECT folder_id, path FROM playlist_files_ignored ORDER BY folder_id, path").map_err(err)?;
         let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
         let files = rows.collect::<rusqlite::Result<Vec<_>>>().map_err(err)?;
         Ok(files
             .into_iter()
-            .map(|(folder_id, path)| LetGoFile { folder: names.get(&folder_id).cloned().unwrap_or_default(), folder_id, path })
+            .map(|(folder_id, path)| {
+                let folder = folders.get(&folder_id);
+                let gone = folder.is_some_and(|f| f.kind == FolderKind::Path && !local_path(f, &path).exists());
+                LetGoFile { folder: folder.map(|f| f.name.clone()).unwrap_or_default(), folder_id, path, gone }
+            })
             .collect())
     }
 
@@ -874,6 +881,11 @@ impl Library {
             .execute("DELETE FROM playlist_files_ignored WHERE folder_id = ?1 AND path = ?2", params![folder_id, path])
             .map(|_| ())
             .map_err(err)
+    }
+
+    /// Takes a let-go file off the list (its file is gone: there's nothing to follow again).
+    pub fn forget_let_go_file(&self, folder_id: i64, path: &str) -> Result<()> {
+        self.follow_file_again(folder_id, path)
     }
 
     /// Stops or starts following a linked playlist's file. Following again: the next scan reads the file and shows

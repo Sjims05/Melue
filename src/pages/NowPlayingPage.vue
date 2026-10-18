@@ -14,7 +14,7 @@ import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PlannedCard } from '@/components/page'
 import Slider from '@/components/player/Slider.vue'
-import { songMenu, SongList } from '@/components/songs'
+import { AddToPlaylist, songMenu, SongList } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { appearance, primaryArea } from '@/lib/appearance'
@@ -176,7 +176,9 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
             <DropdownMenuContent align="center" class="min-w-48">
               <template v-for="item in menu" :key="item.action">
                 <DropdownMenuSeparator v-if="item.apart" />
+                <AddToPlaylist v-if="item.action === 'addToPlaylist'" :song="current" in="dropdown" />
                 <DropdownMenuItem
+                  v-else
                   :variant="item.danger ? 'destructive' : 'default'"
                   @select="songAction(current, item.action)"
                 >

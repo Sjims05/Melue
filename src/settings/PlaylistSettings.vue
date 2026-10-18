@@ -93,10 +93,16 @@ const setTopSize = (size: number) => act(() => Promise.all(top.value.map((p) => 
     <template v-if="letGo.length">
       <SettingsLabel>Playlist files you let go of</SettingsLabel>
       <SettingsCard>
-        <SettingsRow v-for="f in letGo" :key="`${f.folderId}:${f.path}`" :title="f.path.split(/[\\/]/).pop() ?? f.path" :description="`${f.folder} · ${f.path}`">
-          <Button variant="outline" size="sm" @click="act(() => library.followFileAgain(f.folderId, f.path))">Follow again</Button>
+        <SettingsRow
+          v-for="f in letGo"
+          :key="`${f.folderId}:${f.path}`"
+          :title="f.path.split(/[\\/]/).pop() ?? f.path"
+          :description="f.gone ? `File gone · ${f.folder} · ${f.path}` : `${f.folder} · ${f.path}`"
+        >
+          <Button v-if="f.gone" variant="outline" size="sm" @click="act(() => library.forgetLetGoFile(f.folderId, f.path))">Forget</Button>
+          <Button v-else variant="outline" size="sm" @click="act(() => library.followFileAgain(f.folderId, f.path))">Follow again</Button>
         </SettingsRow>
-        <SettingsRow description="Files you stopped following, or whose playlist you deleted. Following one again makes it a new playlist." />
+        <SettingsRow description="Playlist files whose playlist you deleted: following one again makes it a new playlist, as the file has it. A file that’s gone can be forgotten." />
       </SettingsCard>
     </template>
   </template>

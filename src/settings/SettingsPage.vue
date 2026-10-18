@@ -6,7 +6,8 @@
  * and opens at a setting when asked (?setting=sync.atStart).
  */
 import { useIntervalFn } from '@vueuse/core'
-import { computed, nextTick, onMounted, provide, ref } from 'vue'
+import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { PageHeader } from '@/components/page'
 import { SETTING_MENU, SettingsHeading, SettingsLabel } from '@/components/settings'
 import { isAndroid } from '@/platform'
@@ -54,11 +55,12 @@ const summary = computed(() => {
   return `Synced ${ago(s.last.atMs, now.value)} · ${r.copied} copied · ${r.moved} moved · ${r.removed} removed`
 })
 
-// A setting's link: the page opens at it (once its rows are there).
-onMounted(() => {
-  const asked = new URLSearchParams(location.search).get('setting')
-  if (asked) setTimeout(() => nextTick(() => goToSetting(asked)), 600)
-})
+// A setting's link (melue://settings/<id>, pasted in Search: ?setting=<id>): the page opens at it, once its rows are
+// there (and it has slid in).
+const route = useRoute()
+const openAt = (asked: unknown) => typeof asked === 'string' && asked && setTimeout(() => nextTick(() => goToSetting(asked)), 600)
+watch(() => route.query.setting, openAt, { immediate: true })
+onMounted(() => openAt(new URLSearchParams(location.search).get('setting')))
 
 const shareSection = ref<HTMLElement>()
 const toShare = () => shareSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })

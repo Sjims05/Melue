@@ -2,15 +2,17 @@
 /**
  * The heading of a page that is a list to play (an album, a folder, a playlist; Melue's design): its big cover on the
  * left; at its right, badges (the `badges` slot), the title, a grey line (the `line` slot: "Album · Juniper Vale ·
- * 2023 · 12 songs · 48 min", with links), and Play and Shuffle (the `actions` slot after them: a playlist's ⋯).
+ * 2023 · 12 songs · 48 min", with links), and Play and Shuffle (the `actions` slot after them: a Top songs list's
+ * size), then ⋯ with `menu`.
  * `editable`: the title is a button that turns into a text field with the name in it (also `rename()` from outside,
- * a menu's Rename): Enter or leaving it saves (`rename`), Escape doesn't. `menu`: the right-click menu of the whole
- * heading (the cover, the title, anywhere in it), the list's card menu (`action`).
+ * a menu's Rename): Enter or leaving it saves (`rename`), Escape doesn't. `menu`: the list's card menu (`action`), in
+ * the ⋯ button and as the right-click menu of the whole heading (the cover, the title, anywhere in it).
  */
-import { Shuffle } from '@lucide/vue'
+import { Ellipsis, Shuffle } from '@lucide/vue'
 import { nextTick, ref, type Component } from 'vue'
 import { Cover, type CoverColors, type MenuItem } from '@/components/covers'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PlayIcon } from '@/components/player/icons'
 import { Button } from '@/components/ui/button'
 
@@ -72,6 +74,19 @@ defineExpose({ rename })
             <Button size="lg" :disabled="empty" @click="emit('play')"><PlayIcon class="size-3.5" />Play</Button>
             <Button size="lg" variant="outline" :disabled="empty" @click="emit('shuffle')"><Shuffle />Shuffle</Button>
             <slot name="actions" />
+            <DropdownMenu v-if="menu?.length">
+              <DropdownMenuTrigger as-child>
+                <Button size="icon-lg" variant="outline" :aria-label="`${title}: more`"><Ellipsis /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" class="min-w-52">
+                <template v-for="item in menu" :key="item.action">
+                  <DropdownMenuSeparator v-if="item.apart" />
+                  <DropdownMenuItem :variant="item.danger ? 'destructive' : 'default'" @select="emit('action', item.action)">
+                    <component :is="item.icon" />{{ item.label }}
+                  </DropdownMenuItem>
+                </template>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>

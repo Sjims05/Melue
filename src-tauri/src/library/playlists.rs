@@ -152,6 +152,15 @@ impl Library {
         tx.commit().map_err(err)
     }
 
+    /// The playlists a song is in (as one of their songs: not greyed ones), for Add to playlist's ✓.
+    pub fn playlists_with_track(&self, track_id: i64) -> Result<Vec<i64>> {
+        let conn = self.conn();
+        let sql = format!("SELECT DISTINCT playlist_id FROM playlist_entries WHERE track_id = ?1 AND state IN {IN_MELUE}");
+        let mut stmt = conn.prepare(&sql).map_err(err)?;
+        let ids = stmt.query_map([track_id], |r| r.get(0)).map_err(err)?;
+        ids.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+
     /// Every playlist, by name.
     pub fn playlists(&self) -> Result<Vec<Playlist>> {
         let ids: Vec<i64> = {

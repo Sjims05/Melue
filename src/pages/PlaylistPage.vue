@@ -2,19 +2,18 @@
 /**
  * One of your playlists (Melue's design, opened on top): its covers, badges (Synced / This device / Linked, the
  * file's name, File gone), its name (click it to rename), "Playlist · 12 songs · 48 min", Play, Shuffle and ⋯ (its
- * card's menu). Then its songs in order: drag to move, ✕ to take out. Missing songs stay greyed at their place, as do
+ * card's menu, also on right-clicking the heading). Then its songs in order: drag to move, ✕ to take out. Missing songs stay greyed at their place, as do
  * songs another device added that aren't on this device yet; a linked playlist's songs new in the file or removed here
  * are greyed with Add / Restore. It follows the library.
  */
-import { CircleAlert, Cloud, Ellipsis, FileText, Link, Lock, Unlink } from '@lucide/vue'
-import { computed, onUnmounted, ref } from 'vue'
+import { CircleAlert, Cloud, FileText, Link, Lock, Unlink } from '@lucide/vue'
+import { computed, nextTick, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { ListHeader } from '@/components/page'
 import { SettingsBadge, SettingsTip } from '@/components/settings'
 import { SongList, type Song, type SongAction } from '@/components/songs'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { library, type Playlist, type PlaylistEntry, type Source } from '@/library'
 import { librarySync, sync, type PlaylistConflict } from '@/library/sync'
 import { isDesktop } from '@/platform/platform'
@@ -36,6 +35,8 @@ const source: Source = `playlist:${id}`
 const playlist = ref<Playlist | null>()
 const entries = ref<PlaylistEntry[]>([])
 const conflict = ref<PlaylistConflict | null>(null)
+// Made from a song's menu (?rename=1): its name ready to type once it's shown.
+let renameFirst = route.query.rename === '1'
 async function load() {
   const [found, list, conflicts] = await Promise.all([
     library.playlist(id).catch(() => null),
@@ -46,6 +47,11 @@ async function load() {
   entries.value = list
   conflict.value = conflicts.find((c) => c.playlistId === id) ?? null
   if (found) setPageTitle(here, found.name)
+  if (found && renameFirst) {
+    renameFirst = false
+    await nextTick()
+    header.value?.rename()
+  }
 }
 load()
 const stops = [library.onChange((change) => change.reason !== 'likes' && load()), librarySync.onConflicts(() => load())]
@@ -116,7 +122,7 @@ async function act(song: Song, action: SongAction) {
 // ---- The playlist itself: rename (its name, or the menu), the rest of its menu
 const header = ref<InstanceType<typeof ListHeader> | null>(null)
 const { asking, act: actOnPlaylist, rename, confirm } = usePlaylistActions(load, goBack)
-const menu = computed(() => (playlist.value ? coverMenu(playlistKind(playlist.value, sync.available)) : []))
+const menu = computed(() => (playlist.value ? coverMenu(playlistKind(playlist.value, sync.available), isDesktop) : []))
 function pick(action: CoverAction) {
   if (!playlist.value) return
   if (action === 'rename') header.value?.rename()
@@ -150,21 +156,6 @@ const choosing = ref(false)
           <SettingsBadge v-if="playlist.fileMissing" class="h-7 gap-1.5 px-2.5 text-[13px] text-destructive"><CircleAlert class="size-3.5" />File gone</SettingsBadge>
         </template>
         <template #line>Playlist · {{ playlistLine(playlist) }}</template>
-        <template #actions>
-          <DropdownMenu>
-            <DropdownMenuTrigger as-child>
-              <Button size="icon-lg" variant="outline" :aria-label="`${playlist.name}: more`"><Ellipsis /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" class="min-w-52">
-              <template v-for="item in menu" :key="item.action">
-                <DropdownMenuSeparator v-if="item.apart" />
-                <DropdownMenuItem :variant="item.danger ? 'destructive' : 'default'" @select="pick(item.action)">
-                  <component :is="item.icon" />{{ item.label }}
-                </DropdownMenuItem>
-              </template>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </template>
       </ListHeader>
 
       <SettingsTip v-if="conflict" kind="bad" class="mb-6">

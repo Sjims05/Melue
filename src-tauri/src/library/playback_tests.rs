@@ -245,6 +245,27 @@ fn all_songs_play_in_the_songs_tabs_order() {
 }
 
 #[test]
+fn a_list_exports_as_an_m3u8_with_its_songs_in_order() {
+    let (t, m, f) = setup("play-export");
+    m.add("b.wav", &song("Bé", "Bänd", "", 1));
+    m.add("a.wav", &song("A", "", "", 1));
+    t.scan(f, &m);
+    let out = m.path("export.m3u8");
+    assert_eq!(t.library.export_m3u("songs", &out).unwrap(), 2);
+    let text = std::fs::read_to_string(&out).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines[0], "#EXTM3U");
+    assert!(lines[1].starts_with("#EXTINF:") && lines[1].ends_with(",A"), "{}", lines[1]);
+    assert!(lines[2].ends_with("a.wav"));
+    assert!(lines[3].ends_with(",Bänd - Bé"), "UTF-8 names: {}", lines[3]);
+    // Which playlists hold a song (Add to playlist's ✓).
+    let p = t.library.create_playlist("Mix").unwrap().id;
+    t.library.add_to_playlist(p, &[track(&t, "b.wav")], None).unwrap();
+    assert_eq!(t.library.playlists_with_track(track(&t, "b.wav")).unwrap(), vec![p]);
+    assert!(t.library.playlists_with_track(track(&t, "a.wav")).unwrap().is_empty());
+}
+
+#[test]
 fn queue_items_for_songs_keep_their_order() {
     let (t, m, f) = setup("play-items-for");
     m.add("a.wav", &song("A", "Band", "", 1));

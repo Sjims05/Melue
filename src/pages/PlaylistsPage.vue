@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/button'
 import { library, type AutoPlaylist, type DeletedLinkedPlaylist, type Playlist } from '@/library'
 import { librarySync, sync, type DeletedPlaylist, type PlaylistConflict } from '@/library/sync'
 import { count } from '@/lib/format'
-import { listAction } from '@/player/songs'
+import { isDesktop } from '@/platform/platform'
+import { exportList, listAction } from '@/player/songs'
 import { usePlaylistActions } from './playlists/actions'
 import ConflictDialog from './playlists/ConflictDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
@@ -58,9 +59,10 @@ async function create() {
 }
 
 // ---- Made for you
-const AUTO_MENU = coverMenu({ kind: 'auto' })
+const AUTO_MENU = coverMenu({ kind: 'auto' }, isDesktop)
 async function actAuto(a: AutoPlaylist, action: CoverAction) {
   if (action === 'hide') autos.value = await library.setAutoPlaylist(a.source, { hidden: true })
+  else if (action === 'export') await exportList(a.source, a.name.replace(': ', ', '))
   else await listAction(a.source, action)
 }
 
@@ -93,7 +95,7 @@ const choosing = ref<PlaylistConflict | null>(null)
           :title="p.name"
           :subtitle="playlistLine(p)"
           v-bind="playlistCover(p)"
-          :menu="coverMenu(playlistKind(p, sync.available))"
+          :menu="coverMenu(playlistKind(p, sync.available), isDesktop)"
           :editing="renaming === p.id"
           @open="conflictOf(p) ? (choosing = conflictOf(p)!) : router.push(`/playlist/${p.id}`)"
           @action="(action) => act(p, action as CoverAction)"

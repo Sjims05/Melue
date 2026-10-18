@@ -40,6 +40,20 @@ export async function playList(source: Source, options: { shuffle?: boolean; sta
   await playSource(source, { startAt: options.startAt })
 }
 
+/**
+ * Exports a list as an .m3u8 (Save as, in your Music folder, named after it); the file has each song's full path, its
+ * title, artist and length. Resolves with where it went (nothing when cancelled).
+ */
+export async function exportList(source: Source, name: string): Promise<string | null> {
+  const { save } = await import('@tauri-apps/plugin-dialog')
+  const { audioDir, join } = await import('@tauri-apps/api/path')
+  const file = `${name.replace(/[\\/:*?"<>|]/g, '').trim() || 'Playlist'}.m3u8`
+  const path = await save({ defaultPath: await join(await audioDir().catch(() => ''), file), filters: [{ name: 'Playlist', extensions: ['m3u8'] }] })
+  if (!path) return null
+  await library.exportPlaylist(source, path)
+  return path
+}
+
 /** Does what a list's card menu item (or button) says; `artistId`: its artist's page (an album's Go to artist). */
 export async function listAction(source: Source, action: CoverAction, artistId?: number | null) {
   switch (action) {

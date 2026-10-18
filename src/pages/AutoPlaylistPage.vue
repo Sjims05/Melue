@@ -5,20 +5,18 @@
  * "Made for you", its name and line, Play, Shuffle and ⋯ (its card's menu: Hide). The songs scroll like the Songs tab
  * (only what's on screen is drawn). It follows the library and your likes.
  */
-import { Ellipsis, Sparkles } from '@lucide/vue'
+import { Sparkles } from '@lucide/vue'
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { ListHeader } from '@/components/page'
 import { Segmented, SettingsBadge } from '@/components/settings'
 import { letterOf, VirtualSongList, type Song } from '@/components/songs'
-import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { AUTO_PLAYLIST_SIZES, library, type AutoPlaylist, type Source, type Track } from '@/library'
 import { count, totalLength } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
-import { listAction, playList, songAction, trackSong } from '@/player/songs'
+import { exportList, listAction, playList, songAction, trackSong } from '@/player/songs'
 import { goBack, setPageTitle } from '@/router'
 import { autoCard } from './playlists/playlists'
 
@@ -66,8 +64,9 @@ function play(song: Song) {
   if (song.id === current.value?.id) togglePlay()
   else playList(source, { startAt: Number(song.id) })
 }
-const MENU = coverMenu({ kind: 'auto' })
+const MENU = coverMenu({ kind: 'auto' }, isDesktop)
 async function pick(action: CoverAction) {
+  if (action === 'export') return exportList(source, auto.value?.name.replace(': ', ', ') ?? 'Playlist')
   await listAction(source, action)
   if (action === 'hide') {
     await library.setAutoPlaylist(source, { hidden: true })
@@ -96,17 +95,6 @@ async function pick(action: CoverAction) {
         <template #line>{{ line }}</template>
         <template #actions>
           <Segmented v-if="top && auto.size" :model-value="auto.size" :options="SIZES" class="self-center" @update:model-value="resize" />
-          <DropdownMenu>
-            <DropdownMenuTrigger as-child>
-              <Button size="icon-lg" variant="outline" :aria-label="`${card.title}: more`"><Ellipsis /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" class="min-w-52">
-              <template v-for="item in MENU" :key="item.action">
-                <DropdownMenuSeparator v-if="item.apart" />
-                <DropdownMenuItem @select="pick(item.action)"><component :is="item.icon" />{{ item.label }}</DropdownMenuItem>
-              </template>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </template>
       </ListHeader>
       <VirtualSongList

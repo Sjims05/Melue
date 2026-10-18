@@ -13,6 +13,7 @@ pub mod changes;
 mod changes_tests;
 mod commands;
 pub mod covers;
+mod export;
 pub mod follow;
 pub mod folders;
 pub mod grouping;

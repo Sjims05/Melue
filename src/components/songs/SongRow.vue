@@ -18,6 +18,7 @@ import { computed, ref } from 'vue'
 import SettingsBadge from '@/components/settings/SettingsBadge.vue'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import AddToPlaylist from './AddToPlaylist.vue'
 import { artistParts } from './artistParts'
 import { Button } from '@/components/ui/button'
 import PlayingBars from './PlayingBars.vue'
@@ -184,7 +185,8 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
             <DropdownMenuContent align="end" class="min-w-48">
               <template v-for="item in items" :key="item.action">
                 <DropdownMenuSeparator v-if="item.apart" />
-                <DropdownMenuItem :variant="item.danger ? 'destructive' : 'default'" @select="pick(item.action)">
+                <AddToPlaylist v-if="item.action === 'addToPlaylist'" :song="song" in="dropdown" />
+                <DropdownMenuItem v-else :variant="item.danger ? 'destructive' : 'default'" @select="pick(item.action)">
                   <component :is="item.icon" :class="item.filled && 'fill-current'" />{{ item.label }}
                 </DropdownMenuItem>
               </template>
@@ -199,7 +201,8 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
     <ContextMenuContent class="min-w-48">
       <template v-for="item in items" :key="item.action">
         <ContextMenuSeparator v-if="item.apart" />
-        <ContextMenuItem :variant="item.danger ? 'destructive' : 'default'" @select="pick(item.action)">
+        <AddToPlaylist v-if="item.action === 'addToPlaylist'" :song="song" in="context" />
+        <ContextMenuItem v-else :variant="item.danger ? 'destructive' : 'default'" @select="pick(item.action)">
           <component :is="item.icon" :class="item.filled && 'fill-current'" />{{ item.label }}
         </ContextMenuItem>
       </template>

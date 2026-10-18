@@ -315,6 +315,20 @@ fn a_changed_linked_playlist_deleted_is_kept_and_restored_over_the_files() {
 }
 
 #[test]
+fn a_let_go_file_thats_gone_can_be_forgotten() {
+    let (t, m, f) = setup("linked-let-go-gone", 1);
+    write_list(&m, "Mix.m3u", &[1]);
+    t.scan(f, &m);
+    t.library.delete_playlist(playlist(&t, "Mix").id).unwrap();
+    assert!(!t.library.let_go_files().unwrap()[0].gone);
+    std::fs::remove_file(m.path("Lists/Mix.m3u")).unwrap();
+    let let_go = t.library.let_go_files().unwrap();
+    assert!(let_go[0].gone, "its file is gone");
+    t.library.forget_let_go_file(let_go[0].folder_id, &let_go[0].path).unwrap();
+    assert!(t.library.let_go_files().unwrap().is_empty());
+}
+
+#[test]
 fn an_unchanged_linked_playlist_deleted_is_only_let_go_of() {
     let (t, m, f) = setup("linked-keep-unchanged", 2);
     write_list(&m, "Mix.m3u", &[1, 2]);

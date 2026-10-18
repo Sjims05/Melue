@@ -247,6 +247,8 @@ export function installBrowserPreview() {
         case 'deleted_playlists': return deleted
         case 'library_playlists': return playlists
         case 'library_playlist': return playlists.find((p) => p.id === a.id)
+        case 'library_playlists_with_track': return [11]
+        case 'library_add_to_playlist': return [Date.now()]
         case 'library_set_playlist_following': playlists = playlists.map((p) => (p.id === a.id ? { ...p, following: a.following as boolean } : p)); return null
         case 'library_deleted_linked_playlists': return [{ id: 1, name: 'Old mix', songs: 14, deletedAt: Date.now() - 3 * 86_400_000, file: 'Old mix.m3u' }]
         case 'library_let_go_files': return [{ folderId: 1, folder: 'Music', path: 'Lists/Old mix.m3u' }]
