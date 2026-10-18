@@ -135,7 +135,7 @@ fn plays_on_every_device_count_without_counting_twice() {
     for device in [&desktop, &phone] {
         assert_eq!(titles(device.lib(), "top:all-time"), vec!["One", "Two"], "{}", device.name);
         assert_eq!(titles(device.lib(), "top:month"), vec!["One", "Two"]);
-        let one = device.lib().tracks(0, 10).unwrap().into_iter().find(|t| t.title == "One").unwrap();
+        let one = device.lib().tracks(0, 10, Default::default()).unwrap().into_iter().find(|t| t.title == "One").unwrap();
         assert_eq!(one.play_count, 4, "{}", device.name);
         assert_eq!(device.lib().recently_played(10).unwrap().len(), 2, "the shared history");
     }

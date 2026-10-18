@@ -8,6 +8,7 @@
  * Narrow (a phone): the album goes, then the length (container widths, not the window's).
  */
 import { computed, nextTick, ref } from 'vue'
+import { letterOf } from './letters'
 import SongRow from './SongRow.vue'
 import type { Song, SongAction, SongMenuPlace } from './songMenu'
 
@@ -38,16 +39,11 @@ const emit = defineEmits<{
   action: [song: Song, action: SongAction]
 }>()
 
-/** The first letter of a title, for the A–Z headings. */
-const letter = (title: string) => {
-  const first = title.trim().replace(/^the\s+/i, '').charAt(0).toUpperCase()
-  return /[A-Z]/.test(first) ? first : '#'
-}
 const rows = computed(() =>
   props.songs.map((song, index) => ({
     song,
     index,
-    heading: props.az && (index === 0 || letter(song.title) !== letter(props.songs[index - 1].title)) ? letter(song.title) : null,
+    heading: props.az && (index === 0 || letterOf(song.title) !== letterOf(props.songs[index - 1].title)) ? letterOf(song.title) : null,
   })),
 )
 

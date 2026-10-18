@@ -76,6 +76,8 @@ impl Library {
 
 /// Whether a change touches the list a queue plays.
 pub fn affects(change: &LibraryChange, source: Option<&str>) -> bool {
+    // All songs in another order ("songs:plays") is still all songs.
+    let source = source.map(|s| if s.starts_with("songs:") { "songs" } else { s });
     source.is_some_and(|source| change.sources.iter().any(|s| s == source))
 }
 

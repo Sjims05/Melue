@@ -80,7 +80,28 @@ const queueTracks = (ids: number[]) =>
     id: i.id, folderId: 1, title: i.title, artist: i.artist, album: i.album, albumArtist: i.artist, trackNo: null, discNo: null, year: 2023,
     genre: null, durationMs: (QUEUE_SONGS.find((q) => q[0] === i.title)?.[3] ?? 200) * 1000, format: 'mp3', bitrateKbps: 320, sampleRate: 44100,
     cover: null, tagsRead: true, tagsError: null, available: true, liked: i.id === 202, playCount: 3,
+    albumId: 1, path: `${i.album}/${i.title}.mp3`, addedAt: 0, artists: [{ id: 3, name: i.artist }],
   }))
+
+// The Library's songs: the queue's, and many more made up (to scroll a big library), sorted as the Songs tab asks.
+const WORDS = ['Amber', 'Blue', 'Cold', 'Distant', 'Echo', 'Fading', 'Golden', 'Hollow', 'Island', 'Jade', 'Kindred', 'Lunar', 'Midnight',
+  'Northern', 'Open', 'Paper', 'Quiet', 'River', 'Silver', 'The Tide', 'Upper', 'Velvet', 'Winter', 'Yellow', 'Zero', '99 Lights']
+const BIG = Array.from({ length: 1500 }, (_, i) => {
+  const title = `${WORDS[(i * 7) % WORDS.length]} ${['days', 'roads', 'hearts', 'signals', 'rooms', 'waves'][i % 6]} ${i}`
+  const artist = `${WORDS[(i * 3) % WORDS.length]} ${['Band', 'Collective', 'Trio'][i % 3]}`
+  return { id: 1000 + i, title, artist, album: i % 5 ? `${WORDS[(i * 11) % WORDS.length]} sessions` : null, plays: (i * 37) % 90, added: i }
+})
+function bigLibrary(sort: string) {
+  const songs = [...queueTracks(queueItems.map((q) => q.id)), ...BIG.map((s) => ({
+    ...queueTracks([201])[0], id: s.id, title: s.title, artist: s.artist, album: s.album, albumId: s.album ? 1 : null, playCount: s.plays,
+    addedAt: s.added, liked: s.id % 13 === 0, artists: [{ id: 3, name: s.artist }],
+  }))]
+  const key = (t: (typeof songs)[number]) =>
+    sort === 'artist' ? t.artist ?? '' : sort === 'album' ? t.album ?? '~' : t.title.replace(/^the\s+/i, '')
+  if (sort === 'added') return songs.sort((x, y) => y.addedAt - x.addedAt)
+  if (sort === 'plays') return songs.sort((x, y) => y.playCount - x.playCount)
+  return songs.sort((x, y) => key(x).localeCompare(key(y)))
+}
 
 // Playlists: the auto ones (one hidden), and two deleted lately.
 let autoPlaylists: AutoPlaylist[] = [
@@ -264,7 +285,8 @@ export function installBrowserPreview() {
         }
         case 'library_liked_ids': return [202]
         case 'library_tracks_by_ids': return queueTracks(a.ids as number[])
-        case 'library_track_artists': return Object.fromEntries(queueItems.filter((i) => (a.ids as number[]).includes(i.id)).map((i) => [i.id, [{ id: 3, name: i.artist }]]))
+        case 'library_tracks': return bigLibrary(a.sort as string).slice(a.offset as number, (a.offset as number) + (a.limit as number))
+        case 'library_queue_items_for': return queueItems.filter((i) => (a.ids as number[]).includes(i.id))
         case 'library_queue_follow': return queueFollow
         case 'library_set_queue_follow': queueFollow = a.settings as QueueFollow; return queueFollow
         case 'library_player_settings': return player

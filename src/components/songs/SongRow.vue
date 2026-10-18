@@ -28,7 +28,11 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps<{
   song: Song
   /** Its place in the list (the queue). */
-  number?: number
+  number?: number | string
+  /** The number's column is wider (a date, a play count: the Songs tab sorted by date added or plays). */
+  wideNumber?: boolean
+  /** What the number means, under the pointer ("12 plays", "Added 3 October 2026"). */
+  numberTitle?: string
   /** A drag handle (the queue: reorder). */
   handle?: boolean
   /** ✕: take it out of the list (the queue, a playlist). */
@@ -114,7 +118,7 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
         <span v-else-if="handle" class="song-handle -mx-1 grid size-6 flex-none cursor-grab touch-none place-items-center active:cursor-grabbing" aria-label="Drag to move">
           <GripVertical class="size-4" />
         </span>
-        <span v-if="number !== undefined" class="w-6 flex-none text-center text-[13px] tabular-nums" :class="MUTED">
+        <span v-if="number !== undefined" class="flex-none text-center text-[13px] whitespace-nowrap tabular-nums" :class="[MUTED, wideNumber ? 'w-14' : 'w-6']" :title="numberTitle">
           <Transition name="swap" mode="out-in"><span :key="number" class="inline-block">{{ number }}</span></Transition>
         </span>
         <span class="grid size-12 flex-none place-items-center overflow-hidden rounded-md bg-well text-muted-foreground">

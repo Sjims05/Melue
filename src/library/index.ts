@@ -184,7 +184,22 @@ export interface Track {
   liked: boolean
   /** How often it was played: to the end, or left after half of it or 4 minutes. */
   playCount: number
+  /** Its album's page (null: not on an album). */
+  albumId: number | null
+  /** Where the file is in its folder (a content:// address for Android's media index and chosen folders). */
+  path: string
+  /** When the library first saw it (ms). */
+  addedAt: number
+  /** Its artists with their pages' ids: the main ones, then the featured ones ("A feat. B": A, then B). */
+  artists: ArtistLink[]
 }
+
+/** How the Songs tab is sorted: title, artist and album A–Z; date added and plays, newest and most first. */
+export type TrackSort = 'title' | 'artist' | 'album' | 'added' | 'plays'
+/** How the Albums tab is sorted: title, artist, year (newest first), date added (newest first). */
+export type AlbumSort = 'title' | 'artist' | 'year' | 'added'
+/** How the Artists tab is sorted: name, or songs (most first). */
+export type ArtistSort = 'name' | 'songs'
 
 /** A song ready to play (the player's queue item): `id` is the song's library id. */
 export interface QueueItem {
@@ -198,12 +213,13 @@ export interface QueueItem {
 }
 
 /**
- * A list to play: 'songs' (all, by title), 'album:<id>', 'artist:<id>' (albums oldest first, then songs
+ * A list to play: 'songs' (all, by title; 'songs:plays' in the Songs tab's order), 'album:<id>', 'artist:<id>' (albums oldest first, then songs
  * not on an album), 'playlist:<id>', 'liked' (most recently liked first), 'folder:<id>' (a music folder, by
  * path), 'top:<period>' (the most played songs).
  */
 export type Source =
   | 'songs'
+  | `songs:${TrackSort}`
   | 'liked'
   | `album:${number}`
   | `artist:${number}`
@@ -272,6 +288,8 @@ export interface Album {
   title: string
   /** The album artist; null for a compilation (various artists). */
   artist: string | null
+  /** The album artist's page. */
+  artistId: number | null
   compilation: boolean
   /** The year most of its songs have. */
   year: number | null
@@ -297,6 +315,23 @@ export interface Artist {
   featured: number
   /** Albums they're the album artist of. */
   albums: number
+}
+
+/** An album's page: the album, and its songs in the order they play (by disc, then track number). */
+export interface AlbumPage {
+  album: Album
+  tracks: Track[]
+}
+
+/**
+ * An artist's page: the artist, their albums (oldest first), their songs (as their albums go, then the ones not on an
+ * album) and the songs they're featured on.
+ */
+export interface ArtistPage {
+  artist: Artist
+  albums: Album[]
+  tracks: Track[]
+  featured: Track[]
 }
 
 export interface FolderCovers {
@@ -367,7 +402,8 @@ export const library = {
   unlinkPlaylist: (id: number) => invoke<Playlist>('library_unlink_playlist', { id }),
 
   /** Songs that are there, by title. */
-  tracks: (offset = 0, limit = 100) => invoke<Track[]>('library_tracks', { offset, limit }),
+  /** Songs that are there, sorted (by title unless asked otherwise). */
+  tracks: (offset = 0, limit = 100, sort: TrackSort = 'title') => invoke<Track[]>('library_tracks', { offset, limit, sort }),
   /** Songs by when they were last played, latest first. */
   recentlyPlayed: (limit = 50) => invoke<Track[]>('library_recently_played', { limit }),
   /** Songs by play count, most first. */
@@ -380,6 +416,8 @@ export const library = {
 
   /** A list's songs that can be played, in its order, ready for the player (see playSource). */
   queueItems: (source: Source) => invoke<QueueItem[]>('library_queue_items', { source }),
+  /** Songs ready to play, in the order given (ones not there left out): Play next, Add to queue. */
+  queueItemsFor: (ids: number[]) => invoke<QueueItem[]>('library_queue_items_for', { ids }),
   /** Use setLiked from '@/library/playback' instead: it also updates the player's like button. */
   setLikedOnly: (id: number, liked: boolean) => invoke<void>('library_set_liked', { id, liked }),
   likedIds: () => invoke<number[]>('library_liked_ids'),
@@ -393,12 +431,18 @@ export const library = {
   /** Removes covers no song uses any more; resolves with how many files went. */
   cleanCovers: () => invoke<number>('library_clean_covers'),
   setPlayerSettings: (settings: PlayerSettings) => invoke<PlayerSettings>('library_set_player_settings', { settings }),
-  /** Albums with songs that are there, by title ("The" ignored). */
-  albums: (offset = 0, limit = 100) => invoke<Album[]>('library_albums', { offset, limit }),
-  /** Artists with songs that are there, by name ("The" and accents ignored, or their sort tag). */
-  artists: (offset = 0, limit = 100) => invoke<Artist[]>('library_artists', { offset, limit }),
-  /** Songs' artists with their ids, by song id: the main ones, then the featured ones (for linking the names). */
-  trackArtists: (ids: number[]) => invoke<Record<number, ArtistLink[]>>('library_track_artists', { ids }),
+  /** Albums with songs that are there, sorted (by title, "The" ignored, unless asked otherwise). */
+  albums: (offset = 0, limit = 100, sort: AlbumSort = 'title') => invoke<Album[]>('library_albums', { offset, limit, sort }),
+  /** Artists with songs that are there, sorted (by name, "The" and accents ignored or their sort tag, unless asked). */
+  artists: (offset = 0, limit = 100, sort: ArtistSort = 'name') => invoke<Artist[]>('library_artists', { offset, limit, sort }),
+  /** An album's page (null: no such album). */
+  albumPage: (id: number) => invoke<AlbumPage | null>('library_album_page', { id }),
+  /** An artist's page (null: no such artist). */
+  artistPage: (id: number) => invoke<ArtistPage | null>('library_artist_page', { id }),
+  /** A music folder's songs, by where they are in it. */
+  folderTracks: (id: number) => invoke<Track[]>('library_folder_tracks', { id }),
+  /** Desktop: opens the song's folder in the file manager with the file selected. */
+  showInFolder: (id: number) => invoke<void>('library_show_in_folder', { id }),
   /** Android, all music on the phone: whether cover images next to the songs are used (off by default). */
   folderCovers: () => invoke<FolderCovers>('library_folder_covers'),
   /** Switching on asks for the photos permission, and is refused without it. Rescans either way. */

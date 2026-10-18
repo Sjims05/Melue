@@ -20,7 +20,7 @@ fn folder(t: &TestLibrary, m: &MusicFolder) -> Folder {
 /// The track for a file in the folder.
 fn track(t: &TestLibrary, path: &str) -> Track {
     let id: i64 = t.library.conn().query_row("SELECT id FROM tracks WHERE path = ?1", [path], |r| r.get(0)).unwrap();
-    t.library.tracks(0, 10_000).unwrap().into_iter().find(|t| t.id == id).unwrap()
+    t.library.tracks(0, 10_000, Default::default()).unwrap().into_iter().find(|t| t.id == id).unwrap()
 }
 
 fn column<T: rusqlite::types::FromSql>(t: &TestLibrary, path: &str, column: &str) -> T {

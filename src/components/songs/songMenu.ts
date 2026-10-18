@@ -2,7 +2,7 @@
  * A song's menu (its ⋯ button and right-click): what it offers depends on the song and where it is (in a playlist,
  * on a desktop, with a share). The same items for both menus.
  */
-import { CloudUpload, Disc3, FolderOpen, Heart, ListEnd, ListMusic, ListX, User } from '@lucide/vue'
+import { CloudUpload, Disc3, FolderOpen, Heart, ListEnd, ListX, User } from '@lucide/vue'
 import { NextIcon } from '@/components/player/icons'
 import type { MenuItem } from '@/components/covers/coverMenu'
 
@@ -16,6 +16,11 @@ export interface Song {
   /** The cover's address (Melue's cover:// or any image); none: a plain tile. */
   cover?: string
   liked?: boolean
+  /** How often it was played, and when the library first saw it (ms): the Songs tab's numbers by plays or date. */
+  plays?: number
+  addedAt?: number
+  /** Its album's page (Go to album, the album link). */
+  albumId?: number | null
   /** Its artists with their pages' ids: each name in `artist` links to its artist (see artistParts). */
   artists?: { id: number; name: string }[]
   /** Unique in its list, when a song can be in it twice (Up next's repeat preview); the song's id otherwise. */
@@ -58,7 +63,7 @@ export function songMenu(song: Song, place: SongMenuPlace = {}): SongMenuItem[] 
     { action: 'like', label: song.liked ? 'Remove from liked' : 'Add to liked', icon: Heart, filled: song.liked },
     ...(song.album ? [{ action: 'goToAlbum' as const, label: 'Go to album', icon: Disc3 }] : []),
     { action: 'goToArtist', label: 'Go to artist', icon: User },
-    { action: 'addToPlaylist', label: 'Add to playlist', icon: ListMusic },
+    // Add to playlist comes with the Playlists page.
   ]
   const extras: SongMenuItem[] = [
     ...(place.showInFolder ? [{ action: 'showInFolder' as const, label: 'Show in folder', icon: FolderOpen }] : []),

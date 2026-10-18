@@ -177,7 +177,7 @@ fn likes() {
     t.library.set_liked(a, true).unwrap();
     t.library.set_liked(a, true).unwrap(); // twice is fine
     assert_eq!(t.library.liked_ids().unwrap(), vec![a]);
-    assert!(t.library.tracks(0, 10).unwrap()[0].liked);
+    assert!(t.library.tracks(0, 10, Default::default()).unwrap()[0].liked);
     t.library.set_liked(a, false).unwrap();
     assert!(t.library.liked_ids().unwrap().is_empty());
     assert!(t.library.set_liked(9999, true).is_err());
@@ -228,15 +228,20 @@ fn tracks_by_ids_finds_the_songs_asked_for() {
 }
 
 #[test]
-fn a_songs_artists_come_main_first_with_their_ids() {
-    let (t, m, f) = setup("play-track-artists");
-    m.add("a.wav", &song("A", "Band feat. Guest", "", 1));
+fn all_songs_play_in_the_songs_tabs_order() {
+    let (t, m, f) = setup("play-songs-sorted");
+    m.add("b.wav", &song("B", "Zed", "", 1));
+    m.add("a.wav", &song("A", "Abe", "", 1));
+    m.add("c.wav", &song("C", "Moe", "", 1));
     t.scan(f, &m);
-    let a = track(&t, "a.wav");
-    let found = t.library.track_artists(&[a, 9999]).unwrap();
-    let names: Vec<&str> = found[&a].iter().map(|a| a.name.as_str()).collect();
-    assert_eq!(names, vec!["Band", "Guest"]);
-    assert_eq!(found.len(), 1, "songs not in the library are left out");
+    assert_eq!(titles(&t, "songs"), ["A", "B", "C"]);
+    assert_eq!(titles(&t, "songs:title"), ["A", "B", "C"]);
+    assert_eq!(titles(&t, "songs:artist"), ["A", "C", "B"], "Abe, Moe, Zed");
+    assert!(t.library.queue_items("songs:nonsense").is_err());
+    // A change to all songs touches a queue playing them in any order.
+    let change = LibraryChange { reason: ChangeReason::Scan, tracks: vec![], sources: vec!["songs".into()] };
+    assert!(affects(&change, Some("songs:artist")));
+    assert!(!affects(&change, Some("album:1")));
 }
 
 #[test]

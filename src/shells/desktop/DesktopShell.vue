@@ -82,7 +82,7 @@ router.afterEach((to, from) => {
           <div class="relative min-h-0 flex-1">
             <DotsNav />
             <!-- The scrollbar's room is always kept, so the page doesn't shift when it comes or goes. -->
-            <div ref="scroller" class="absolute inset-0 overflow-y-auto [scrollbar-gutter:stable]" :style="{ '--page-from': from }">
+            <div ref="scroller" data-scroller class="absolute inset-0 overflow-y-auto [scrollbar-gutter:stable]" :style="{ '--page-from': from }">
               <main class="app-column pb-24">
                 <Transition name="page" :duration="{ enter: 320, leave: 0 }">
                   <KeepAlive>
@@ -98,7 +98,7 @@ router.afterEach((to, from) => {
           <Transition :name="motion" :duration="340">
             <div v-if="!shown.meta.main" :key="layerKey" class="absolute inset-0 z-20 flex flex-col bg-background">
               <TopBar :back="backLabel" :search="shown.name !== 'search'" />
-              <div class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+              <div data-scroller class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
                 <main class="app-column pb-24"><component :is="Component" /></main>
               </div>
             </div>

@@ -1,13 +1,17 @@
 <script setup lang="ts">
 /**
  * Library: what the songs bring (Songs A–Z, Albums, Artists, Folders), as tabs. Playlists are their own page (made by
- * you, or by Melue for you). The tab is kept in the address (?tab=albums), so going back returns to it.
+ * you, or by Melue for you). The tab is kept in the address (?tab=albums), so going back returns to it. Songs, Albums
+ * and Artists each have a sort menu at the tabs' right; each remembers its order.
  */
+import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PageHeader, PlannedCard } from '@/components/page'
 import { Segmented } from '@/components/settings'
-import { library, type LibraryStatus } from '@/library'
+import { library, type AlbumSort, type ArtistSort, type LibraryStatus, type TrackSort } from '@/library'
+import SongsTab from './library/SongsTab.vue'
+import SortMenu from './library/SortMenu.vue'
 
 type Tab = 'songs' | 'albums' | 'artists' | 'folders'
 const TABS = [['songs', 'Songs'], ['albums', 'Albums'], ['artists', 'Artists'], ['folders', 'Folders']] as const
@@ -27,6 +31,14 @@ const tab = computed<Tab>({
   },
 })
 
+// Each tab's order, remembered on this device.
+const SONG_SORTS = [['title', 'Title'], ['artist', 'Artist'], ['album', 'Album'], ['added', 'Date added'], ['plays', 'Most played']] as const
+const ALBUM_SORTS = [['title', 'Title'], ['artist', 'Artist'], ['year', 'Year'], ['added', 'Date added']] as const
+const ARTIST_SORTS = [['name', 'Name'], ['songs', 'Most songs']] as const
+const songSort = useLocalStorage<TrackSort>('melue.library.songSort', 'title')
+const albumSort = useLocalStorage<AlbumSort>('melue.library.albumSort', 'title')
+const artistSort = useLocalStorage<ArtistSort>('melue.library.artistSort', 'name')
+
 const status = ref<LibraryStatus | null>(null)
 onMounted(async () => (status.value = await library.status().catch(() => null)))
 const counts = computed(() => {
@@ -41,8 +53,14 @@ const counts = computed(() => {
   <!-- One root: page switches move the page as one. -->
   <div>
     <PageHeader title="Library" :subtitle="counts">
-      <Segmented v-model="tab" :options="TABS" />
+      <div class="flex items-center justify-between gap-4">
+        <Segmented v-model="tab" :options="TABS" />
+        <SortMenu v-if="tab === 'songs'" v-model="songSort" :options="SONG_SORTS" />
+        <SortMenu v-else-if="tab === 'albums'" v-model="albumSort" :options="ALBUM_SORTS" />
+        <SortMenu v-else-if="tab === 'artists'" v-model="artistSort" :options="ARTIST_SORTS" />
+      </div>
     </PageHeader>
-    <PlannedCard :title="TABS.find(([t]) => t === tab)![1]" text="The songs A–Z, albums, artists and folders, with their own pages: a coming step (Library)." />
+    <SongsTab v-if="tab === 'songs'" :sort="songSort" />
+    <PlannedCard v-else :title="TABS.find(([t]) => t === tab)![1]" text="Albums, artists and folders, with their own pages: the coming steps (Library)." />
   </div>
 </template>

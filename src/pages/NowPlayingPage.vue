@@ -18,6 +18,8 @@ import { songMenu, SongList } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { appearance } from '@/lib/appearance'
+import { isDesktop } from '@/platform/platform'
+import { songAction } from '@/player/songs'
 import {
   clearUpNext,
   current,
@@ -164,7 +166,7 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
                 <DropdownMenuSeparator v-if="item.apart" />
                 <DropdownMenuItem
                   :variant="item.danger ? 'destructive' : 'default'"
-                  @select="item.action === 'like' && like(Number(current.id), !current.liked)"
+                  @select="songAction(current, item.action)"
                 >
                   <component :is="item.icon" :class="item.filled && 'fill-current'" />{{ item.label }}
                 </DropdownMenuItem>
@@ -229,6 +231,8 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
             @remove="(_, i) => removeFromUpNext(i)"
             @move="moveInUpNext"
             @like="(song, liked) => like(Number(song.id), liked)"
+            @action="songAction"
+            :place="{ showInFolder: isDesktop }"
           />
           <p v-else class="px-5 pb-5 text-sm text-muted-foreground">Nothing queued after this song.</p>
         </div>

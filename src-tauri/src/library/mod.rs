@@ -38,13 +38,15 @@ pub mod tags;
 pub mod sync;
 pub mod tracks;
 #[cfg(test)]
+mod tracks_tests;
+#[cfg(test)]
 mod tags_tests;
 #[cfg(test)]
 pub mod testkit;
 
 pub use commands::*;
 pub use folders::{Folder, FolderKind};
-pub use tracks::{Album, Artist, ArtistLink, Track};
+pub use tracks::{Album, AlbumPage, AlbumSort, Artist, ArtistPage, ArtistSort, Track, TrackSort};
 
 use std::fmt::Display;
 use std::path::{Path, PathBuf};

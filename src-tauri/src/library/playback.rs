@@ -71,7 +71,7 @@ pub fn outcome(position_ms: i64, duration_ms: Option<i64>) -> Outcome {
 impl Library {
     /// The queue for a list, ready to play: its songs that can be played, in its order. Errors for a list
     /// that isn't there (a deleted playlist).
-    /// - "songs": all songs by title
+    /// - "songs": all songs by title; "songs:<sort>" in the Songs tab's order ("songs:plays", see TrackSort)
     /// - "album:<id>": by disc and track
     /// - "artist:<id>": their albums oldest first (each by disc and track), then songs not on an album
     /// - "playlist:<id>": its songs in Melue's version, in order
@@ -84,7 +84,10 @@ impl Library {
             let period = super::auto_playlists::TopPeriod::parse(period).ok_or_else(|| format!("not a list: {source}"))?;
             return self.queue_items_for(&self.top_songs(period)?);
         }
+        // All songs in a sort order of the Songs tab.
+        let sorted = source.strip_prefix("songs:").map(|sort| super::TrackSort::parse(sort).ok_or_else(|| format!("not a list: {source}"))).transpose()?;
         let (kind, id) = match source.split_once(':') {
+            _ if sorted.is_some() => ("songs", None),
             Some((kind, id)) => (kind, Some(id.parse::<i64>().map_err(|_| format!("not a list: {source}"))?)),
             None => (source, None),
         };
@@ -94,7 +97,7 @@ impl Library {
             if found { Ok(()) } else { Err(format!("no {source}")) }
         };
         let (join, filter, order) = match (kind, id) {
-            ("songs", None) => ("", "", "t.sort_title, t.id"),
+            ("songs", None) => ("", "", sorted.unwrap_or_default().order()),
             ("album", Some(id)) => {
                 exists("albums", id)?;
                 ("", "AND t.album_id = ?1", "coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.path")

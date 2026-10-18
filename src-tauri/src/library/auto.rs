@@ -85,7 +85,7 @@ impl Library {
         }
 
         let mut albums = Vec::new();
-        for album in self.albums(0, u32::MAX)? {
+        for album in self.albums(0, u32::MAX, Default::default())? {
             let source = format!("album:{}", album.id);
             let children = self.auto_children(&source)?;
             let artist = album.artist.unwrap_or_else(|| "Various artists".into());
@@ -100,7 +100,7 @@ impl Library {
         }
 
         let mut artists = Vec::new();
-        for artist in self.artists(0, u32::MAX)? {
+        for artist in self.artists(0, u32::MAX, Default::default())? {
             let source = format!("artist:{}", artist.id);
             let children = self.auto_children(&source)?;
             if children.is_empty() {

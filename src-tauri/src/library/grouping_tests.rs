@@ -104,11 +104,11 @@ fn file_names_and_folders_of_paths() {
 // ---- albums and artists
 
 fn albums(t: &TestLibrary) -> Vec<Album> {
-    t.library.albums(0, 1000).unwrap()
+    t.library.albums(0, 1000, Default::default()).unwrap()
 }
 
 fn artists(t: &TestLibrary) -> Vec<Artist> {
-    t.library.artists(0, 1000).unwrap()
+    t.library.artists(0, 1000, Default::default()).unwrap()
 }
 
 fn album_summary(t: &TestLibrary) -> Vec<(String, Option<String>, bool, i64)> {
@@ -117,7 +117,7 @@ fn album_summary(t: &TestLibrary) -> Vec<(String, Option<String>, bool, i64)> {
 
 fn track(t: &TestLibrary, path: &str) -> Track {
     let id: i64 = t.library.conn().query_row("SELECT id FROM tracks WHERE path = ?1", [path], |r| r.get(0)).unwrap();
-    t.library.tracks(0, 100_000).unwrap().into_iter().find(|t| t.id == id).unwrap()
+    t.library.tracks(0, 100_000, Default::default()).unwrap().into_iter().find(|t| t.id == id).unwrap()
 }
 
 fn song(title: &str, artist: &str, album: &str, n: u32) -> Tags {

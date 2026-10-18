@@ -8,7 +8,7 @@
 import { computed, reactive } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { artistParts, type Song } from '@/components/songs'
-import { coverUrl, library, type ArtistLink, type Track } from '@/library'
+import { coverUrl, library, type Track } from '@/library'
 import { setLiked } from '@/library/playback'
 import { player, type PlayerQueue, type PlayerState, type PlayerTrack, type RepeatMode } from '@/platform'
 
@@ -19,8 +19,6 @@ export const nowPlaying = reactive({
   queue: null as PlayerQueue | null,
   /** The queue's songs from the library (by id). */
   tracks: new Map<number, Track>(),
-  /** Their artists with their ids (by song id): the names link to the artists. */
-  artists: new Map<number, ArtistLink[]>(),
   liked: new Set<number>(),
   /** Where the queue plays from, in words ("Liked songs", the album's title). */
   from: '',
@@ -54,22 +52,31 @@ function applyState(state: PlayerState) {
   // The queue changed (another song, added, removed, moved, shuffled, or repeat, which decides the next pass): read it
   // again.
   const key = `${state.queueLength}:${state.queueIndex}:${state.currentId}:${state.shuffle}:${state.repeatMode}`
-  if (key !== lastQueueKey) {
+  // Or what's shown isn't what the player has (it was read before the player resumed the last queue at start).
+  const shown = nowPlaying.queue
+  const stale =
+    (shown?.items.length ?? 0) !== state.queueLength ||
+    (state.queueIndex >= 0 && shown?.items[shown.currentIndex]?.id !== state.currentId)
+  if (key !== lastQueueKey || (stale && !refreshing)) {
     lastQueueKey = key
     refreshQueue()
   }
 }
 
+/** Reads the player again: after it has resumed the last queue at start (a queue resumed paused sends nothing). */
+export async function syncNowPlaying() {
+  applyState(await player.getState())
+}
+
+let refreshing = false
 export async function refreshQueue() {
+  refreshing = true
   const queue = await player.getQueue().catch(() => null)
+  refreshing = false
   nowPlaying.queue = queue
   if (!queue) return
   const missing = [...new Set(queue.items.map((i) => i.id))].filter((id) => !nowPlaying.tracks.has(id))
-  if (missing.length) {
-    const [tracks, artists] = await Promise.all([library.tracksByIds(missing).catch(() => []), library.trackArtists(missing).catch(() => ({}))])
-    for (const t of tracks) nowPlaying.tracks.set(t.id, t)
-    for (const id of missing) nowPlaying.artists.set(id, (artists as Record<number, ArtistLink[]>)[id] ?? [])
-  }
+  if (missing.length) for (const t of await library.tracksByIds(missing).catch(() => [])) nowPlaying.tracks.set(t.id, t)
   nowPlaying.from = await fromWords(queue)
 }
 
@@ -98,7 +105,8 @@ export function songOf(item: PlayerTrack): Song {
     duration: (t?.durationMs ?? 0) / 1000,
     cover: t?.cover ? coverUrl(t.cover) : undefined,
     liked: nowPlaying.liked.has(item.id),
-    artists: nowPlaying.artists.get(item.id),
+    artists: t?.artists,
+    albumId: t?.albumId,
   }
 }
 

@@ -5,6 +5,7 @@ import "./style.css";
 import "./lib/theme";
 import { isMobile } from "./platform";
 import { startPlayback } from "./library/playback";
+import { syncNowPlaying } from "./player/nowPlaying";
 import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
@@ -22,7 +23,10 @@ function start() {
   createApp(isMobile ? MobileShell : DesktopShell).use(router).mount("#app");
 
   // The player's buttons, and counting what it plays (also what played while the app wasn't running).
-  startPlayback().catch((e) => console.error("melue: playback setup failed", e));
+  // Then what's playing is read again: the player may have resumed the last queue meanwhile.
+  startPlayback()
+    .catch((e) => console.error("melue: playback setup failed", e))
+    .then(() => syncNowPlaying());
   // Whether a share is set up (sync buttons show only then), kept live.
   startSync().catch((e) => console.error("melue: sync status failed", e));
 }

@@ -73,10 +73,10 @@ fn copies_of_synced_songs_are_hidden_with_their_likes_plays_and_playlists_carrie
     let found = t.library.find_copies(&synced, &songs).unwrap();
     assert_eq!((found.hidden, found.remove.len()), (1, 0));
     // Shown once: the synced song, with the copy's like, play and playlist entry.
-    let titles: Vec<String> = t.library.tracks(0, 10).unwrap().into_iter().map(|s| s.title).collect();
+    let titles: Vec<String> = t.library.tracks(0, 10, Default::default()).unwrap().into_iter().map(|s| s.title).collect();
     assert_eq!(titles, vec!["A", "B"]);
     assert!(t.library.liked_ids().unwrap().contains(&original));
-    let a = t.library.tracks(0, 10).unwrap().into_iter().find(|s| s.title == "A").unwrap();
+    let a = t.library.tracks(0, 10, Default::default()).unwrap().into_iter().find(|s| s.title == "A").unwrap();
     assert_eq!((a.id, a.play_count), (original, 1));
     assert_eq!(t.library.playlist_entries(mix).unwrap()[0].track.as_ref().unwrap().id, original);
     // Waiting for the user's choice; kept: not asked again.
@@ -113,9 +113,9 @@ fn a_copy_is_shown_again_when_its_synced_song_is_gone() {
     t.library.conn().execute("UPDATE tracks SET missing_since = 1 WHERE folder_id = ?1", [synced.id]).unwrap();
     let songs = t.library.songs_here(&synced, "me").unwrap();
     t.library.find_copies(&synced, &songs).unwrap();
-    let titles: Vec<String> = t.library.tracks(0, 10).unwrap().into_iter().map(|s| s.title).collect();
+    let titles: Vec<String> = t.library.tracks(0, 10, Default::default()).unwrap().into_iter().map(|s| s.title).collect();
     assert_eq!(titles, vec!["A", "B"]);
-    assert_eq!(t.library.tracks(0, 10).unwrap()[0].id, track(&t, other, "A"), "the copy");
+    assert_eq!(t.library.tracks(0, 10, Default::default()).unwrap()[0].id, track(&t, other, "A"), "the copy");
 }
 
 #[test]

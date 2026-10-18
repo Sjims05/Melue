@@ -12,7 +12,7 @@ use super::playback::{Outcome, PlaybackEvent};
 use super::player_settings::PlayerSettings;
 use super::playlists::{Playlist, PlaylistEntry};
 use super::scanner::AppFiles;
-use super::{android, scanner, Album, Artist, ArtistLink, Folder, FolderKind, Library, Result, Track};
+use super::{android, scanner, Album, AlbumPage, AlbumSort, Artist, ArtistPage, ArtistSort, Folder, FolderKind, Library, Result, Track, TrackSort};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,20 +133,60 @@ pub fn library_sync_available(library: State<'_, Library>) -> Result<bool> {
 
 /// Songs that are there, by title (`limit` from `offset`).
 #[tauri::command(async)]
-pub fn library_tracks(library: State<'_, Library>, offset: u32, limit: u32) -> Result<Vec<Track>> {
-    library.tracks(offset, limit)
+pub fn library_tracks(library: State<'_, Library>, offset: u32, limit: u32, sort: Option<TrackSort>) -> Result<Vec<Track>> {
+    library.tracks(offset, limit, sort.unwrap_or_default())
 }
 
 /// Albums with songs that are there, by title.
 #[tauri::command(async)]
-pub fn library_albums(library: State<'_, Library>, offset: u32, limit: u32) -> Result<Vec<Album>> {
-    library.albums(offset, limit)
+pub fn library_albums(library: State<'_, Library>, offset: u32, limit: u32, sort: Option<AlbumSort>) -> Result<Vec<Album>> {
+    library.albums(offset, limit, sort.unwrap_or_default())
 }
 
 /// Artists with songs that are there, by name (sort name: "The" ignored).
 #[tauri::command(async)]
-pub fn library_artists(library: State<'_, Library>, offset: u32, limit: u32) -> Result<Vec<Artist>> {
-    library.artists(offset, limit)
+pub fn library_artists(library: State<'_, Library>, offset: u32, limit: u32, sort: Option<ArtistSort>) -> Result<Vec<Artist>> {
+    library.artists(offset, limit, sort.unwrap_or_default())
+}
+
+/// Songs ready to play, in the order given (songs not there left out): Play next and Add to queue.
+#[tauri::command(async)]
+pub fn library_queue_items_for(library: State<'_, Library>, ids: Vec<i64>) -> Result<Vec<tauri_plugin_native_audio::QueueItem>> {
+    library.queue_items_for(&ids)
+}
+
+/// An album's page: the album and its songs (null: no such album).
+#[tauri::command(async)]
+pub fn library_album_page(library: State<'_, Library>, id: i64) -> Result<Option<AlbumPage>> {
+    library.album_page(id)
+}
+
+/// An artist's page: the artist, their albums, their songs and the songs they're featured on (null: no such artist).
+#[tauri::command(async)]
+pub fn library_artist_page(library: State<'_, Library>, id: i64) -> Result<Option<ArtistPage>> {
+    library.artist_page(id)
+}
+
+/// A music folder's songs, by where they are in it.
+#[tauri::command(async)]
+pub fn library_folder_tracks(library: State<'_, Library>, id: i64) -> Result<Vec<Track>> {
+    library.folder_tracks(id)
+}
+
+/// Desktop: opens the song's folder in the file manager with the file selected ("Show in folder").
+#[tauri::command(async)]
+pub fn library_show_in_folder(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<()> {
+    let path = library.track_file(id)?.ok_or("this song isn't a file on this device's disk")?;
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener().reveal_item_in_dir(&path).map_err(|e| format!("can't show {}: {e}", path.display()))
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, path);
+        Err("Show in folder is for desktop".into())
+    }
 }
 
 #[derive(Serialize)]
@@ -377,12 +417,6 @@ pub fn library_set_queue_follow(library: State<'_, Library>, settings: QueueFoll
 #[tauri::command(async)]
 pub fn library_tracks_by_ids(library: State<'_, Library>, ids: Vec<i64>) -> Result<Vec<Track>> {
     library.tracks_by_ids(&ids)
-}
-
-/// Songs' artists with their ids, by song id (Now playing and Up next link each name to its artist).
-#[tauri::command(async)]
-pub fn library_track_artists(library: State<'_, Library>, ids: Vec<i64>) -> Result<std::collections::BTreeMap<i64, Vec<ArtistLink>>> {
-    library.track_artists(&ids)
 }
 
 /// How much space the covers take (Storage), in bytes.
