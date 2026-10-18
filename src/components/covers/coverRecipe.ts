@@ -14,7 +14,7 @@ export const coverCss = ([from, to]: CoverColors) =>
 
 /**
  * The auto playlists' covers (Made for you): their colours and icon. Like the other covers, lively: the bright colour
- * at the bottom (the gradient's end), the two not too far apart (Simon, 2026-10-17). The Top songs lists are one
+ * at the bottom (the gradient's end), the two not too far apart. The Top songs lists are one
  * scale from cool to warm: all time blue, then violet, magenta, and last month coral (the newest the warmest).
  */
 export const AUTO_COVERS = {

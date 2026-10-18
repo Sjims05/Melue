@@ -30,10 +30,10 @@ const TIMES = Array.from({ length: 48 }, (_, i) => {
   return [time, time] as const
 })
 const STARTS = [['home', 'Home'], ['library', 'Library'], ['last', 'Where I left off']] as const
-const WHITE = [['white', 'White'], ['card', 'Like the cards']] as const
-// Up next and Home's cards: white (in dark mode too) or like the other cards.
-const upNext = computed({ get: () => (appearance.upNextWhite ? 'white' : 'card'), set: (v) => (appearance.upNextWhite = v === 'white') })
-const homeCards = computed({ get: () => (appearance.homeCardsWhite ? 'white' : 'card'), set: (v) => (appearance.homeCardsWhite = v === 'white') })
+const PRIMARY = [['primary', 'Primary'], ['card', 'Like the cards']] as const
+// Up next and Home's cards: in the primary colour (white in dark mode, black in light) or like the other cards.
+const upNext = computed({ get: () => (appearance.upNextPrimary ? 'primary' : 'card'), set: (v) => (appearance.upNextPrimary = v === 'primary') })
+const homeCards = computed({ get: () => (appearance.homeCardsPrimary ? 'primary' : 'card'), set: (v) => (appearance.homeCardsPrimary = v === 'primary') })
 
 type Close = 'tray' | 'quit'
 const CLOSES = [['tray', 'Keep playing'], ['quit', 'Quit']] as const
@@ -116,20 +116,20 @@ async function setClose(mode: Close) {
       title="Up next on Now playing"
       description="The queue under the player"
       wide
-      setting="display.upNextWhite"
-      :reset="() => (appearance.upNextWhite = APPEARANCE_DEFAULTS.upNextWhite)"
-      :is-default="appearance.upNextWhite === APPEARANCE_DEFAULTS.upNextWhite"
+      setting="display.upNextPrimary"
+      :reset="() => (appearance.upNextPrimary = APPEARANCE_DEFAULTS.upNextPrimary)"
+      :is-default="appearance.upNextPrimary === APPEARANCE_DEFAULTS.upNextPrimary"
     >
-      <Segmented v-model="upNext" :options="WHITE" />
+      <Segmented v-model="upNext" :options="PRIMARY" />
     </SettingsRow>
     <SettingsRow
       title="Home’s Playing and Continue cards"
       wide
-      setting="display.homeCardsWhite"
-      :reset="() => (appearance.homeCardsWhite = APPEARANCE_DEFAULTS.homeCardsWhite)"
-      :is-default="appearance.homeCardsWhite === APPEARANCE_DEFAULTS.homeCardsWhite"
+      setting="display.homeCardsPrimary"
+      :reset="() => (appearance.homeCardsPrimary = APPEARANCE_DEFAULTS.homeCardsPrimary)"
+      :is-default="appearance.homeCardsPrimary === APPEARANCE_DEFAULTS.homeCardsPrimary"
     >
-      <Segmented v-model="homeCards" :options="WHITE" />
+      <Segmented v-model="homeCards" :options="PRIMARY" />
     </SettingsRow>
     <SettingsRow description="Where Melue opens" setting="display.startOn" :reset="() => (startOn = 'home')" :is-default="startOn === 'home'">
       <template #title>Start on <SettingsBadge class="ml-1.5">Not wired yet</SettingsBadge></template>

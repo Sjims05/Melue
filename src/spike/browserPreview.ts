@@ -103,6 +103,15 @@ function bigLibrary(sort: string) {
   return songs.sort((x, y) => key(x).localeCompare(key(y)))
 }
 
+// The Library's albums: the made-up songs' albums, numbered.
+function bigAlbums() {
+  const titles = [...new Set(bigLibrary('album').map((t) => t.album).filter((t): t is string => !!t))]
+  return titles.map((title, i) => ({
+    id: i + 1, title, artist: i % 7 ? `${title.split(' ')[0]} Band` : null, artistId: i % 7 ? 3 : null, compilation: !(i % 7),
+    year: 2000 + (i % 24), cover: null, tracks: bigLibrary('album').filter((t) => t.album === title).length,
+  }))
+}
+
 // Playlists: the auto ones (one hidden), and two deleted lately.
 let autoPlaylists: AutoPlaylist[] = [
   { source: 'liked', name: 'Liked songs', kind: 'liked', songs: 86, size: null, hidden: false },
@@ -286,6 +295,24 @@ export function installBrowserPreview() {
         case 'library_liked_ids': return [202]
         case 'library_tracks_by_ids': return queueTracks(a.ids as number[])
         case 'library_tracks': return bigLibrary(a.sort as string).slice(a.offset as number, (a.offset as number) + (a.limit as number))
+        case 'library_albums': return bigAlbums()
+        case 'library_artists': {
+          const names = [...new Set(bigLibrary('artist').map((t) => t.artist as string))]
+          return names.map((name, i) => ({ id: i + 1, name, tracks: bigLibrary('artist').filter((t) => t.artist === name).length, featured: i % 4, albums: i % 3 }))
+        }
+        case 'library_artist_page': {
+          const name = [...new Set(bigLibrary('artist').map((t) => t.artist as string))][(a.id as number) - 1]
+          if (!name) return null
+          const tracks = bigLibrary('album').filter((t) => t.artist === name)
+          const albums = bigAlbums().filter((al) => tracks.some((t) => t.album === al.title)).slice(0, 4)
+          return { artist: { id: a.id, name, tracks: tracks.length, featured: 2, albums: albums.length }, albums, tracks, featured: bigLibrary('title').slice(0, 2) }
+        }
+        case 'library_album_page': {
+          const album = bigAlbums().find((al) => al.id === a.id)
+          if (!album) return null
+          const tracks = bigLibrary('title').filter((t) => t.album === album.title)
+          return { album, tracks: tracks.map((t, i) => ({ ...t, albumId: album.id, trackNo: (i % 12) + 1, discNo: i < 12 ? 1 : 2 })) }
+        }
         case 'library_queue_items_for': return queueItems.filter((i) => (a.ids as number[]).includes(i.id))
         case 'library_queue_follow': return queueFollow
         case 'library_set_queue_follow': queueFollow = a.settings as QueueFollow; return queueFollow

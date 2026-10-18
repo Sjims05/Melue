@@ -176,15 +176,15 @@ export const SETTINGS: Record<string, SettingInfo> = {
   'display.darkFrom': { title: 'Dark from', default: '21:00', help: 'With Adaptive: when Melue turns dark.' },
   'display.lightFrom': { title: 'Light from', default: '07:00', help: 'With Adaptive: when Melue turns light again.' },
   'display.startOn': { title: 'Start on', default: 'Home', help: 'Which page Melue opens on.' },
-  'display.upNextWhite': {
+  'display.upNextPrimary': {
     title: 'Up next on Now playing',
-    default: 'White',
-    help: 'The queue under the player on Now playing: a white panel (in dark mode too, so it stands out), or a card like the others.',
+    default: 'Primary',
+    help: 'The queue under the player on Now playing: a panel in the primary colour (white in dark mode, black in light mode, so it stands out), or a card like the others.',
   },
-  'display.homeCardsWhite': {
+  'display.homeCardsPrimary': {
     title: 'Home’s Playing and Continue cards',
-    default: 'White',
-    help: 'The cards at the top of Home (what’s playing, and continuing from another device): white (in dark mode too), or like the other cards.',
+    default: 'Primary',
+    help: 'The cards at the top of Home (what’s playing, and continuing from another device): in the primary colour (white in dark mode, black in light mode), or like the other cards.',
   },
   'display.autostart': {
     title: 'Start Melue with Windows',

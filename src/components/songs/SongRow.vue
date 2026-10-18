@@ -33,6 +33,10 @@ const props = defineProps<{
   wideNumber?: boolean
   /** What the number means, under the pointer ("12 plays", "Added 3 October 2026"). */
   numberTitle?: string
+  /** No cover (an album's songs: they'd all show the same one). */
+  noCover?: boolean
+  /** No album column (an album's songs: it'd be the same on each). */
+  noAlbum?: boolean
   /** A drag handle (the queue: reorder). */
   handle?: boolean
   /** ✕: take it out of the list (the queue, a playlist). */
@@ -121,7 +125,7 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
         <span v-if="number !== undefined" class="flex-none text-center text-[13px] whitespace-nowrap tabular-nums" :class="[MUTED, wideNumber ? 'w-14' : 'w-6']" :title="numberTitle">
           <Transition name="swap" mode="out-in"><span :key="number" class="inline-block">{{ number }}</span></Transition>
         </span>
-        <span class="grid size-12 flex-none place-items-center overflow-hidden rounded-md bg-well text-muted-foreground">
+        <span v-if="!noCover" class="grid size-12 flex-none place-items-center overflow-hidden rounded-md bg-well text-muted-foreground">
           <!-- A missing song shows the note icon, not its cover: it stands out as one that can't play. -->
           <img v-if="song.cover && !unavailable" :src="song.cover" alt="" class="size-full object-cover" draggable="false" />
           <Music v-else class="size-5" />
@@ -139,7 +143,7 @@ const ON_HIGHLIGHT = 'invisible group-hover/song:visible group-data-[highlight]/
           <span class="truncate text-[13px]" :class="MUTED"><template v-for="(part, i) in artistParts(song.artist, song.artists)" :key="i"><RouterLink v-if="part.artist && !greyed" :to="`/artist/${part.artist}`" class="hover:underline" @dblclick.stop>{{ part.text }}</RouterLink><template v-else>{{ part.text }}</template></template></span>
         </span>
         <!-- The album opens its page (like Go to album in the menu). -->
-        <span class="hidden w-[28%] min-w-0 truncate text-right text-sm @2xl:block" :class="MUTED">
+        <span v-if="!noAlbum" class="hidden w-[28%] min-w-0 truncate text-right text-sm @2xl:block" :class="MUTED">
           <button
             v-if="song.album && !song.later"
             type="button"

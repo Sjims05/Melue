@@ -10,14 +10,14 @@ import { ChevronDown, Ellipsis, Heart, Library, MonitorSpeaker, Music, Repeat, S
 import { popHeart } from '@/components/player/heart'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player/icons'
 import { useResizeObserver } from '@vueuse/core'
-import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, nextTick, onActivated, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { PlannedCard } from '@/components/page'
 import Slider from '@/components/player/Slider.vue'
 import { songMenu, SongList } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { appearance } from '@/lib/appearance'
+import { appearance, primaryArea } from '@/lib/appearance'
 import { isDesktop } from '@/platform/platform'
 import { songAction } from '@/player/songs'
 import {
@@ -48,8 +48,20 @@ const state = computed(() => nowPlaying.state)
 const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 // Up next: opened with its chevron, or by the player bar's queue button.
+// The player bar's queue button (?queue=open) opens it and shows the page scrolled down to it from the start (while
+// the page fades in; after the frame has put back where the page was scrolled).
+const router = useRouter()
 const open = ref(route.query.queue === 'open')
-watch(() => route.query.queue, (q) => q === 'open' && (open.value = true))
+const upNextPanel = ref<HTMLElement>()
+async function showQueue() {
+  if (route.query.queue !== 'open') return
+  open.value = true
+  router.replace({ query: {} })
+  await nextTick()
+  requestAnimationFrame(() => upNextPanel.value?.scrollIntoView({ block: 'start' }))
+}
+watch(() => route.query.queue, showQueue)
+onActivated(showQueue)
 
 // The volume moves with the slider at once; the player follows.
 const volume = ref<number | null>(null)
@@ -196,8 +208,9 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
     <!-- Up next. -->
     <section
       v-if="current"
-      class="mx-auto mt-12 max-w-[1008px] rounded-xl"
-      :class="appearance.upNextWhite ? 'light-area' : 'bg-card text-card-foreground'"
+      ref="upNextPanel"
+      class="mx-auto mt-12 max-w-[1008px] scroll-mt-6 rounded-xl"
+      :class="appearance.upNextPrimary ? primaryArea : 'bg-card text-card-foreground'"
     >
       <div class="flex items-center gap-4 p-4 pl-5">
         <button type="button" class="flex min-w-0 flex-1 flex-col text-left" :aria-expanded="open" @click="open = !open">

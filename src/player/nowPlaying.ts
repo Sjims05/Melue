@@ -187,6 +187,7 @@ export const previous = () => shown(player.previous())
 export const seek = (seconds: number) => shown(player.seekTo(seconds))
 export const setVolume = (volume: number) => shown(player.setVolume(volume))
 export const toggleShuffle = () => shown(player.setShuffle(!nowPlaying.state?.shuffle))
+export const setShuffle = (on: boolean) => shown(player.setShuffle(on))
 const REPEAT_NEXT: Record<RepeatMode, RepeatMode> = { off: 'all', all: 'one', one: 'off' }
 export const cycleRepeat = () => shown(player.setRepeatMode(REPEAT_NEXT[nowPlaying.state?.repeatMode ?? 'off']))
 /** The player bar's ✕: stops and empties the player (the bar stays, empty). */

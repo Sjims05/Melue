@@ -2,7 +2,7 @@
 /**
  * The song playing: three bars rising and falling (the playground's: 30% → 100% → 30% of the height in 900 ms, each a
  * third of a cycle apart). Pausing hands each bar to gravity: one that's rising slows, stops and falls, and they land
- * flat with a small bounce (Simon picked it over a plain drop, 2026-10-17). Playing again makes them rise smoothly from
+ * flat with a small bounce (picked over a plain drop). Playing again makes them rise smoothly from
  * where they are into the bounce. Reduce motion: they stand still (flat while paused).
  *
  * Moved by a small animation loop (not CSS), so each bar can go on from wherever it is; the loop stops once they're

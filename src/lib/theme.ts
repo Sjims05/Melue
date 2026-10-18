@@ -49,10 +49,14 @@ export function darkByClock(now = new Date(), times = themeTimes): boolean {
   return dark < light ? t >= dark && t < light : t >= dark || t < light
 }
 
+/** Whether Melue is dark now (whatever made it so). */
+export const isDark = ref(false)
+
 function apply() {
   const mode = themeMode.value
   const dark = mode === 'dark' || (mode === 'system' && system.matches) || (mode === 'adaptive' && darkByClock())
   document.documentElement.classList.toggle('dark', dark)
+  isDark.value = dark
 }
 
 watch(themeMode, (mode) => {

@@ -2,7 +2,7 @@
  * Sample songs for the Components page's song lists (the design's), with covers drawn by the playground's Cover
  * maker recipe (phoenix-ux-playground/cover-maker/cover.js): a 135° gradient between two colours, and a soft white
  * light at 30% / 25% (0.32 strong, gone by 45% of the way to the far corner). The colours look lively: the bright one
- * at the bottom (the gradient's end), and the two not too far apart (Simon, 2026-10-17).
+ * at the bottom (the gradient's end), and the two not too far apart.
  */
 import type { Song } from '@/components/songs'
 

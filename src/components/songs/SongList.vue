@@ -29,6 +29,12 @@ const props = defineProps<{
   place?: SongMenuPlace
   /** The list sits on a card (a panel, a dialog): its highlight is grey in light mode (white wouldn't show). */
   onCard?: boolean
+  /** Each song's heading ("Disc 2"); one shows before the first song of each. */
+  headingOf?: (song: Song) => string
+  /** A number before each song (an album's track numbers); the queue numbers its own. */
+  numberOf?: (song: Song, index: number) => number | string | undefined
+  /** No covers and no album column on the rows (an album's songs: they'd be the same on each). */
+  albumPage?: boolean
 }>()
 const emit = defineEmits<{
   play: [song: Song]
@@ -43,7 +49,13 @@ const rows = computed(() =>
   props.songs.map((song, index) => ({
     song,
     index,
-    heading: props.az && (index === 0 || letterOf(song.title) !== letterOf(props.songs[index - 1].title)) ? letterOf(song.title) : null,
+    heading: props.headingOf
+      ? index === 0 || props.headingOf(song) !== props.headingOf(props.songs[index - 1])
+        ? props.headingOf(song)
+        : null
+      : props.az && (index === 0 || letterOf(song.title) !== letterOf(props.songs[index - 1].title))
+        ? letterOf(song.title)
+        : null,
   })),
 )
 
@@ -207,7 +219,9 @@ function moved(index: number): string | undefined {
       >
         <SongRow
           :song="song"
-          :number="queue ? placeOf(index) + 1 : undefined"
+          :number="queue ? placeOf(index) + 1 : numberOf?.(song, index)"
+          :no-cover="albumPage"
+          :no-album="albumPage"
           :handle="queue"
           :removable="queue || removable"
           :current="song.id === currentId"

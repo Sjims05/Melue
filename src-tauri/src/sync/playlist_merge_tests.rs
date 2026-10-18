@@ -23,7 +23,7 @@ fn one_side_changed_takes_that_side() {
 
 #[test]
 fn additions_and_removals_on_both_sides_are_kept() {
-    // Simon's example: song A added on the phone, song B removed on the desktop.
+    // The example: song A added on the phone, song B removed on the desktop.
     assert_eq!(merged("b c d", "b c d a", "c d").as_deref(), Some("c d a"));
     // Additions go in after the song before them on their side.
     assert_eq!(merged("a b c", "a x b c", "a b y c").as_deref(), Some("a x b y c"));
