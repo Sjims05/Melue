@@ -2,7 +2,8 @@
 /**
  * A cover, square with rounded corners: a picture (`image`), the Cover maker's gradient (`colors`, with an `icon` in
  * the middle for an auto playlist), or a 2×2 collage (`collage`: four pictures or gradients, a playlist's songs).
- * Nothing of those: the note, as on a song without a cover. Its slot sits on top (a CoverBadge in the corner).
+ * Nothing of those: the note, as on a song without a cover (or `placeholder`: an artist's person). Its slot sits on
+ * top (a CoverBadge in the corner).
  */
 import { Music } from '@lucide/vue'
 import { computed, type Component } from 'vue'
@@ -13,6 +14,7 @@ const props = defineProps<{
   colors?: CoverColors
   icon?: Component
   collage?: readonly (string | CoverColors)[]
+  placeholder?: Component
 }>()
 // What it shows, to tell when it changes.
 const look = computed(() => JSON.stringify([props.image, props.colors, props.collage]))
@@ -33,7 +35,7 @@ const look = computed(() => JSON.stringify([props.image, props.colors, props.col
         <div v-else-if="colors" class="grid size-full place-items-center" :style="{ background: coverCss(colors) }">
           <component :is="icon" v-if="icon" class="size-[24%] text-white/92" :stroke-width="1.75" />
         </div>
-        <div v-else class="grid size-full place-items-center text-muted-foreground"><Music class="size-[24%]" :stroke-width="1.5" /></div>
+        <div v-else class="grid size-full place-items-center text-muted-foreground"><component :is="placeholder ?? Music" class="size-[24%]" :stroke-width="1.5" /></div>
       </div>
     </Transition>
     <slot />

@@ -11,8 +11,12 @@ import { Button } from '@/components/ui/button'
 import { Chevron, EditRow, Reveal, SettingsCard, SettingsRow, StatusDot } from '@/components/settings'
 import { describeSetupError, describeSyncFailure, share, sync, syncing, type ShareInfo } from '@/library/sync'
 import { onPageLoad } from '@/components/page/pageLoading'
-import { ago, at, didWords, middle, shareName, size, TRIGGER, when } from './format'
+import { ago, at, didWords, lastPart, middle, shareName, size, TRIGGER, when } from './format'
+import { usePhone } from '@/lib/phone'
 import { useShownSync } from './shownSync'
+
+// On a phone the share shows by its last folder (the details have all of it).
+const phone = usePhone()
 
 const emit = defineEmits<{ setUp: [] }>()
 
@@ -36,7 +40,8 @@ const settings = computed(() => info.value?.settings ?? null)
 const streamed = computed(() => settings.value?.kind === 'drive' && settings.value.stream)
 // The full path shows in the details; the title shortens it in the middle when it's long.
 const fullName = computed(() => shareName(settings.value))
-const name = computed(() => `${middle(fullName.value)}${streamed.value ? ' · Streamed' : ''}`)
+// On a phone just its last folder (the details show all of it).
+const name = computed(() => `${phone ? lastPart(fullName.value) : middle(fullName.value)}${streamed.value ? ' · Streamed' : ''}`)
 const unreachable = computed(() => {
   const problem = status.value?.problem
   return problem?.kind === 'setup' && problem.error.kind === 'share' && problem.error.error.kind === 'unreachable'
@@ -126,6 +131,7 @@ async function save(value: string) {
 <template>
   <SettingsCard>
     <SettingsRow
+      stack
       :title="title"
       :description="description"
       :class="canOpen && 'cursor-pointer'"

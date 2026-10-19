@@ -51,6 +51,8 @@ const CLOSE_SETTING = 'close_window'
 // Not wired yet: kept only here.
 const startOn = ref<(typeof STARTS)[number][0]>('home')
 const autostart = ref<boolean | null>(null)
+// A development build can't be started with Windows (it needs the dev server for its page, and opens a console).
+const devBuild = import.meta.env.DEV
 const close = ref<Close>('tray')
 const autostartWindow = ref<AutostartWindow>('tray')
 const error = ref('')
@@ -162,11 +164,15 @@ async function setClose(mode: Close) {
         v-if="autostart !== null"
         title="Start Melue with Windows"
         setting="display.autostart"
-        :description="autostartWindow === 'window' ? 'With its window open' : 'In the tray, ready for the media keys'"
+        :description="
+          devBuild ? 'In the installed app only: a development build would start without its page, in a console window'
+          : autostartWindow === 'window' ? 'With its window open'
+          : 'In the tray, ready for the media keys'
+        "
         :reset="() => setAutostart(true)"
         :is-default="autostart"
       >
-        <Switch :model-value="autostart" @update:model-value="setAutostart" />
+        <Switch :model-value="autostart" :disabled="devBuild" @update:model-value="setAutostart" />
       </SettingsRow>
       <Reveal :show="!!autostart">
         <SettingsRow

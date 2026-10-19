@@ -55,6 +55,7 @@ const setTopSize = (size: number) => act(() => Promise.all(top.value.map((p) => 
       <SettingsLabel>Auto playlists</SettingsLabel>
       <SettingsCard>
         <SettingsRow
+          stack
           title="Top songs lists hold"
           setting="playlists.topSize"
           :description="top.map((p) => p.name).join(', ')"

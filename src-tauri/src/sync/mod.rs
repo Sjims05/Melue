@@ -10,6 +10,7 @@
 
 pub mod commands;
 pub mod cover_sync;
+pub mod settings_sync;
 pub mod car;
 #[cfg(test)]
 mod car_tests;

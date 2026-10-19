@@ -409,3 +409,44 @@ fn a_linked_playlist_in_the_synced_folder_shares_its_cover_one_elsewhere_keeps_i
     assert!(custom_cover(&phone, "Road").is_some());
     assert_eq!(share.all_files().iter().filter(|f| f.starts_with(".melue/covers/") && f.ends_with(".json")).count(), 1);
 }
+
+#[test]
+fn an_empty_playlist_deleted_isnt_kept_for_restoring() {
+    let share = TestShare::new("devices-empty-deleted");
+    let desktop = Device::new("desktop", &["A"]);
+    let empty = desktop.lib().create_playlist("Empty").unwrap().id;
+    let full = desktop.make_playlist("Full", &["A"]);
+    desktop.sync(&share);
+    desktop.lib().delete_playlist(empty).unwrap();
+    desktop.lib().delete_playlist(full).unwrap();
+    let names: Vec<String> = desktop.lib().deleted_playlists().unwrap().into_iter().map(|d| d.name).collect();
+    assert_eq!(names, ["Full"]);
+}
+
+#[test]
+fn settings_go_across_devices_the_newest_change_winning_and_a_new_device_doesnt_push_its_defaults() {
+    use serde_json::json;
+    use std::collections::BTreeMap;
+    let share = TestShare::new("devices-settings");
+    let desktop = Device::new("desktop", &["A"]);
+    let phone = Device::new("phone", &["A"]);
+    let set = |d: &Device, id: &str, value: serde_json::Value, first: bool| {
+        d.lib().record_settings(BTreeMap::from([(id.to_string(), value)]), first).unwrap();
+    };
+    let exchange = |d: &Device| super::settings_sync::sync_settings(d.lib(), &share.share).unwrap();
+
+    set(&desktop, "display.upNextPrimary", json!(false), false);
+    assert!(exchange(&desktop).is_empty());
+    // The phone's first snapshot (its defaults) loses to the desktop's choice.
+    set(&phone, "display.upNextPrimary", json!(true), true);
+    assert_eq!(exchange(&phone), BTreeMap::from([("display.upNextPrimary".to_string(), json!(false))]));
+
+    // Changed on the phone later: the desktop takes it; then nothing more to do.
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    set(&phone, "display.upNextPrimary", json!(true), false);
+    assert!(exchange(&phone).is_empty());
+    assert_eq!(exchange(&desktop), BTreeMap::from([("display.upNextPrimary".to_string(), json!(true))]));
+    assert!(exchange(&desktop).is_empty());
+    assert!(exchange(&phone).is_empty());
+    assert_eq!(desktop.lib().shared_settings_snapshot().unwrap()["display.upNextPrimary"], json!(true));
+}

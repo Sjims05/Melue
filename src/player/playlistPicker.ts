@@ -1,9 +1,12 @@
 /**
  * The song menus' Add to playlist, for the whole app (DesktopShell provides it): your playlists by name with a ✓ on
- * the ones that have the song, adding it to one, or a new playlist with it (opened, its name ready to type).
+ * the ones that have the song, adding it to one, or a new playlist with it (opened, its name ready to type). Adding
+ * says how it went: a note with Undo, or why it couldn't.
  */
 import type { PlaylistPicker } from '@/components/songs'
+import { ListPlus } from '@lucide/vue'
 import { library } from '@/library'
+import { toast } from '@/lib/toast'
 import { router } from '@/router'
 
 export const playlistPicker: PlaylistPicker = {
@@ -12,7 +15,16 @@ export const playlistPicker: PlaylistPicker = {
     return playlists.map((p) => ({ id: p.id, name: p.name, has: has.includes(p.id) }))
   },
   async add(song, playlist) {
-    await library.addToPlaylist(playlist, [Number(song.id)])
+    try {
+      const [entry] = await library.addToPlaylist(playlist, [Number(song.id)])
+      const name = await library.playlist(playlist).then((p) => p.name, () => 'the playlist')
+      toast(`Added “${song.title}” to “${name}”`, ListPlus, {
+        label: 'Undo',
+        run: () => library.removeFromPlaylist(playlist, [entry]).catch((e) => toast(`Couldn’t take it out again: ${e}`)),
+      })
+    } catch (e) {
+      toast(`Couldn’t add “${song.title}”: ${e}`)
+    }
   },
   async create(song) {
     const made = await library.createPlaylist('New playlist')

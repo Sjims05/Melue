@@ -98,14 +98,15 @@ const MENU = coverMenu({ kind: 'list' })
               </span>
             </RouterLink>
           </Transition>
-          <div v-if="offer" class="flex min-w-0 items-center gap-4 rounded-xl p-4" :class="cardClass">
+          <!-- On a phone its buttons go on a line of their own, at the right. -->
+          <div v-if="offer" class="flex min-w-0 flex-wrap items-center gap-4 rounded-xl p-4 phone:gap-x-4 phone:gap-y-3" :class="cardClass">
             <span class="grid size-16 flex-none place-items-center rounded-md bg-well text-muted-foreground"><Music class="size-6" /></span>
-            <span class="flex min-w-0 flex-1 flex-col">
+            <span class="flex min-w-0 flex-1 flex-col phone:basis-[calc(100%-5rem)]">
               <span class="truncate text-sm text-muted-foreground">Continue from {{ offer.deviceName }}?</span>
               <span class="truncate text-[17px] font-semibold">{{ offer.title ?? 'A song' }}</span>
               <span class="truncate text-muted-foreground">{{ [offer.artist, minutesAndSeconds(offer.positionS)].filter(Boolean).join(' · ') }}</span>
             </span>
-            <Button variant="outline" size="sm" @click="answer(false)">Not now</Button>
+            <Button variant="outline" size="sm" class="phone:ml-auto" @click="answer(false)">Not now</Button>
             <Button size="sm" @click="answer(true)">Continue</Button>
           </div>
         </div>
@@ -135,6 +136,7 @@ const MENU = coverMenu({ kind: 'list' })
             :collage="list.collage"
             :colors="list.colors"
             :icon="list.icon"
+            :placeholder="list.placeholder"
             :menu="MENU"
             @open="router.push(list.page)"
             @action="(action) => listAction(list.source, action as CoverAction)"

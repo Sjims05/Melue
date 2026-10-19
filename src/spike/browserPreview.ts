@@ -167,6 +167,7 @@ let folders: MusicFolder[] = new URLSearchParams(location.search).get('library')
   folder(2, 'Music_Test', 'D:\Music_Test', 4),
   folder(3, 'Synced music', 'C:\\Users\\me\\Music\\Melue', 218, true),
 ]
+const sharedSettings: Record<string, unknown> = {}
 let onlyHere: LocalSong[] = [
   { id: 101, title: 'The Sign', artist: 'Ace of Base', album: 'Happy Nation', folder: 'Music_Test', size: 7_400_000 },
   { id: 102, title: 'Waterloo', artist: 'ABBA', album: 'Waterloo', folder: 'Music_Test', size: 6_100_000 },
@@ -258,7 +259,7 @@ export function installBrowserPreview() {
         case 'library_let_go_files': return [{ folderId: 1, folder: 'Music', path: 'Lists/Old mix.m3u' }]
         case 'library_playlist_entries': {
           const songs = bigLibrary('title').slice(0, 8)
-          const states = ['both', 'both', 'suggested', 'both', 'removed_here', 'both', 'file_removed', 'both']
+          const states = ['both', 'both', 'suggested', 'both', 'removed_here', 'here_only', 'file_removed', 'both']
           const linked = playlists.find((p) => p.id === a.id)?.kind === 'linked'
           return [
             ...songs.map((t, i) => ({ id: 500 + i, position: i, addedAt: 0, state: linked ? states[i] : 'both', fileEntry: null, syncTitle: null, syncArtist: null, track: { ...t, available: i !== 3 } })),
@@ -356,6 +357,9 @@ export function installBrowserPreview() {
           const all = bigLibrary('title')
           return (a.ids as number[]).map((id) => all.find((t) => t.id === id)).filter((t) => !!t).map((t) => ({ id: t.id, src: `C:/Music/${t.title}.mp3`, title: t.title, artist: t.artist, album: t.album }))
         }
+        // Settings across devices: the snapshot here (what was recorded, for a look at it in the preview).
+        case 'shared_settings': return sharedSettings
+        case 'record_shared_settings': Object.assign(sharedSettings, a.changes as object); (window as unknown as { __recorded: unknown[] }).__recorded = [...((window as unknown as { __recorded?: unknown[] }).__recorded ?? []), a]; return null
         case 'library_tracks': return bigLibrary(a.sort as string).slice(a.offset as number, (a.offset as number) + (a.limit as number))
         case 'library_albums': return bigAlbums()
         case 'library_search': {
@@ -370,7 +374,7 @@ export function installBrowserPreview() {
             playlists: playlists.filter((pl) => has(pl.name)),
           }
         }
-        case 'plugin:native-audio|get_tracked_list': return { entries: ['playlist:10', 'album:3', 'liked', 'playlist:13', 'top:year', 'album:5', 'playlist:11', 'album:8'].map((id, i) => ({ id, playedAtMs: Date.now() - i * 3_600_000 })) }
+        case 'plugin:native-audio|get_tracked_list': return { entries: ['playlist:10', 'artist:3', 'album:3', 'liked', 'playlist:13', 'top:year', 'album:5', 'playlist:11', 'album:8'].map((id, i) => ({ id, playedAtMs: Date.now() - i * 3_600_000 })) }
         case 'library_recently_played': return queueTracks(queueItems.map((q) => q.id)).slice(0, a.limit as number)
         case 'playback_offer': return { deviceId: 'phone', deviceName: 'Phone', savedAtMs: Date.now(), queue: [], index: 0, positionS: 83, playing: false, shuffle: false, repeat: 'off', title: 'Digital Rain', artist: 'Cyber Symphony' }
         case 'library_auto_playlist_tracks': return a.source === 'songs' ? bigLibrary('title') : bigLibrary('plays').slice(0, 25)

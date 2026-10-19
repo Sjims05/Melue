@@ -9,7 +9,7 @@ import { syncNowPlaying } from "./player/nowPlaying";
 import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
-import { router } from "./router";
+import { preloadPages, router } from "./router";
 
 // No browser right-click menu: Melue's own menus (e.g. a setting's "Reset to default") open where there is one.
 // Text fields keep it, for copy and paste.
@@ -17,10 +17,11 @@ document.addEventListener("contextmenu", (e) => {
   if (!(e.target as Element | null)?.closest?.("input, textarea, [contenteditable]")) e.preventDefault();
 });
 
-function start() {
+function start(shell = isMobile ? MobileShell : DesktopShell) {
   // Phone and desktop have their own shell (navigation and layout) around the same pages.
   // The platform is fixed at build time, so the other shell is left out of the build.
-  createApp(isMobile ? MobileShell : DesktopShell).use(router).mount("#app");
+  createApp(shell).use(router).mount("#app");
+  preloadPages();
 
   // The player's buttons, and counting what it plays (also what played while the app wasn't running).
   // Then what's playing is read again: the player may have resumed the last queue meanwhile.
@@ -35,7 +36,8 @@ function start() {
 if (import.meta.env.DEV && !isTauri()) {
   import("./spike/browserPreview").then(({ installBrowserPreview }) => {
     installBrowserPreview();
-    start();
+    // ?phone: the phone's frame, to look at it in the browser.
+    start(new URLSearchParams(location.search).has("phone") ? MobileShell : undefined);
   });
 } else {
   start();

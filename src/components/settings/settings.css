@@ -115,6 +115,37 @@
   .settings-row.wide {
     flex-wrap: wrap;
   }
+  /* On a phone: the text gives way first, down to a share of the row (55%, up to 10rem); a control that still doesn't
+     fit beside it (a value, a button, a sync status with its button) goes under it, at the right, with the row's
+     trailing icon. Switches and small buttons stay beside it. */
+  .mobile-shell .settings-row {
+    flex-wrap: wrap;
+  }
+  .mobile-shell .settings-row > .settings-row-text {
+    flex: 1 1 0;
+    min-width: min(55%, 10rem);
+  }
+  /* A stacked row (stack): its controls on a line of their own under the text, at the right; the text keeps the first
+     line with the trailing icon. */
+  .mobile-shell .settings-row.stack > .settings-row-text {
+    order: 1;
+    min-width: 0;
+  }
+  .mobile-shell .settings-row.stack > .settings-row-end {
+    order: 2;
+  }
+  .mobile-shell .settings-row.stack > .settings-row-controls {
+    order: 3;
+    width: 100%;
+  }
+  /* A row with a trailing icon has no room kept at its right (the icon's square is): its own line keeps the card's. */
+  .mobile-shell .settings-row.stack.has-end > .settings-row-controls {
+    padding-right: 1rem;
+  }
+  /* With a trailing icon (a chevron) the text gives way a little further, so the icon stays on the first line. */
+  .mobile-shell .settings-row.has-end > .settings-row-text {
+    min-width: min(40%, 7rem);
+  }
   .settings-row.wide > .settings-row-text {
     flex-basis: 12rem;
   }

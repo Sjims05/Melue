@@ -22,6 +22,20 @@ export function middle(path: string, max = 32): string {
   return `${path.slice(0, keep)}...${path.slice(path.length - keep)}`
 }
 
+/** On a phone: a path as its last folder only ("…/Music_Sync_test"); the details show all of it. */
+export function lastPart(path: string): string {
+  const sep = path.includes('\\') ? '\\' : '/'
+  const parts = path.split(sep).filter(Boolean)
+  return parts.length > 1 ? `…${sep}${parts[parts.length - 1]}` : path
+}
+
+/** A folder's place in words: an Android folder (a content:// address) as its path on the phone ("Music/Melue"). */
+export function readablePath(location: string): string {
+  if (!location.startsWith('content://')) return location
+  const last = decodeURIComponent(location.split('/').pop() ?? '')
+  return last.includes(':') ? last.slice(last.indexOf(':') + 1) || last : last
+}
+
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
 

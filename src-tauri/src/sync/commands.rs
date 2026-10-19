@@ -165,6 +165,26 @@ pub async fn sync_move_to_sync(app: AppHandle, items: Vec<ToMove>, playlist: Opt
     on_share_thread(move || moving::move_to_sync(&app, items, playlist)).await
 }
 
+/// The settings shared across devices as last known here (settings_sync.rs).
+#[tauri::command(async)]
+pub fn shared_settings(library: tauri::State<'_, Library>) -> Result<std::collections::BTreeMap<String, serde_json::Value>, String> {
+    library.shared_settings_snapshot()
+}
+
+/// Settings changed here (`first`: the device's first snapshot, which another device's choices win over); they go to
+/// the other devices with the next library data sync, a few seconds from now.
+#[tauri::command(async)]
+pub fn record_shared_settings(
+    app: AppHandle,
+    library: tauri::State<'_, Library>,
+    changes: std::collections::BTreeMap<String, serde_json::Value>,
+    first: bool,
+) -> Result<(), String> {
+    library.record_settings(changes, first)?;
+    super::data::soon(&app);
+    Ok(())
+}
+
 /// Hidden copies of synced songs waiting for a choice (also sent as `song-copies` events).
 #[tauri::command(async)]
 pub fn sync_copies(library: tauri::State<'_, Library>) -> Result<Copies, String> {

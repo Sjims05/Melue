@@ -29,6 +29,8 @@ defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(
   defineProps<{
+  /** On a phone: its controls on a line of their own under the text (a long title or description beside a button). */
+  stack?: boolean
     title?: string
     description?: string
     detail?: boolean
@@ -54,8 +56,8 @@ const about = ref(false)
       <component
         :is="as"
         v-bind="$attrs"
-        class="settings-row relative flex w-full items-center gap-x-3.5 gap-y-2.5 text-left"
-        :class="{ wide, detail, 'has-end': !!$slots.end, 'cursor-pointer': as !== 'div' }"
+        class="settings-row relative flex w-full items-center gap-x-3.5 gap-y-2.5 text-left phone:gap-x-2.5"
+        :class="{ wide, detail, stack, 'has-end': !!$slots.end, 'cursor-pointer': as !== 'div' }"
         :type="as === 'button' ? 'button' : undefined"
         :data-setting="setting"
         data-row
@@ -72,11 +74,11 @@ const about = ref(false)
               <SettingsBadge v-if="menu && setting && menu.copied === setting" class="ml-1.5">Link copied</SettingsBadge>
             </Transition>
           </span>
-          <span v-if="description || $slots.description" class="text-[13.5px] leading-snug text-muted-foreground">
+          <span v-if="description || $slots.description" class="text-[13.5px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
             <slot name="description">{{ description }}</slot>
           </span>
         </span>
-        <span v-if="$slots.default" class="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2">
+        <span v-if="$slots.default" class="settings-row-controls ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2">
           <slot />
         </span>
         <span v-if="$slots.end" class="settings-row-end text-muted-foreground" data-end>

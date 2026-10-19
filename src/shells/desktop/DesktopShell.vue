@@ -9,74 +9,38 @@
  * opened from it slides in over it the same way. The player bar sits at the bottom, except on Now playing.
  */
 import { onKeyStroke } from '@vueuse/core'
-import { computed, nextTick, provide, ref, shallowRef, watch, type Component } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { provide, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { backLabel, goBack, MAIN_PAGES } from '@/router'
+import { backLabel, goBack } from '@/router'
+import { usePages } from '../usePages'
 import { PLAYLIST_PICKER } from '@/components/songs'
 import { startNowPlaying } from '@/player/nowPlaying'
 import { playlistPicker } from '@/player/playlistPicker'
 import { followOnlyHere } from '@/library/onlyHere'
-import ConfirmHost from './ConfirmHost.vue'
+import { followSharedSettings } from '@/settings/sharedSettings'
+import ConfirmHost from '../ConfirmHost.vue'
 import DropSongs from '@/settings/DropSongs.vue'
 import DotsNav from './DotsNav.vue'
 import PlayerBar from './PlayerBar.vue'
-import Toasts from './Toasts.vue'
+import Toasts from '../Toasts.vue'
 import TopBar from './TopBar.vue'
 
 const route = useRoute()
-const router = useRouter()
 // What's playing, for the player bar and Now playing; the song menus' Add to playlist.
 startNowPlaying()
 // Which songs are only on this device (their badge, Move to sync).
 followOnlyHere()
+// Settings shared across devices (sharedSettings.ts).
+followSharedSettings()
 provide(PLAYLIST_PICKER, playlistPicker)
 
-// The main page shown (under a page opened on top, the one it was opened from), and which way the dots went.
-const main = shallowRef<{ path: string; component: Component } | null>(null)
-const from = ref<1 | -1>(1)
+// The main page shown, the switches' way, each main page's scroll, and the layers (usePages, shared with the phone).
 const scroller = ref<HTMLElement>()
-const scrolls = new Map<string, number>()
-const dotIndex = (path: string) => MAIN_PAGES.findIndex((p) => p.path === path)
-
-watch(
-  () => route.fullPath,
-  async () => {
-    // Opened straight on a page that goes on top (a reload there): Home underneath.
-    if (!route.meta.main && !main.value) {
-      main.value = { path: '/', component: router.resolve('/').matched[0].components!.default as Component }
-      return
-    }
-    if (!route.meta.main) return
-    const component = route.matched[0]?.components?.default as Component | undefined
-    if (!component || main.value?.path === route.path) return
-    if (main.value) {
-      from.value = dotIndex(route.path) >= dotIndex(main.value.path) ? 1 : -1
-      scrolls.set(main.value.path, scroller.value?.scrollTop ?? 0)
-    }
-    main.value = { path: route.path, component }
-    // Each main page comes back where it was scrolled.
-    await nextTick()
-    scroller.value?.scrollTo({ top: scrolls.get(route.path) ?? 0 })
-  },
-  { immediate: true },
-)
-
-const onTop = computed(() => !route.meta.main)
+const { main, from, onTop, layerKey, motion } = usePages(scroller)
 // Escape: back from a page on top (a field handles its own Escape first).
 onKeyStroke('Escape', (e) => {
   if (onTop.value && !(e.target as HTMLElement).closest('input, textarea, [role=dialog], [role=menu]')) goBack()
-})
-// Each page on top is its own layer (an artist, then its album: two).
-const layerKey = computed(() => route.fullPath.split('?')[0])
-// Which way layers move: a page on top opening slides in over what's there (which stays put under it); going back
-// slides it out, uncovering the one under it. Between two pages on top, the history says which (back is a lower place).
-const motion = ref<'layer-in' | 'layer-out'>('layer-in')
-let place = 0
-router.afterEach((to, from) => {
-  const now = (router.options.history.state.position as number | undefined) ?? 0
-  motion.value = to.meta.main ? 'layer-out' : from.meta.main ? 'layer-in' : now < place ? 'layer-out' : 'layer-in'
-  place = now
 })
 </script>
 

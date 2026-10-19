@@ -224,6 +224,8 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
             }
             keep_watching(app, share);
             super::data::soon(app);
+            // What the other devices play, again (a sync is when one can be newer than the last look).
+            super::handoff::check(app);
             Ok(done)
         }
         Err(failure) => {

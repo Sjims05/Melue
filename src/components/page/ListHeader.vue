@@ -53,36 +53,36 @@ defineExpose({ rename })
 <template>
   <ContextMenu :modal="false">
     <ContextMenuTrigger as-child :disabled="!menu?.length || editing">
-      <div class="mb-10 flex items-center gap-12 pt-2">
+      <div class="mb-10 flex items-center gap-12 pt-2 phone:mb-6 phone:flex-col phone:items-stretch phone:gap-5 phone:pt-1">
         <button
           v-if="coverLabel"
           type="button"
-          class="w-[min(16.5rem,30%)] flex-none rounded-lg transition-opacity outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring/50"
+          class="w-[min(16.5rem,30%)] flex-none rounded-lg transition-opacity outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-ring/50 phone:w-52 phone:self-center"
           :aria-label="coverLabel"
           :title="coverLabel"
           @click="emit('cover')"
         >
           <Cover :image="image" :colors="colors" :icon="icon" :collage="collage" />
         </button>
-        <div v-else class="w-[min(16.5rem,30%)] flex-none"><Cover :image="image" :colors="colors" :icon="icon" :collage="collage" /></div>
+        <div v-else class="w-[min(16.5rem,30%)] flex-none phone:w-52 phone:self-center"><Cover :image="image" :colors="colors" :icon="icon" :collage="collage" /></div>
         <div class="min-w-0 flex-1">
-          <div v-if="$slots.badges" class="mb-4 flex flex-wrap gap-2"><slot name="badges" /></div>
+          <div v-if="$slots.badges" class="mb-4 flex flex-wrap gap-2 phone:mb-2"><slot name="badges" /></div>
           <input
             v-if="editing"
             ref="field"
             v-model="name"
             aria-label="Name"
-            class="-mx-2 w-full rounded-lg bg-card px-2 text-4xl leading-tight font-bold tracking-tight outline-none ring-2 ring-ring/50"
+            class="-mx-2 w-full rounded-lg bg-card px-2 text-4xl leading-tight font-bold tracking-tight outline-none ring-2 ring-ring/50 phone:text-[28px]"
             @keydown.enter.prevent="finish(true)"
             @keydown.escape.stop.prevent="finish(false)"
             @blur="finish(true)"
           />
-          <h1 v-else-if="editable" class="text-4xl leading-tight font-bold tracking-tight">
+          <h1 v-else-if="editable" class="text-4xl leading-tight font-bold tracking-tight phone:text-[28px]">
             <button type="button" class="-mx-2 line-clamp-2 rounded-lg px-2 text-left hover:bg-card" title="Rename" @click="rename">{{ title }}</button>
           </h1>
-          <h1 v-else class="line-clamp-2 text-4xl leading-tight font-bold tracking-tight">{{ title }}</h1>
-          <p class="mt-2 text-lg text-muted-foreground"><slot name="line" /></p>
-          <div class="mt-6 flex gap-4">
+          <h1 v-else class="line-clamp-2 text-4xl leading-tight font-bold tracking-tight phone:text-[28px]">{{ title }}</h1>
+          <p class="mt-2 text-lg text-muted-foreground phone:mt-1 phone:text-[15px]"><slot name="line" /></p>
+          <div class="mt-6 flex gap-4 phone:mt-4 phone:flex-wrap phone:gap-3">
             <Button size="lg" :disabled="empty" @click="emit('play')"><PlayIcon class="size-3.5" />Play</Button>
             <Button size="lg" variant="outline" :disabled="empty" @click="emit('shuffle')"><Shuffle />Shuffle</Button>
             <slot name="actions" />

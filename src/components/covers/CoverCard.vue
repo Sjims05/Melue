@@ -26,6 +26,8 @@ const props = defineProps<{
   colors?: CoverColors
   icon?: Component
   collage?: readonly (string | CoverColors)[]
+  /** Shown when there's no picture: the note, or something that fits better (an artist: a person). */
+  placeholder?: Component
   menu?: MenuItem[]
   editing?: boolean
   song?: { current: boolean; playing: boolean }
@@ -83,6 +85,7 @@ function finish(save: boolean) {
           :colors="colors"
           :icon="icon"
           :collage="collage"
+          :placeholder="placeholder"
           class="group-focus-visible/cover:ring-2 group-focus-visible/cover:ring-ring/50"
         >
           <slot name="badge" />
@@ -111,8 +114,8 @@ function finish(save: boolean) {
             @keydown.escape.stop.prevent="finish(false)"
             @blur="finish(true)"
           />
-          <span v-else class="truncate text-[15px] font-medium">{{ title }}</span>
-          <span v-if="subtitle" class="truncate text-sm text-muted-foreground">{{ subtitle }}</span>
+          <span v-else class="truncate text-[15px] font-medium phone:text-sm">{{ title }}</span>
+          <span v-if="subtitle" class="truncate text-sm text-muted-foreground phone:text-[13px]">{{ subtitle }}</span>
         </span>
       </component>
     </ContextMenuTrigger>

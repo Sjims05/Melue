@@ -50,7 +50,7 @@ onActivated(() => {
 })
 watch(model, () => nextTick(place))
 
-const LABEL = 'h-[30px] rounded-[7px] px-3 text-[13px] font-medium whitespace-nowrap'
+const LABEL = 'h-[30px] rounded-[7px] px-3 text-[13px] font-medium whitespace-nowrap phone:px-2.5'
 const MOVES = 'transition-transform duration-200 ease-out motion-reduce:transition-none'
 </script>
 
@@ -59,7 +59,7 @@ const MOVES = 'transition-transform duration-200 ease-out motion-reduce:transiti
     ref="root"
     type="single"
     :model-value="model"
-    class="relative inline-flex flex-wrap rounded-[9px] bg-well shadow-[inset_0_0_0_1px_var(--well-line)] p-[3px]"
+    class="relative inline-flex flex-wrap rounded-[9px] phone:flex-nowrap bg-well shadow-[inset_0_0_0_1px_var(--well-line)] p-[3px]"
     @update:model-value="pick"
   >
     <ToggleGroupItem

@@ -9,8 +9,8 @@ import { reactive } from 'vue'
 import type { SettingMenu } from '@/components/settings'
 import { library } from '@/library'
 import { SETTINGS } from './registry'
+import { DEVICE_ONLY, rejoinShared } from './sharedSettings'
 
-const DEVICE_ONLY = 'device_only_settings'
 export const LINK = 'melue://settings/'
 
 const deviceOnly = reactive(new Set<string>())
@@ -33,7 +33,11 @@ export function createSettingsMenu(): SettingMenu {
     isDeviceOnly: (id: string) => deviceOnly.has(id),
     setDeviceOnly(id: string, on: boolean) {
       if (on) deviceOnly.add(id)
-      else deviceOnly.delete(id)
+      else {
+        deviceOnly.delete(id)
+        // Shared again: it takes the other devices' value, the same starting point everywhere.
+        rejoinShared(id).catch((e) => console.error('melue: shared setting', e))
+      }
       library.setSetting(DEVICE_ONLY, JSON.stringify([...deviceOnly])).catch((e) => console.error('melue: device-only settings', e))
     },
     copied: null as string | null,

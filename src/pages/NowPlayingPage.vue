@@ -145,8 +145,8 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
         <div class="relative grid min-w-0">
           <div aria-hidden="true" class="invisible col-start-1 row-start-1">
             <p class="text-[17px]">&nbsp;</p>
-            <p class="mt-2 h-[2lh] text-4xl leading-tight">&nbsp;</p>
-            <p class="mt-1 text-lg">&nbsp;</p>
+            <p class="mt-2 h-[2lh] text-4xl leading-tight phone:mt-1 phone:text-[28px]">&nbsp;</p>
+            <p class="mt-1 text-lg phone:text-base">&nbsp;</p>
           </div>
           <Transition name="swap" mode="out-in">
             <div :key="current.id" class="col-start-1 row-start-1 min-w-0">
@@ -156,12 +156,13 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
                 <RouterLink v-if="fromPage" :to="fromPage" class="font-semibold text-foreground hover:underline">{{ nowPlaying.from }}</RouterLink>
                 <b v-else class="font-semibold text-foreground">{{ nowPlaying.from }}</b>
               </p>
-              <h1 ref="title" class="mt-2 line-clamp-2 text-4xl leading-tight font-bold tracking-tight">{{ current.title }}</h1>
+              <h1 ref="title" class="mt-2 line-clamp-2 text-4xl leading-tight font-bold tracking-tight phone:mt-1 phone:text-[28px]">{{ current.title }}</h1>
               <!-- Beside the volume (a two-line title) it stops before it: the volume's width and a gap. -->
-              <p class="mt-1 truncate text-lg text-muted-foreground" :class="twoLines && 'pr-[232px]'"><template v-for="(part, i) in currentArtistParts" :key="i"><RouterLink v-if="part.artist" :to="`/artist/${part.artist}`" class="hover:text-foreground hover:underline">{{ part.text }}</RouterLink><template v-else>{{ part.text }}</template></template></p>
+              <p class="mt-1 truncate text-lg text-muted-foreground phone:pr-0! phone:text-base" :class="twoLines && 'pr-[232px]'"><template v-for="(part, i) in currentArtistParts" :key="i"><RouterLink v-if="part.artist" :to="`/artist/${part.artist}`" class="hover:text-foreground hover:underline">{{ part.text }}</RouterLink><template v-else>{{ part.text }}</template></template></p>
             </div>
           </Transition>
-          <div class="absolute right-0 bottom-0 flex h-7 items-center gap-3">
+          <!-- Not on a phone: its own volume buttons. -->
+          <div class="absolute right-0 bottom-0 flex h-7 items-center gap-3 phone:hidden">
             <Slider class="w-44" :value="shownVolume" :max="1" :step="0.05" label="Volume" @live="changeVolume" @change="changeVolume" />
             <component :is="VolumeIcon" class="size-5 text-muted-foreground" />
           </div>
@@ -256,7 +257,8 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
             !upNext.length && upNextShown.length ? 'Up next · Starts over next' : `Up next · ${upNext.length} song${upNext.length === 1 ? '' : 's'}`
           }}</b>
           <span class="text-[15px] text-muted-foreground">
-            From {{ nowPlaying.from }}<template v-if="state?.repeatMode === 'one'"> · Repeating this song</template>
+            <!-- A long name goes to the next line whole (cut short if it's longer than a line), not word by word. -->
+            From <span class="inline-block max-w-full truncate align-bottom">{{ nowPlaying.from }}</span><template v-if="state?.repeatMode === 'one'"> · Repeating this song</template>
           </span>
         </button>
         <button

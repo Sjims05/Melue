@@ -7,6 +7,7 @@
  */
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { usePhone } from '@/lib/phone'
 import SongRow from './SongRow.vue'
 import type { Song, SongAction, SongMenuPlace } from './songMenu'
 
@@ -31,7 +32,7 @@ const emit = defineEmits<{
 }>()
 
 // A song row's height, and a heading's (with the room above it).
-const ROW = 68
+const ROW = usePhone() ? 60 : 68
 const HEADING = 44
 // Rows drawn beyond the screen, above and below (about a screen's worth).
 const OVERSCAN = 14

@@ -11,6 +11,7 @@ import { artistParts, type Song } from '@/components/songs'
 import { coverUrl, library, type Track } from '@/library'
 import { onlyHere } from '@/library/onlyHere'
 import { setLiked } from '@/library/playback'
+import { playbackSync } from '@/library/sync'
 import { player, type PlayerQueue, type PlayerState, type PlayerTrack, type RepeatMode } from '@/platform'
 
 export const nowPlaying = reactive({
@@ -46,10 +47,18 @@ export async function startNowPlaying() {
     requestAnimationFrame(frame)
   }
   requestAnimationFrame(frame)
+  // Another device's playback loaded here (synced playback, following it): what's playing now.
+  playbackSync.onFollowed(() => syncNowPlaying().catch(() => {})).catch(() => {})
+  // Back from the background (the phone woken, the window shown): what's playing, at once.
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && syncNowPlaying().catch(() => {}))
 }
 
 /** The player's state, from its updates or a control's answer. */
 function applyState(state: PlayerState) {
+  // The same song with no length for a moment (Android's player getting ready again, when the queue changes during a
+  // sync): its length as known, or the progress bar would show it played to the end until the length is back.
+  const before = nowPlaying.state
+  if (!(state.duration > 0) && before && before.currentId === state.currentId && before.duration > 0) state = { ...state, duration: before.duration }
   nowPlaying.state = state
   nowPlaying.stateAt = performance.now()
   // The queue changed (another song, added, removed, moved, shuffled, or repeat, which decides the next pass): read it
@@ -164,7 +173,9 @@ export const position = computed(() => {
   const s = nowPlaying.state
   if (!s) return 0
   void nowPlaying.tick
-  const moved = s.isPlaying ? (performance.now() - nowPlaying.stateAt) / 1000 : 0
+  // Run on from the player's last word, a few seconds at most: after a while away (the app in the background) it would
+  // reach the song's end before the player's next word comes.
+  const moved = s.isPlaying ? Math.min(5, (performance.now() - nowPlaying.stateAt) / 1000) : 0
   return Math.min(s.duration || Infinity, s.currentTime + moved)
 })
 /** Up next: the queue after the playing song, in play order, with each one's index in the queue's items. */

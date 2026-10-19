@@ -26,8 +26,12 @@ import {
 import { describeSetupError, share, syncing, type PasswordStore, type SetupError, type ShareInfo, type SyncFolderChoice } from '@/library/sync'
 import { isAndroid, isDesktop, storage } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
-import { middle, shareName } from './format'
+import { lastPart, middle, readablePath, shareName } from './format'
+import { usePhone } from '@/lib/phone'
 import { refreshLibrary } from './libraryState'
+
+// On a phone the share shows by its last folder (the details have all of it).
+const phone = usePhone()
 
 const STORES = [['secure', 'Securely'], ['ask', 'Ask each time'], ['file', 'In a file']] as const
 const STORE_LINE: Record<PasswordStore, string> = {
@@ -187,7 +191,7 @@ function toggleDetails(event: Event) {
             <Segmented v-model="form.store" :options="STORES" />
           </SettingsRow>
         </Reveal>
-        <SettingsRow title="Synced music goes to" :description="syncFolder ? middle(syncFolder.location, 44) : 'Choose a folder on this phone'">
+        <SettingsRow title="Synced music goes to" :description="syncFolder ? middle(readablePath(syncFolder.location), 44) : 'Choose a folder on this phone'">
           <Button variant="outline" size="sm" @click="chooseFolder">{{ syncFolder ? 'Change' : 'Choose folder' }}</Button>
         </SettingsRow>
         <div class="settings-row" data-row>
@@ -206,14 +210,14 @@ function toggleDetails(event: Event) {
       </SettingsTip>
       <SettingsCard>
         <SettingsRow
-          :description="info.syncFolder ? middle(info.syncFolder.location, 44) : undefined"
+          :description="info.syncFolder ? middle(readablePath(info.syncFolder.location), 44) : undefined"
           :aria-expanded="details"
           class="cursor-pointer"
           @click="toggleDetails"
         >
           <template #lead><IconTile :icon="Cloud" /></template>
           <template #title>
-            {{ middle(shareName(settings)) }}
+            {{ phone ? lastPart(shareName(settings)) : middle(shareName(settings)) }}
             <SettingsBadge class="ml-1.5">{{ settings.kind === 'drive' && settings.stream ? 'Streamed' : 'Synced' }}</SettingsBadge>
           </template>
           <DropdownMenu>

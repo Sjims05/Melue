@@ -48,6 +48,7 @@ export type SongAction =
   | 'showInFolder'
   | 'moveToSync'
   | 'removeFromPlaylist'
+  | 'takeOut'
   | 'restore'
 
 /** Where the song is, for the menu's extras. */

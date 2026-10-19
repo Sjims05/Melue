@@ -11,7 +11,8 @@
 //! Times in the files are on the share's clock (see handoff.rs): this device's own file tells how far the
 //! share's clock is from its own.
 //!
-//! Playlists are synced after this, with the same share (playlist_sync.rs), then their covers (cover_sync.rs). Both run a few seconds after a
+//! Playlists are synced after this, with the same share (playlist_sync.rs), then their covers (cover_sync.rs), then
+//! the settings shared across devices (settings_sync.rs). Both run a few seconds after a
 //! change here, after each sync, when the share says one of their files changed, and at start-up.
 
 use std::collections::HashMap;
@@ -21,7 +22,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::handoff::{self, key};
 use super::shared::with_share;
@@ -313,7 +314,8 @@ pub struct LibrarySync {
 
 /// Whether a changed file on the share is library data or a playlist.
 pub fn is_library_file(path: &str) -> bool {
-    [DIR, super::playlist_sync::DIR, super::cover_sync::DIR].iter().any(|dir| path.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/') && rest.ends_with(".json")))
+    path == super::settings_sync::FILE
+        || [DIR, super::playlist_sync::DIR, super::cover_sync::DIR].iter().any(|dir| path.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/') && rest.ends_with(".json")))
 }
 
 /// Something changed (here: likes, playlists, plays; or on the share): the library data is synced once
@@ -335,12 +337,17 @@ pub fn run(app: &AppHandle) -> Result<()> {
     let Some(folder) = library.synced_folder()? else { return Ok(()) };
     let me = handoff::device_id(&library)?;
     let name = handoff::settings(app)?.device_name.unwrap_or_default();
-    let (data, playlists) = with_share(app, |share| {
+    let (data, playlists, settings) = with_share(app, |share| {
         let (data, ahead) = sync_device_data(&library, share, &folder, &me, &name)?;
         let mut playlists = super::playlist_sync::sync_playlists(&library, share, &folder, &me, &name, ahead)?;
         playlists.changed.extend(super::cover_sync::sync_covers(&library, share, &folder, &me, ahead)?);
-        Ok((data, playlists))
+        let settings = super::settings_sync::sync_settings(&library, share)?;
+        Ok((data, playlists, settings))
     })?;
+    // Settings another device changed: the app sets them here.
+    if !settings.is_empty() {
+        let _ = app.emit(super::settings_sync::EVENT, &settings);
+    }
     if !data.likes_changed.is_empty() {
         let change = LibraryChange { reason: ChangeReason::Likes, tracks: data.likes_changed, sources: vec!["liked".into()] };
         changes::emit(app, change);

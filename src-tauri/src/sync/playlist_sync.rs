@@ -226,7 +226,11 @@ impl Library {
     }
 
     /// Keeps a deleted synced playlist for restoring (30 days).
+    /// Keeps a deleted playlist for restoring. One with no songs isn't kept: there's nothing to get back.
     fn archive_playlist(&self, sync_id: &str, data: &PlaylistData) -> Result<()> {
+        if data.entries.is_empty() {
+            return self.conn().execute("DELETE FROM deleted_playlists WHERE sync_id = ?1", [sync_id]).map(|_| ()).map_err(err);
+        }
         self.conn()
             .execute(
                 "INSERT INTO deleted_playlists (sync_id, name, data, deleted_at) VALUES (?1, ?2, ?3, ?4)
@@ -264,7 +268,10 @@ impl Library {
         for row in rows {
             let (sync_id, name, data, deleted_at) = row.map_err(err)?;
             let songs = serde_json::from_str::<PlaylistData>(&data).map_or(0, |d| d.entries.len());
-            deleted.push(DeletedPlaylist { sync_id, name, songs, deleted_at });
+            // Kept before empty ones stopped being kept: not offered.
+            if songs > 0 {
+                deleted.push(DeletedPlaylist { sync_id, name, songs, deleted_at });
+            }
         }
         Ok(deleted)
     }

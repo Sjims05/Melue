@@ -10,6 +10,11 @@
     gap: 1.75rem;
     padding-block: 0.75rem;
   }
+  /* On a phone: two a row, closer together. */
+  .mobile-shell .cover-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
   .cover-card {
     display: flex;
     flex-direction: column;

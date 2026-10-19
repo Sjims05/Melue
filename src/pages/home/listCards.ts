@@ -2,6 +2,7 @@
  * Lists to play as cards (Home's Recently played): an album, a playlist, an artist, a folder or a Made for you list,
  * from its source ('album:3'), with its picture, words and page. Lists that are gone are left out.
  */
+import { User } from '@lucide/vue'
 import { AUTO_COVERS, type CoverColors } from '@/components/covers'
 import { coverUrl, library, type AutoPlaylist, type MusicFolder, type Source } from '@/library'
 import { count } from '@/lib/format'
@@ -16,6 +17,8 @@ export interface ListCard {
   collage?: string[]
   colors?: CoverColors
   icon?: Component
+  /** No picture: the cover shows this instead of the note (an artist: a person). */
+  placeholder?: Component
   page: string
 }
 
@@ -38,7 +41,9 @@ export async function listCards(sources: string[]): Promise<ListCard[]> {
     }
     if (kind === 'artist') {
       const artist = (await library.artistPage(id))?.artist
-      return artist ? { source: at, title: artist.name, subtitle: `Artist · ${count(artist.tracks + artist.featured, 'song')}`, page: `/artist/${id}` } : null
+      return artist
+        ? { source: at, title: artist.name, subtitle: `Artist · ${count(artist.tracks + artist.featured, 'song')}`, placeholder: User, page: `/artist/${id}` }
+        : null
     }
     if (kind === 'folder') {
       folders ??= await library.folders()

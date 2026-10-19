@@ -12,7 +12,9 @@ const label = (value: T) => props.options.find(([v]) => v === value)?.[1] ?? val
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="outline" size="sm" :aria-label="`Sort by ${label(model)}`"><ArrowDownUp />{{ label(model) }}</Button>
+      <Button variant="outline" size="sm" class="phone:size-8 phone:px-0" :aria-label="`Sort by ${label(model)}`">
+        <ArrowDownUp /><span class="phone:hidden">{{ label(model) }}</span>
+      </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" class="min-w-44">
       <DropdownMenuRadioGroup v-model="model">

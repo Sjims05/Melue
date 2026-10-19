@@ -211,6 +211,8 @@ pub fn run() {
             sync::commands::sync_not_on_share,
             sync::commands::sync_move_to_sync,
             sync::commands::sync_copies,
+            sync::commands::shared_settings,
+            sync::commands::record_shared_settings,
             sync::commands::sync_clear_copies,
             sync::commands::sync_keep_copies,
             sync::commands::sync_check_copies,

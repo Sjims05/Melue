@@ -16,7 +16,7 @@ import {
   type NativeAudioPlaybackEvent,
 } from 'tauri-plugin-native-audio-api'
 import { invoke } from '@tauri-apps/api/core'
-import { player, trackedLists } from '@/platform'
+import { isMobile, player, trackedLists } from '@/platform'
 import { library, type PlaybackOutcome, type PlayerSettings, type Source } from '.'
 
 const LIKE_BUTTON = 'like'
@@ -70,7 +70,15 @@ export async function startPlayback(): Promise<void> {
   started = true
   await player.initialize()
   // The player settings (it saves them too; this keeps it in line with Melue's, e.g. after a reinstall).
-  await library.playerSettings().then((settings) => applyPlayerSettings(settings)).catch((e) => console.error('melue: player settings', e))
+  const settings = await library.playerSettings().catch((e) => void console.error('melue: player settings', e))
+  if (settings) await applyPlayerSettings(settings).catch((e) => console.error('melue: player settings', e))
+  // The last queue, as "When Melue starts" says. The computer's player brings it back by itself; the phone's only when
+  // its background service starts (not when the app opens), so it's asked for here. Both leave a queue that's already
+  // loaded alone (playing in the background, in the car).
+  if (settings && settings.resumeLastQueue !== 'off') {
+    const restored = await player.restoreLastQueue().catch(() => null)
+    if (restored && isMobile && settings.resumeLastQueue === 'play' && !restored.isPlaying) await player.play().catch(() => {})
+  }
   // The player keeps this itself, also for lists played in the car with the app closed (auto.rs uses it).
   await trackedLists.configure([{ id: RECENT_LISTS, track: 'folder', limit: 20 }])
   await setControls({

@@ -46,6 +46,21 @@ export const router = createRouter({
   scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
 })
 
+/**
+ * The pages opened on top load when first opened; once Melue has started and is idle, they're loaded ahead, so
+ * opening one the first time doesn't stutter while it slides in (on a phone especially).
+ */
+export function preloadPages() {
+  const load = () => {
+    for (const route of router.getRoutes()) {
+      const page = route.components?.default
+      if (typeof page === 'function' && !('setup' in page) && !('render' in page)) (page as () => Promise<unknown>)().catch(() => {})
+    }
+  }
+  if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 3000 })
+  else setTimeout(load, 1500)
+}
+
 /** The main pages, in the side dots' order. */
 export const MAIN_PAGES = router.getRoutes().filter((r) => r.meta.main).sort((a, b) => order(a.path) - order(b.path))
 function order(path: string) {

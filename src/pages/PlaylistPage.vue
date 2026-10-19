@@ -59,6 +59,7 @@ const stops = [library.onChange((change) => change.reason !== 'likes' && load())
 onUnmounted(() => stops.forEach((stop) => stop.then((unlisten) => unlisten())))
 
 // ---- Its songs: each entry a row (the same song twice: two rows), greyed ones at their place
+// A linked playlist's songs that differ from its file get a note; one added here (not in the file) says "Only in Melue".
 const STATE_NOTES = { suggested: 'New in the file', removed_here: 'Removed here', file_removed: 'Removed from the file' } as const
 const fileName = (line: string | null) => line?.split(/[\\/]/).pop() ?? null
 function entrySong(e: PlaylistEntry): Song {
@@ -67,9 +68,24 @@ function entrySong(e: PlaylistEntry): Song {
   const song: Song = e.track
     ? { ...trackSong(e.track), ...(left ? { id: `x${e.id}` } : {}) }
     : { id: `x${e.id}`, title: e.syncTitle ?? fileName(e.fileEntry) ?? 'Unknown song', artist: e.syncArtist ?? '', duration: 0 }
-  const note = e.state !== 'both' && e.state !== 'here_only' ? STATE_NOTES[e.state] : !e.track ? (e.syncTitle ? 'Not on this device yet' : 'Not found') : undefined
+  const note =
+    e.state !== 'both' && e.state !== 'here_only'
+      ? STATE_NOTES[e.state]
+      : !e.track
+        ? e.syncTitle
+          ? 'Not on this device yet'
+          : 'Not found'
+        : e.state === 'here_only' && !playlist.value?.writeBack
+          ? 'Only in Melue'
+          : undefined
   return { ...song, key: `e${e.id}`, note, restore: e.state === 'suggested' ? 'Add' : e.state === 'removed_here' ? 'Restore' : undefined }
 }
+// A linked playlist's songs added in Melue that its file doesn't have (not written back to it): how many, for its line.
+const onlyInMelue = computed(() =>
+  playlist.value?.kind === 'linked' && playlist.value.following && !playlist.value.writeBack
+    ? entries.value.filter((e) => e.state === 'here_only').length
+    : 0,
+)
 // Unfollowed: only its own version (what it differs from the file shows again once it follows the file again).
 const shown = computed(() =>
   playlist.value?.kind === 'linked' && !playlist.value.following ? entries.value.filter((e) => e.state !== 'suggested' && e.state !== 'removed_here') : entries.value,
@@ -155,7 +171,7 @@ const choosing = ref(false)
           <SettingsBadge v-if="playlist.file" class="h-7 gap-1.5 px-2.5 text-[13px]"><FileText class="size-3.5" />{{ playlist.file }}</SettingsBadge>
           <SettingsBadge v-if="playlist.fileMissing" class="h-7 gap-1.5 px-2.5 text-[13px] text-destructive"><CircleAlert class="size-3.5" />File gone</SettingsBadge>
         </template>
-        <template #line>Playlist · {{ playlistLine(playlist) }}</template>
+        <template #line>Playlist · {{ playlistLine(playlist) }}{{ onlyInMelue ? ` · ${onlyInMelue} only in Melue` : '' }}</template>
       </ListHeader>
 
       <SettingsTip v-if="conflict" kind="bad" class="mb-6">

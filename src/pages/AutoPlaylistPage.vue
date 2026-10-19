@@ -90,7 +90,10 @@ async function pick(action: CoverAction) {
         </template>
         <template #line>{{ line }}</template>
         <template #actions>
-          <Segmented v-if="top && auto.size" :model-value="auto.size" :options="SIZES" class="self-center" @update:model-value="resize" />
+          <!-- On a phone: a row of its own, under Play and Shuffle. -->
+          <div v-if="top && auto.size" class="flex items-center phone:order-last phone:w-full">
+            <Segmented :model-value="auto.size" :options="SIZES" @update:model-value="resize" />
+          </div>
         </template>
       </ListHeader>
       <VirtualSongList

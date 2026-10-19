@@ -13,6 +13,7 @@
  */
 import { Ellipsis, GripVertical, Music, X } from '@lucide/vue'
 import LikeHeart from '@/components/player/LikeHeart.vue'
+import { usePhone } from '@/lib/phone'
 import { PauseIcon, PlayIcon } from '@/components/player/icons'
 import { computed, ref } from 'vue'
 import SettingsBadge from '@/components/settings/SettingsBadge.vue'
@@ -22,7 +23,7 @@ import AddToPlaylist from './AddToPlaylist.vue'
 import { artistParts } from './artistParts'
 import { Button } from '@/components/ui/button'
 import PlayingBars from './PlayingBars.vue'
-import { songMenu, type Song, type SongAction, type SongMenuPlace } from './songMenu'
+import { songMenu, type Song, type SongAction, type SongMenuItem, type SongMenuPlace } from './songMenu'
 
 // The menu wraps the row, so what's set on the row (a class) goes on the row itself.
 defineOptions({ inheritAttrs: false })
@@ -63,9 +64,15 @@ const props = defineProps<{
 // play: how it was asked for (its play button, or a double-click on the row), for lists where they differ.
 const emit = defineEmits<{ play: [via: 'button' | 'doubleClick']; pause: []; like: [liked: boolean]; remove: []; action: [action: SongAction] }>()
 
+const phone = usePhone()
 const menuOpen = ref(false)
 const contextOpen = ref(false)
-const items = computed(() => songMenu(props.song, props.place))
+// A phone has no room for ✕ on the row: it's in ⋯ instead ("Take out"; a playlist's has Remove from playlist already).
+const items = computed((): SongMenuItem[] => {
+  const menu = songMenu(props.song, props.place)
+  if (!phone || !props.removable || props.song.later || menu.some((i) => i.action === 'removeFromPlaylist')) return menu
+  return [...menu, { action: 'takeOut', label: 'Take out', icon: X, apart: true }]
+})
 const highlighted = computed(() => props.current || props.lifted || menuOpen.value || contextOpen.value)
 // A greyed song (unavailable, or shown ahead) isn't highlighted, by the pointer or otherwise.
 const greyed = computed(() => props.unavailable || !!props.song.later)
@@ -77,7 +84,8 @@ const length = computed(() => {
 })
 
 function pick(action: SongAction) {
-  if (action === 'like') emit('like', !props.song.liked)
+  if (action === 'takeOut') emit('remove')
+  else if (action === 'like') emit('like', !props.song.liked)
   else emit('action', action)
 }
 // Double-click on the row plays it, but not on something with its own action (a button, the album link, the handle).
@@ -85,6 +93,12 @@ function playOnDoubleClick(e: MouseEvent) {
   if (props.unavailable || props.song.later) return
   if ((e.target as HTMLElement).closest('button, a, input, [role=button], [role=menuitem], .song-handle')) return
   emit('play', 'doubleClick')
+}
+// A phone: a tap on the row plays the song (no play button there), not on something with its own action.
+function tap(e: MouseEvent) {
+  if (!phone || props.unavailable || props.song.later) return
+  if ((e.target as HTMLElement).closest('button, a, input, [role=button], [role=menuitem], .song-handle')) return
+  playOrPause()
 }
 function playOrPause() {
   if (props.current && props.playing) emit('pause')
@@ -102,10 +116,10 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
 
 <template>
   <ContextMenu :modal="false" @update:open="(open) => (contextOpen = open)">
-    <ContextMenuTrigger as-child :disabled="unavailable">
+    <ContextMenuTrigger as-child :disabled="unavailable || phone">
       <div
         v-bind="$attrs"
-        class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none *:transition-opacity *:duration-300"
+        class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none *:transition-opacity *:duration-300 phone:h-[60px] phone:gap-3 phone:px-1"
         :class="
           unavailable
             ? '[&>*:not(.song-keep)]:opacity-45'
@@ -119,6 +133,7 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
         :data-highlight="highlighted && !greyed ? '' : undefined"
         :aria-current="current || undefined"
         @dblclick="playOnDoubleClick"
+        @click="tap"
       >
         <!-- A song shown ahead (later) keeps the handle's space, but can't be moved. -->
         <span v-if="handle && song.later" class="invisible -mx-1 size-6 flex-none" />
@@ -128,7 +143,7 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
         <span v-if="number !== undefined" class="flex-none text-center text-[13px] whitespace-nowrap tabular-nums" :class="[MUTED, wideNumber ? 'w-14' : 'w-6']" :title="numberTitle">
           <Transition name="swap" mode="out-in"><span :key="number" class="inline-block">{{ number }}</span></Transition>
         </span>
-        <span v-if="!noCover" class="grid size-12 flex-none place-items-center overflow-hidden rounded-md bg-well text-muted-foreground">
+        <span v-if="!noCover" class="grid size-12 flex-none phone:size-11 place-items-center overflow-hidden rounded-md bg-well text-muted-foreground">
           <!-- A missing song shows the note icon, not its cover: it stands out as one that can't play. -->
           <img v-if="song.cover && !unavailable" :src="song.cover" alt="" class="size-full object-cover" draggable="false" />
           <Music v-else class="size-5" />
@@ -166,14 +181,14 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
           </span>
           <template v-else>
             <!-- A missing song keeps the button's space (invisible), so its album and length line up with the others. -->
-            <button type="button" :class="[BUTTON, unavailable ? 'invisible' : ON_HIGHLIGHT]" :disabled="unavailable" :aria-label="current && playing ? 'Pause' : 'Play'" @click="playOrPause">
+            <button type="button" :class="[BUTTON, unavailable ? 'invisible' : ON_HIGHLIGHT, 'phone:hidden']" :disabled="unavailable" :aria-label="current && playing ? 'Pause' : 'Play'" @click="playOrPause">
               <!-- Smaller than the other icons, as drawn: filled shapes look bigger than outlines. -->
               <PauseIcon v-if="current && playing" class="size-4!" />
               <PlayIcon v-else class="size-4!" />
             </button>
             <button
               type="button"
-              :class="[BUTTON, song.liked ? '' : ON_HIGHLIGHT]"
+              :class="[BUTTON, song.liked ? '' : [ON_HIGHLIGHT, 'phone:hidden']]"
               :aria-label="song.liked ? 'Remove from liked' : 'Add to liked'"
               :aria-pressed="!!song.liked"
               @click="emit('like', !song.liked)"
@@ -193,7 +208,7 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
               </template>
             </DropdownMenuContent>
           </DropdownMenu>
-          <button v-if="removable" type="button" :class="[BUTTON, song.later && 'invisible', song.restore && 'opacity-45']" :disabled="!!song.later" aria-label="Take out" @click="emit('remove')">
+          <button v-if="removable" type="button" :class="[BUTTON, song.later && 'invisible', song.restore && 'opacity-45', 'phone:hidden']" :disabled="!!song.later" aria-label="Take out" @click="emit('remove')">
             <X />
           </button>
         </span>

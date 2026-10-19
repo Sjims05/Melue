@@ -32,6 +32,7 @@ import { ago } from './format'
 import { providePageLoading } from '@/components/page/pageLoading'
 import { createSettingsMenu, goToSetting } from './settingsMenu'
 import { useShownSync } from './shownSync'
+import { settingsTouched } from './sharedSettings'
 
 provide(SETTING_MENU, createSettingsMenu())
 
@@ -73,7 +74,8 @@ const toShare = () => shareSection.value?.scrollIntoView({ behavior: 'smooth', b
 
 <template>
   <!-- 960 px: wider, the settings' rows get hard to read across (Melue's design). -->
-  <div class="max-w-[960px] pb-16">
+  <!-- Used (a click, a change): the settings shared across devices are checked a moment later (sharedSettings.ts). -->
+  <div class="max-w-[960px] pb-16" @click.capture="settingsTouched" @change.capture="settingsTouched">
     <PageHeader title="Sync & settings" :subtitle="summary" />
 
     <!-- Until its parts have their first data: a skeleton, then the page all at once (not section by section). -->
