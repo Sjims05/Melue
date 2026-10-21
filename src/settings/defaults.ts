@@ -13,7 +13,12 @@ export const SYNC_DEFAULTS: SyncSettings = {
   onReturnAfterMinutes: 15,
   onChange: true,
   everyMinutes: null,
+  syncOnMetered: true,
   copyOnMetered: false,
+  mobileLimitMb: 0,
+  mobileMonthStarts: 1,
+  mobileAskOverMb: 100,
+  mobileAskAtLimit: false,
   moveNewSongs: false,
   shareLayout: 'artistAlbum',
 }

@@ -48,11 +48,14 @@ let syncStatus: SyncStatus = {
   problem: status === 'error' ? { kind: 'setup', error: { kind: 'share', error: { kind: 'unreachable', detail: 'timed out' } } } : null,
   retryAtMs: status === 'error' ? Date.now() + minutes(15) : null,
   note: null,
+  // ?status=mobile: a sync on mobile data that left its songs for Wi-Fi (more than Ask before…).
+  mobileOffer: status === 'mobile' ? { reason: 'big', bytes: 320_000_000 } : null,
 }
 
 let settings: SyncSettings = {
   removeGone: true, askBeforeRemoving: 5, atStart: false, onReturnAfterMinutes: 15, onChange: true, everyMinutes: 30,
-  copyOnMetered: false, moveNewSongs: false, shareLayout: 'artistAlbum',
+  syncOnMetered: true, copyOnMetered: true, mobileLimitMb: 1000, mobileMonthStarts: 15, mobileAskOverMb: 100, mobileAskAtLimit: false,
+  moveNewSongs: false, shareLayout: 'artistAlbum',
 }
 // The share's songs are in Artist/Album; picking One folder leaves 3 to move.
 const layoutStatus = (): LayoutStatus => settings.shareLayout === 'artistAlbum'
@@ -225,7 +228,7 @@ async function pretendSync() {
     await emit('sync-status', syncStatus)
     await wait(700)
   }
-  syncStatus = { ...syncStatus, syncing: null, last: { atMs: Date.now(), trigger: 'button', result: result(4, 0) } }
+  syncStatus = { ...syncStatus, syncing: null, mobileOffer: null, last: { atMs: Date.now(), trigger: 'button', result: result(4, 0) } }
   await emit('sync-status', syncStatus)
   return syncStatus.last!.result
 }
@@ -341,6 +344,10 @@ export function installBrowserPreview() {
           return gone.reduce((n, f) => n + f.songs, 0)
         }
         case 'library_missing_songs': return missingSongs
+        case 'sync_mobile_use':
+          return new URLSearchParams(location.search).has('phone')
+            ? [{ device: 'This phone', here: true, month: '2026-10-15', bytes: 412_000_000 }]
+            : [{ device: 'Pixel', here: false, month: '2026-10-15', bytes: 412_000_000 }, { device: 'Work phone', here: false, month: '2026-10-15', bytes: 38_000_000 }]
         case 'sync_move_to_sync': {
           const ids = (a.items as { id: number }[]).map((i) => i.id)
           onlyHere = onlyHere.filter((s) => !ids.includes(s.id))

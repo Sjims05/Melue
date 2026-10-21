@@ -105,10 +105,11 @@ function toggle(event: Event) {
   open.value = !open.value
 }
 
-async function syncNow(confirmedRemoval = false) {
+const mobileOffer = computed(() => sync.status?.mobileOffer ?? null)
+async function syncNow(confirmedRemoval = false, useMobileData = false) {
   error.value = ''
   try {
-    await syncing.now(confirmedRemoval)
+    await syncing.now(confirmedRemoval, useMobileData)
   } catch (e) {
     if ((e as SyncFailure)?.kind !== 'cancelled') error.value = describeSyncFailure(e)
   }
@@ -161,6 +162,16 @@ async function save(value: string) {
       </div>
     </div>
 
+    <!-- On mobile data, songs that weren't copied yet (too big for a sync by itself, or the month's limit). -->
+    <Reveal :show="!!mobileOffer && state !== 'syncing'">
+      <SettingsRow
+        :title="`${size(mobileOffer?.bytes ?? 0)} of songs waiting for Wi-Fi`"
+        :description="mobileOffer?.reason === 'limit' ? 'This month’s mobile data limit is reached' : 'More than you set Melue to copy on mobile data by itself'"
+        detail
+      >
+        <Button variant="outline" size="sm" @click="syncNow(false, true)">Copy on mobile data</Button>
+      </SettingsRow>
+    </Reveal>
     <Reveal :show="editing === 'password'">
       <EditRow
         title="The share’s password"

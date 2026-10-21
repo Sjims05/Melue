@@ -24,8 +24,11 @@ pub async fn sync_plan(app: AppHandle) -> Result<SyncPlan, SetupError> {
 /// Syncs now (the progress comes as `sync-status` events); then the library scans the synced folder.
 /// `confirmed_removal`: yes to removing more songs gone from the share than the setting allows.
 #[tauri::command]
-pub async fn sync_now(app: AppHandle, confirmed_removal: Option<bool>) -> Result<SyncResult, SyncFailure> {
-    on_share_thread(move || scheduler::sync_once(&app, Trigger::Button, confirmed_removal.unwrap_or(false))).await
+pub async fn sync_now(app: AppHandle, confirmed_removal: Option<bool>, use_mobile_data: Option<bool>) -> Result<SyncResult, SyncFailure> {
+    on_share_thread(move || {
+        scheduler::sync_once(&app, Trigger::Button, confirmed_removal.unwrap_or(false), use_mobile_data.unwrap_or(false))
+    })
+    .await
 }
 
 /// Stops a running sync after the file it's copying (what's done stays done).
@@ -199,6 +202,14 @@ pub fn shared_settings_checked(fixed: Vec<String>) {
     } else {
         eprintln!("melue: settings: checked, set to the shared value: {fixed:?}");
     }
+}
+
+/// Song data on mobile data this month: this phone's, and the other phones' (their library data says), for the
+/// Mobile data settings.
+#[tauri::command(async)]
+pub fn sync_mobile_use(app: AppHandle, library: tauri::State<'_, Library>) -> Result<Vec<super::mobile::DeviceUse>, String> {
+    let name = super::handoff::settings(&app)?.device_name.unwrap_or_default();
+    library.devices_mobile_use(&name)
 }
 
 /// Hidden copies of synced songs waiting for a choice (also sent as `song-copies` events).

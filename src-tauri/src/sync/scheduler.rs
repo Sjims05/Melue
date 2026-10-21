@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use super::handoff;
 use super::local;
+use super::mobile;
 use super::plan::{make_plan, SyncPlan};
 use super::run::{run, Progress, RunOptions, SyncError, SyncResult};
 use super::schedule::{retry_after_ms, should_sync, Trigger, NETWORK_SETTLE_MS, SETTLE_MS};
@@ -70,6 +71,8 @@ pub struct SyncStatus {
     pub retry_at_ms: Option<i64>,
     /// Something about the connection (the home address didn't answer at home, so the main one was used).
     pub note: Option<String>,
+    /// On mobile data, the last sync didn't copy its songs yet (too big, or the month's limit): the card offers to.
+    pub mobile_offer: Option<super::mobile::MobileOffer>,
 }
 
 /// The running sync's state, and the scheduler's.
@@ -142,20 +145,6 @@ fn set_status(app: &AppHandle, change: impl FnOnce(&mut SyncStatus)) {
     let _ = app.emit(STATUS_EVENT, &*status);
 }
 
-/// Whether the connection is metered (mobile data, a phone's hotspot). Desktop: no.
-fn metered(app: &AppHandle) -> bool {
-    #[cfg(target_os = "android")]
-    {
-        use tauri_plugin_melue_android::MelueAndroidExt;
-        app.melue_android().metered().unwrap_or(false)
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = app;
-        false
-    }
-}
-
 /// Android's "Syncing music" notification: shown with progress while a sync copies, gone at the end.
 fn notify(app: &AppHandle, progress: Option<&Progress>) {
     #[cfg(target_os = "android")]
@@ -171,9 +160,15 @@ fn notify(app: &AppHandle, progress: Option<&Progress>) {
     let _ = (app, progress);
 }
 
-/// Syncs once (one at a time): plans, copies (on a metered connection copies wait for Wi-Fi), keeps the
-/// status, and then lets the library scan the synced folder.
-pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> std::result::Result<SyncResult, SyncFailure> {
+/// Syncs once (one at a time): plans, copies (on a metered connection as the Mobile data settings say: mobile.rs),
+/// keeps the status, and then lets the library scan the synced folder. `use_mobile_data`: the user said to copy the
+/// songs on mobile data anyway (the card's offer).
+pub fn sync_once(
+    app: &AppHandle,
+    trigger: Trigger,
+    confirmed_removal: bool,
+    use_mobile_data: bool,
+) -> std::result::Result<SyncResult, SyncFailure> {
     let syncing = app.state::<Syncing>();
     if syncing.running.swap(true, Ordering::SeqCst) {
         return Err(SyncFailure::Running);
@@ -193,11 +188,13 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
         let target = local::target(app, &folder)?;
         let library = app.state::<Library>();
         let settings = library.sync_settings()?;
-        let options = RunOptions {
-            free_space: local::free_space(&folder, target.as_ref()),
-            confirmed_removal,
-            no_copies: metered(app) && !settings.copy_on_metered,
+        let on_mobile_data = mobile::metered(app);
+        let (copy_budget, offer) = if on_mobile_data {
+            mobile::copy_budget(&library, &settings, plan.bytes, use_mobile_data, trigger == Trigger::Button)?
+        } else {
+            (None, None)
         };
+        let options = RunOptions { free_space: local::free_space(&folder, target.as_ref()), confirmed_removal, copy_budget };
         let mut last = Instant::now() - Duration::from_secs(1);
         let mut current = None;
         let mut report = |progress: &Progress| {
@@ -215,6 +212,10 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
             SyncError::NotEnoughSpace { needed, free } => SyncFailure::NotEnoughSpace { needed, free },
             SyncError::Other { detail } => SyncFailure::Other { detail },
         })?;
+        if on_mobile_data {
+            library.add_mobile_use(&settings, done.bytes)?;
+        }
+        set_status(app, |s| s.mobile_offer = offer);
         Ok((done, share))
     })();
     notify(app, None);
@@ -445,11 +446,16 @@ pub fn start(app: &AppHandle) {
                 if !library.sync_available().unwrap_or(false) {
                     continue;
                 }
+                // Mobile data, "Nothing": what syncs by itself waits for Wi-Fi.
+                if mobile::waits_for_wifi(&app, &settings) {
+                    eprintln!("melue: sync ({next:?}): waiting for Wi-Fi (Mobile data: nothing)");
+                    continue;
+                }
                 let last_ms = library.last_sync().ok().flatten().map(|l| l.at_ms);
                 let away_ms = if next == Trigger::Return { app.state::<Syncing>().away_ms.lock().unwrap().take() } else { None };
                 if should_sync(next, now_ms(), last_ms, away_ms, &settings) {
                     eprintln!("melue: sync ({next:?}): starting");
-                    match sync_once(&app, next, false) {
+                    match sync_once(&app, next, false, false) {
                         Ok(r) => eprintln!("melue: sync ({next:?}): {} copied, {} moved, {} waiting for Wi-Fi", r.copied, r.moved, r.waiting_for_wifi),
                         Err(e) => eprintln!("melue: sync ({next:?}): didn't sync: {e:?}"),
                     }

@@ -76,6 +76,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
   },
   'mobile.limit': { title: 'Limit for songs', default: 'No limit', help: 'With Everything: how much song data Melue may use on mobile data in a month. After that, songs wait for Wi-Fi.' },
   'mobile.monthStarts': { title: 'Month starts on', default: 'The 1st', help: 'The day your mobile plan’s month starts, so the limit counts the same month as your plan.' },
+  'mobile.atLimit': {
+    title: 'When the limit is reached',
+    default: 'Songs wait for Wi-Fi',
+    help: 'Songs wait for Wi-Fi until the next month starts, or Melue asks: the sync card offers to copy them on mobile data anyway.',
+  },
   'mobile.askOver': {
     title: 'Ask before a sync over',
     default: '100 MB',

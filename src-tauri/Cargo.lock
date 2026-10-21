@@ -2930,7 +2930,7 @@ dependencies = [
 
 [[package]]
 name = "melue"
-version = "0.5.15"
+version = "0.5.16"
 dependencies = [
  "fs4",
  "futures-executor",

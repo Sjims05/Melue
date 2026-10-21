@@ -490,7 +490,10 @@ pub fn start(app: &AppHandle) {
             std::thread::sleep(Duration::from_secs(3));
             let _ = sender.send(());
             loop {
+                // Mobile data, "Nothing": synced playback waits for Wi-Fi too.
+                let waiting = app.state::<Library>().sync_settings().is_ok_and(|s| super::mobile::waits_for_wifi(&app, &s));
                 match checks.recv_timeout(POLL) {
+                    Ok(()) if waiting => while checks.try_recv().is_ok() {},
                     Ok(()) => {
                         while checks.try_recv().is_ok() {}
                         if let Err(e) = look(&app) {
@@ -500,7 +503,7 @@ pub fn start(app: &AppHandle) {
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => return,
                 }
-                if app.state::<Library>().sync_available().unwrap_or(false) {
+                if !waiting && app.state::<Library>().sync_available().unwrap_or(false) {
                     if let Err(e) = save(&app, false) {
                         eprintln!("melue: playback: can't save: {e}");
                     }

@@ -25,6 +25,7 @@ pub mod playlist_merge;
 #[cfg(test)]
 mod playlist_merge_tests;
 pub mod playlist_sync;
+pub mod mobile;
 pub mod moving;
 #[cfg(test)]
 mod moving_tests;
@@ -68,9 +69,21 @@ pub struct SyncSettings {
     pub on_change: bool,
     /// Also sync every this many minutes while Melue runs (None: no).
     pub every_minutes: Option<u32>,
-    /// Copy songs on metered connections (mobile data, a phone's hotspot). Off: they wait for Wi-Fi; moves,
+    /// Sync at all on metered connections (mobile data, a phone's hotspot). Off ("Nothing"): syncs that start by
+    /// themselves, the library data and synced playback wait for Wi-Fi (Sync now still does all but songs).
+    pub sync_on_metered: bool,
+    /// Copy songs on metered connections ("Everything"), within the limits below. Off: they wait for Wi-Fi; moves,
     /// renames and removals still happen.
     pub copy_on_metered: bool,
+    /// Songs copied on metered connections in a month, at most (MB; 0: no limit). See mobile.rs.
+    pub mobile_limit_mb: u32,
+    /// The day the month starts (the mobile plan's billing day, 1 to 28).
+    pub mobile_month_starts: u32,
+    /// A sync that starts by itself asks first when its songs are more than this on a metered connection (MB; 0:
+    /// never asks).
+    pub mobile_ask_over_mb: u32,
+    /// The limit reached: asks (the sync card offers to copy anyway) instead of waiting for Wi-Fi.
+    pub mobile_ask_at_limit: bool,
     /// Move songs new in the other music folders to sync by themselves (default off; moving.rs).
     pub move_new_songs: bool,
     /// How songs are laid out on the share (layout.rs; default Artist/Album/).
@@ -86,7 +99,12 @@ impl Default for SyncSettings {
             on_return_after_minutes: Some(15),
             on_change: true,
             every_minutes: None,
+            sync_on_metered: true,
             copy_on_metered: false,
+            mobile_limit_mb: 0,
+            mobile_month_starts: 1,
+            mobile_ask_over_mb: 100,
+            mobile_ask_at_limit: false,
             move_new_songs: false,
             share_layout: layout::Layout::default(),
         }

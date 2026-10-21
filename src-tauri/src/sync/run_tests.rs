@@ -259,6 +259,19 @@ fn cancelling_stops_after_the_current_file() {
 }
 
 #[test]
+fn a_copy_budget_copies_what_fits_and_the_rest_waits() {
+    let s = Setup::new("budget");
+    s.share.add("a.mp3", b"aaaa");
+    s.share.add("b.mp3", b"bbbb");
+    s.share.add("c.mp3", b"cccc");
+    let plan = s.plan(&SyncSettings::default());
+    let options = RunOptions { copy_budget: Some(9), ..Default::default() };
+    let result = run(&s.t.library, &s.share.share, &s.here, &plan, options, &AtomicBool::new(false), &mut |_| {}).unwrap();
+    assert_eq!((result.copied, result.waiting_for_wifi, result.bytes), (2, 1, 8), "two fit in 9 bytes");
+    assert_eq!(s.sync().copied, 1, "the last one on Wi-Fi");
+}
+
+#[test]
 fn on_a_metered_connection_copies_wait_and_the_rest_happens() {
     let s = Setup::new("metered");
     s.share.add("Old/a.mp3", b"a");
@@ -267,7 +280,7 @@ fn on_a_metered_connection_copies_wait_and_the_rest_happens() {
     std::fs::rename(s.share.path("Old/a.mp3"), s.share.path("New/a.mp3")).unwrap();
     s.share.add("b.mp3", b"new on the share");
     let plan = s.plan(&SyncSettings::default());
-    let options = RunOptions { no_copies: true, free_space: Some(0), ..Default::default() };
+    let options = RunOptions { copy_budget: Some(0), free_space: Some(0), ..Default::default() };
     let result = run(&s.t.library, &s.share.share, &s.here, &plan, options, &AtomicBool::new(false), &mut |_| {}).unwrap();
     assert_eq!((result.moved, result.copied, result.waiting_for_wifi), (1, 0, 1), "no space check either: nothing is copied");
     assert_eq!(s.files_here(), vec!["New/a.mp3"]);

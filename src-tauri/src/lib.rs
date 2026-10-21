@@ -204,6 +204,7 @@ pub fn run() {
             sync::commands::sync_now,
             sync::commands::sync_cancel,
             sync::commands::sync_came_back,
+            sync::commands::sync_mobile_use,
             sync::commands::shared_settings_checked,
             sync::commands::sync_status,
             sync::commands::sync_simulate_notification,

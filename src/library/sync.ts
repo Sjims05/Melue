@@ -200,8 +200,21 @@ export interface SyncSettings {
   onChange: boolean
   /** Also sync every this many minutes while Melue runs (default null: no). */
   everyMinutes: number | null
-  /** Copy songs on metered connections (mobile data, a hotspot); off: they wait for Wi-Fi (default off). */
+  /**
+   * Sync at all on metered connections (mobile data, a hotspot; default on). Off ("Nothing"): syncs that start by
+   * themselves, the library data and synced playback wait for Wi-Fi (Sync now still syncs, without songs).
+   */
+  syncOnMetered: boolean
+  /** Copy songs on metered connections ("Everything"), within the limits; off: they wait for Wi-Fi (default off). */
   copyOnMetered: boolean
+  /** Songs copied on metered connections in a month, at most (MB; 0: no limit, the default). */
+  mobileLimitMb: number
+  /** The day the month starts (the plan's billing day, 1 to 28; default 1). */
+  mobileMonthStarts: number
+  /** A sync that starts by itself asks first when its songs are more than this on mobile data (MB; 0: never; default 100). */
+  mobileAskOverMb: number
+  /** The limit reached: the sync card offers to copy anyway, instead of songs waiting for Wi-Fi (default off). */
+  mobileAskAtLimit: boolean
   /** Move songs new in the other music folders to sync by themselves (default off). */
   moveNewSongs: boolean
   /** How songs are laid out on the share: Artist/Album/ (default) or all in one folder. */
@@ -229,6 +242,18 @@ export interface SyncStatus {
   retryAtMs: number | null
   /** Something about the connection (the home address didn't answer at home, so the main one was used). */
   note: string | null
+  /** On mobile data, the last sync didn't copy its songs yet: "big" (more than Ask before…) or "limit" (the month's). */
+  mobileOffer: { reason: 'big' | 'limit'; bytes: number } | null
+}
+
+/** A device's song data on mobile data this month (Mobile data settings). */
+export interface DeviceMobileUse {
+  device: string
+  /** This device. */
+  here: boolean
+  /** The month's first day ("2026-10-15"). */
+  month: string
+  bytes: number
 }
 
 /** How far a running sync is. */
@@ -293,7 +318,9 @@ export const syncing = {
    * Syncs now (the library then scans the synced folder). `confirmedRemoval`: yes to removing more songs gone
    * from the share than the setting allows. Rejects with a SyncFailure.
    */
-  now: (confirmedRemoval = false) => invoke<SyncResult>('sync_now', { confirmedRemoval }),
+  now: (confirmedRemoval = false, useMobileData = false) => invoke<SyncResult>('sync_now', { confirmedRemoval, useMobileData }),
+  /** Song data on mobile data this month: this phone's and the other phones'. */
+  mobileUse: () => invoke<DeviceMobileUse[]>('sync_mobile_use'),
   /** Stops a running sync after the file it's copying (at once while it's still reaching the share). */
   cancel: () => invoke<void>('sync_cancel'),
   status: () => invoke<SyncStatus>('sync_status'),

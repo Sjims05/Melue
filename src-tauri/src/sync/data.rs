@@ -53,6 +53,9 @@ pub struct DeviceData {
     pub counts: Vec<CountRecord>,
     pub days: Vec<DayRecord>,
     pub history: Vec<PlayRecord>,
+    /// A phone's song data on mobile data this month (mobile.rs), for the other devices' Mobile data settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mobile: Option<super::mobile::MobileUse>,
     /// When the share wrote it (the share's clock). Not in the file.
     #[serde(skip)]
     pub share_ms: i64,
@@ -135,6 +138,8 @@ impl Library {
     /// clock is ahead of this device's.
     pub fn device_data(&self, folder: &Folder, device_id: &str, device_name: &str, ahead_ms: i64) -> Result<DeviceData> {
         let paths: HashMap<i64, String> = self.synced_songs(folder)?.into_iter().collect();
+        // A phone's mobile data use (read before the connection is held: it reads settings, which takes it too).
+        let mobile = if cfg!(target_os = "android") { Some(self.mobile_use(&self.sync_settings()?)?) } else { None };
         let conn = self.conn();
         // (song, a number, maybe a time) rows.
         let rows = |sql: &str, p: &[&dyn rusqlite::ToSql]| -> Result<Vec<(i64, i64, Option<i64>)>> {
@@ -181,6 +186,7 @@ impl Library {
             counts,
             days,
             history,
+            mobile,
             share_ms: 0,
         };
         // A steady order: the same data is the same file.
@@ -297,6 +303,12 @@ pub fn sync_device_data(library: &Library, share: &dyn Share, folder: &Folder, m
     let ahead = share_clock_ahead(&files, me);
     let (mine, others): (Vec<DeviceData>, Vec<DeviceData>) = files.into_iter().partition(|f| f.device_id == me);
     let likes_changed = library.import_device_data(folder, &others, ahead)?;
+    // The phones' mobile data use, for the Mobile data settings.
+    let phones: Vec<super::mobile::DeviceUse> = others
+        .iter()
+        .filter_map(|d| Some(super::mobile::DeviceUse { device: d.device_name.clone(), here: false, used: d.mobile.clone()? }))
+        .collect();
+    library.keep_phones_use(&phones)?;
     let data = library.device_data(folder, me, name, ahead)?;
     let written = !mine.first().is_some_and(|old| same_data(old, &data));
     if written {
@@ -336,6 +348,10 @@ pub fn run(app: &AppHandle) -> Result<()> {
         return Ok(());
     }
     let Some(folder) = library.synced_folder()? else { return Ok(()) };
+    // Mobile data, "Nothing": waits for Wi-Fi.
+    if super::mobile::waits_for_wifi(app, &library.sync_settings()?) {
+        return Ok(());
+    }
     let me = handoff::device_id(&library)?;
     let name = handoff::settings(app)?.device_name.unwrap_or_default();
     let (data, playlists, settings) = with_share(app, |share| {

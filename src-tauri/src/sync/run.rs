@@ -154,8 +154,9 @@ pub struct RunOptions {
     pub free_space: Option<u64>,
     /// The user said yes to removing more songs than the setting allows.
     pub confirmed_removal: bool,
-    /// Copies wait for Wi-Fi (a metered connection): everything else still happens.
-    pub no_copies: bool,
+    /// On a metered connection: how many bytes of songs may be copied (0: none; the rest wait for Wi-Fi, in the
+    /// plan's order). Everything else still happens. None: no limit.
+    pub copy_budget: Option<u64>,
 }
 
 /// Carries out `plan`. `cancel` stops it after the current file.
@@ -168,9 +169,25 @@ pub fn run(
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(&Progress),
 ) -> Result<SyncResult, SyncError> {
-    let RunOptions { free_space, confirmed_removal, no_copies } = options;
-    if let Some(free) = free_space.filter(|_| !no_copies) {
-        let needed = plan.bytes + KEEP_FREE;
+    let RunOptions { free_space, confirmed_removal, copy_budget } = options;
+    // The copies this time (within the budget), and how much they are.
+    let mut files: Vec<&PlanFile> = plan.download.iter().chain(&plan.update).collect();
+    let mut waiting = 0;
+    if let Some(budget) = copy_budget {
+        let mut used = 0;
+        files.retain(|f| {
+            let fits = used + f.size <= budget;
+            if fits {
+                used += f.size;
+            } else {
+                waiting += 1;
+            }
+            fits
+        });
+    }
+    let bytes_total: u64 = files.iter().map(|f| f.size).sum();
+    if let Some(free) = free_space.filter(|_| !files.is_empty()) {
+        let needed = bytes_total + KEEP_FREE;
         if free < needed {
             return Err(SyncError::NotEnoughSpace { needed, free });
         }
@@ -207,14 +224,8 @@ pub fn run(
         library.forget_synced(path)?;
     }
 
-    // Copies (on a metered connection they wait for Wi-Fi).
-    let files: Vec<&PlanFile> = if no_copies {
-        result.waiting_for_wifi = (plan.download.len() + plan.update.len()) as u32;
-        Vec::new()
-    } else {
-        plan.download.iter().chain(&plan.update).collect()
-    };
-    let bytes_total = files.iter().map(|f| f.size).sum();
+    // Copies (on a metered connection, those past the budget wait for Wi-Fi).
+    result.waiting_for_wifi = waiting;
     let mut state = Progress { files_total: files.len() as u32, bytes_total, ..Default::default() };
     for file in files {
         if cancel.load(Ordering::SeqCst) {

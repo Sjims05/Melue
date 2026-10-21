@@ -71,6 +71,21 @@ const ADAPTERS: Record<string, Adapter> = {
   'sync.removeGone': syncField('removeGone'),
   'sync.askBeforeRemoving': syncField('askBeforeRemoving'),
   'sync.moveNewSongs': syncField('moveNewSongs'),
+  'mobile.level': {
+    read: async () => {
+      const s = await syncing.settings()
+      return !s.syncOnMetered ? 'nothing' : s.copyOnMetered ? 'all' : 'small'
+    },
+    write: async (level) => {
+      const all = { ...(await syncing.settings()), syncOnMetered: level !== 'nothing', copyOnMetered: level === 'all' }
+      await syncing.setSettings(all)
+      if (syncSettings.value) syncSettings.value = all
+    },
+  },
+  'mobile.limit': syncField('mobileLimitMb'),
+  'mobile.monthStarts': syncField('mobileMonthStarts'),
+  'mobile.askOver': syncField('mobileAskOverMb'),
+  'mobile.atLimit': syncField('mobileAskAtLimit'),
   'queue.enabled': followField('enabled'),
   'queue.removedCurrent': followField('removedCurrent'),
   'queue.removedItems': followField('removedItems'),
