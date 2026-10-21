@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.5.14"
+version = "0.5.15"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -55,8 +55,9 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # The share's password in the system's secure store (share/secrets.rs; Android uses Melue's Android plugin).
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
-# Melue's printed messages to its log file too (logging.rs; Tauri uses it already).
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+# Melue's printed messages to its log file too (logging.rs), and network drives' addresses (library/network.rs).
+# Tauri uses it already.
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_NetworkManagement_WNet"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
 [target.'cfg(target_os = "linux")'.dependencies]

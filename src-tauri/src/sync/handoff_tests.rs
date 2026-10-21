@@ -6,7 +6,7 @@ use super::handoff::*;
 use crate::library::{Folder, FolderKind};
 
 fn folder(kind: FolderKind, location: &str) -> Folder {
-    Folder { id: 1, kind, location: location.into(), name: "Melue".into(), enabled: true, synced: true, added_at: 0, last_scan_at: None, tracks: 0 }
+    Folder { id: 1, kind, location: location.into(), name: "Melue".into(), enabled: true, synced: true, added_at: 0, last_scan_at: None, network: false, tracks: 0 }
 }
 
 fn playback(queue: &[&str], index: usize) -> Playback {

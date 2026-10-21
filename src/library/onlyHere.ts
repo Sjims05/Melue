@@ -8,6 +8,8 @@ import { library } from '.'
 import { moving, sync } from './sync'
 
 export const onlyHere = shallowRef<ReadonlySet<number>>(new Set())
+/** Of those, the ones in a network folder (moving one deletes its original for good: no Recycle Bin). */
+export const onNetwork = shallowRef<ReadonlySet<number>>(new Set())
 
 let started = false
 let waiting: ReturnType<typeof setTimeout> | undefined
@@ -27,8 +29,11 @@ export function followOnlyHere() {
 async function read() {
   if (!sync.available) {
     onlyHere.value = new Set()
+    onNetwork.value = new Set()
     return
   }
   const songs = await moving.notOnShare().catch(() => null)
-  if (songs) onlyHere.value = new Set(songs.map((s) => s.id))
+  if (!songs) return
+  onlyHere.value = new Set(songs.map((s) => s.id))
+  onNetwork.value = new Set(songs.filter((s) => s.network).map((s) => s.id))
 }

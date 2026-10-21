@@ -413,8 +413,9 @@ export interface LocalSong {
   title: string
   artist: string | null
   album: string | null
-  /** Its music folder's name. */
+  /** Its music folder's name, and whether that's a network folder (its original is deleted for good). */
   folder: string
+  network: boolean
   size: number
 }
 
@@ -435,6 +436,8 @@ export interface MoveResult {
 export interface Copies {
   songs: number
   bytes: number
+  /** The same, per music folder (most first). */
+  folders: { folderId: number; name: string; network: boolean; songs: number; bytes: number }[]
 }
 
 export const moving = {
@@ -442,15 +445,19 @@ export const moving = {
   notOnShare: () => invoke<LocalSong[]>('sync_not_on_share'),
   /**
    * Moves songs to sync: to the share (Artist/Album/), and into the synced folder here; a song's original goes
-   * once its synced copy is in the library (Recycle Bin; on Android its trash, after Android asks). Its likes,
+   * once its synced copy is in the library (Recycle Bin; a network folder's for good; on Android its trash, after
+   * Android asks). Its likes,
    * plays and playlist entries go with it. Progress shows in sync.status. Rejects with a SyncFailure.
    */
   moveToSync: (items: ToMove[], playlist: number | null = null) => invoke<MoveResult>('sync_move_to_sync', { items, playlist }),
   copies: () => invoke<Copies>('sync_copies'),
   /** Calls `listener` when hidden copies wait for a choice. Resolves to a function that stops listening. */
   onCopies: (listener: (copies: Copies) => void) => listen<Copies>('song-copies', (e) => listener(e.payload)),
-  /** Clear space: removes the hidden copies. Resolves with how many were removed (or handed to Android). */
-  clearCopies: () => invoke<number>('sync_clear_copies'),
+  /**
+   * Clear space: removes the hidden copies (`folder`: only that music folder's). Resolves with how many were removed
+   * (or handed to Android).
+   */
+  clearCopies: (folder: number | null = null) => invoke<number>('sync_clear_copies', { folder }),
   /** Spike: looks for copies now, and says what it found (near misses: why a copy wasn't recognised). */
   check: () =>
     invoke<{ syncedSongs: number; otherSongs: number; hiddenNow: number; hidden: number; waiting: Copies; nearMisses: string[] }>(

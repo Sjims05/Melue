@@ -85,8 +85,9 @@ pub struct LocalSong {
     pub title: String,
     pub artist: Option<String>,
     pub album: Option<String>,
-    /// Its music folder's name.
+    /// Its music folder's name, and whether that's a network folder (its original is deleted for good, not binned).
     pub folder: String,
+    pub network: bool,
     pub size: i64,
 }
 
@@ -94,6 +95,20 @@ pub struct LocalSong {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Copies {
+    pub songs: i64,
+    pub bytes: i64,
+    /// The same, per music folder (most first).
+    pub folders: Vec<FolderCopies>,
+}
+
+/// A music folder's hidden copies waiting for a choice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderCopies {
+    pub folder_id: i64,
+    pub name: String,
+    /// A network folder: its copies are deleted for good.
+    pub network: bool,
     pub songs: i64,
     pub bytes: i64,
 }
@@ -154,7 +169,7 @@ impl Library {
     /// Local songs that aren't on the share (not in the synced folder, and no copy of a synced song), by
     /// artist and title.
     pub fn not_on_share(&self, folder: &Folder, songs: &Songs) -> Result<Vec<LocalSong>> {
-        let names: HashMap<i64, String> = self.folders()?.into_iter().map(|f| (f.id, f.name)).collect();
+        let names: HashMap<i64, (String, bool)> = self.folders()?.into_iter().map(|f| (f.id, (f.name, f.network))).collect();
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
@@ -166,8 +181,8 @@ impl Library {
             .map_err(err)?;
         let rows = stmt
             .query_map([folder.id], |r| {
-                let folder = names.get(&r.get::<_, i64>(4)?).cloned().unwrap_or_default();
-                Ok(LocalSong { id: r.get(0)?, title: r.get(1)?, artist: r.get(2)?, album: r.get(3)?, folder, size: r.get(5)? })
+                let (folder, network) = names.get(&r.get::<_, i64>(4)?).cloned().unwrap_or_default();
+                Ok(LocalSong { id: r.get(0)?, title: r.get(1)?, artist: r.get(2)?, album: r.get(3)?, folder, network, size: r.get(5)? })
             })
             .map_err(err)?;
         let all: Vec<LocalSong> = rows.collect::<rusqlite::Result<_>>().map_err(err)?;
@@ -278,28 +293,57 @@ impl Library {
             .map_err(err)
     }
 
-    /// Hidden copies waiting for the user's choice.
+    /// Hidden copies waiting for the user's choice, in all and per music folder.
     pub fn copies_waiting(&self) -> Result<Copies> {
-        self.conn()
-            .query_row(
-                "SELECT count(*), coalesce(sum(size), 0) FROM tracks WHERE copy_of IS NOT NULL AND NOT copy_kept AND missing_since IS NULL",
-                [],
-                |r| Ok(Copies { songs: r.get(0)?, bytes: r.get(1)? }),
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT t.folder_id, count(*), coalesce(sum(t.size), 0) FROM tracks t
+                 WHERE t.copy_of IS NOT NULL AND NOT t.copy_kept AND t.missing_since IS NULL
+                 GROUP BY t.folder_id ORDER BY count(*) DESC, t.folder_id",
             )
-            .map_err(err)
+            .map_err(err)?;
+        let mut folders = stmt
+            .query_map([], |r| Ok(FolderCopies { folder_id: r.get(0)?, name: String::new(), network: false, songs: r.get(1)?, bytes: r.get(2)? }))
+            .map_err(err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(err)?;
+        drop(stmt);
+        drop(conn);
+        // The folder's name and kind as the library has them (a name can be the path's, made when read).
+        for copies in &mut folders {
+            if let Some(folder) = self.folder(copies.folder_id)? {
+                copies.name = folder.name;
+                copies.network = folder.network;
+            }
+        }
+        Ok(Copies { songs: folders.iter().map(|f| f.songs).sum(), bytes: folders.iter().map(|f| f.bytes).sum(), folders })
     }
 
-    fn waiting_copy_ids(&self) -> Result<Vec<i64>> {
+    /// The hidden copies waiting for a choice (in one music folder, or all).
+    fn waiting_copy_ids(&self, folder: Option<i64>) -> Result<Vec<i64>> {
         let conn = self.conn();
-        let mut stmt =
-            conn.prepare("SELECT id FROM tracks WHERE copy_of IS NOT NULL AND NOT copy_kept AND missing_since IS NULL").map_err(err)?;
-        let rows = stmt.query_map([], |r| r.get(0)).map_err(err)?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM tracks WHERE copy_of IS NOT NULL AND NOT copy_kept AND missing_since IS NULL
+                 AND (?1 IS NULL OR folder_id = ?1)",
+            )
+            .map_err(err)?;
+        let rows = stmt.query_map([folder], |r| r.get(0)).map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)
     }
 
     /// Keeps the hidden copies (not asked about again).
     pub fn keep_copies(&self) -> Result<()> {
         self.conn().execute("UPDATE tracks SET copy_kept = 1 WHERE copy_of IS NOT NULL", []).map(|_| ()).map_err(err)
+    }
+
+    fn keep_these_copies(&self, ids: &[i64]) -> Result<()> {
+        let conn = self.conn();
+        for id in ids {
+            conn.execute("UPDATE tracks SET copy_kept = 1 WHERE id = ?1", [id]).map_err(err)?;
+        }
+        Ok(())
     }
 
     fn record_move(&self, track: i64, share_path: &str) -> Result<()> {
@@ -483,8 +527,13 @@ pub fn remove_files(app: &AppHandle, tracks: &[i64]) -> Result<usize> {
                     if !full.exists() {
                         continue;
                     }
+                    // A network folder has no Recycle Bin: deleted for good there (the UI says so before).
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    let gone = trash::delete(&full).map_err(|e| e.to_string());
+                    let gone = if folder.network {
+                        std::fs::remove_file(&full).map_err(|e| e.to_string())
+                    } else {
+                        trash::delete(&full).map_err(|e| e.to_string())
+                    };
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     let gone = std::fs::remove_file(&full).map_err(|e| e.to_string());
                     match gone {
@@ -631,12 +680,12 @@ pub fn emit_copies(app: &AppHandle) {
     }
 }
 
-/// Clear space: removes the hidden copies waiting for a choice.
-pub fn clear_copies(app: &AppHandle) -> Result<usize> {
-    let ids = app.state::<Library>().waiting_copy_ids()?;
+/// Clear space: removes the hidden copies waiting for a choice (in one music folder, or all).
+pub fn clear_copies(app: &AppHandle, folder: Option<i64>) -> Result<usize> {
+    let ids = app.state::<Library>().waiting_copy_ids(folder)?;
     let removed = remove_files(app, &ids)?;
     // Removed or not (Android's dialog can be turned down), they're not asked about again.
-    app.state::<Library>().keep_copies()?;
+    app.state::<Library>().keep_these_copies(&ids)?;
     emit_copies(app);
     Ok(removed)
 }

@@ -207,10 +207,11 @@ pub fn sync_copies(library: tauri::State<'_, Library>) -> Result<Copies, String>
     library.copies_waiting()
 }
 
-/// Clear space: removes the hidden copies (Recycle Bin; Android's trash, after Android asks).
+/// Clear space: removes the hidden copies (Recycle Bin; Android's trash, after Android asks); `folder`: only that
+/// music folder's.
 #[tauri::command]
-pub async fn sync_clear_copies(app: AppHandle) -> Result<usize, String> {
-    on_share_thread(move || moving::clear_copies(&app)).await
+pub async fn sync_clear_copies(app: AppHandle, folder: Option<i64>) -> Result<usize, String> {
+    on_share_thread(move || moving::clear_copies(&app, folder)).await
 }
 
 /// Keeps the hidden copies (not asked about again).

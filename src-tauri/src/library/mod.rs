@@ -23,6 +23,7 @@ pub mod grouping;
 #[cfg(test)]
 mod grouping_tests;
 pub mod linked;
+pub mod network;
 #[cfg(test)]
 mod linked_tests;
 pub mod m3u;

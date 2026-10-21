@@ -232,6 +232,7 @@ pub fn run() {
             sync::commands::restore_playlist,
             sync::commands::set_playlist_local_only,
             library::library_status,
+            library::library_missing_songs,
             library::library_setting,
             library::library_set_setting,
             library::library_sync_available,

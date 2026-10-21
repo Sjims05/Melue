@@ -23,7 +23,7 @@ const EMPTY: Record<string, unknown> = {
   library_sync_available: false, library_tracks: [], library_albums: [], library_artists: [], library_folders: [], library_playlists: [],
   library_auto_playlists: [], library_recently_played: [], library_liked_ids: [], playback_offer: null,
   playlist_conflicts: [], deleted_playlists: [], library_deleted_linked_playlists: [], library_let_go_files: [],
-  library_status: { schemaVersion: 1, folders: 0, tracks: 0, albums: 0, artists: 0, playlists: 0 },
+  library_status: { schemaVersion: 1, folders: 0, tracks: 0, albums: 0, artists: 0, playlists: 0 }, library_missing_songs: [],
   library_search: { tracks: [], trackCount: 0, albums: [], artists: [], playlists: [] },
   'plugin:native-audio|get_tracked_list': { entries: [] },
 }
@@ -181,11 +181,22 @@ let folders: MusicFolder[] = new URLSearchParams(location.search).get('library')
 ]
 const sharedSettings: Record<string, unknown> = {}
 let onlyHere: LocalSong[] = [
-  { id: 101, title: 'The Sign', artist: 'Ace of Base', album: 'Happy Nation', folder: 'Music_Test', size: 7_400_000 },
-  { id: 102, title: 'Waterloo', artist: 'ABBA', album: 'Waterloo', folder: 'Music_Test', size: 6_100_000 },
-  { id: 103, title: 'Dancing Queen', artist: 'ABBA', album: 'Arrival', folder: 'Music', size: 8_900_000 },
+  { id: 101, title: 'The Sign', artist: 'Ace of Base', album: 'Happy Nation', folder: 'Music_Test', network: false, size: 7_400_000 },
+  { id: 102, title: 'Waterloo', artist: 'ABBA', album: 'Waterloo', folder: 'Music_Test', network: false, size: 6_100_000 },
+  { id: 103, title: 'Dancing Queen', artist: 'ABBA', album: 'Arrival', folder: 'Music', network: false, size: 8_900_000 },
 ]
-let copies: Copies = { songs: 12, bytes: 96_000_000 }
+let copies: Copies = {
+  songs: 12,
+  bytes: 96_000_000,
+  folders: [
+    { folderId: 1, name: 'Music', network: false, songs: 9, bytes: 72_000_000 },
+    { folderId: 2, name: 'Downloads', network: true, songs: 3, bytes: 24_000_000 },
+  ],
+}
+const missingSongs = [
+  { id: 901, title: 'Dancing Queen (live)', artist: 'ABBA', folder: 'Music', path: 'ABBA/Live/01 Dancing Queen.mp3', missingSince: Date.now() - 3_600_000 },
+  { id: 902, title: 'Old demo', artist: null, folder: 'Downloads', path: 'demo.wav', missingSince: Date.now() - 9 * 86_400_000 },
+]
 const libraryStatus = (): LibraryStatus => ({
   schemaVersion: 1, folders: folders.length, tracks: folders.filter((f) => f.enabled).reduce((n, f) => n + f.tracks, 0),
   albums: folders.length ? 98 : 0, artists: folders.length ? 64 : 0, playlists: folders.length ? 12 : 0,
@@ -323,7 +334,13 @@ export function installBrowserPreview() {
         case 'library_rename_folder': folders = folders.map((f) => (f.id === a.id ? { ...f, name: a.name as string } : f)); await changed(); return folders.find((f) => f.id === a.id)
         case 'sync_not_on_share': return onlyHere
         case 'sync_copies': return copies
-        case 'sync_clear_copies': { const n = copies.songs; copies = { songs: 0, bytes: 0 }; return n }
+        case 'sync_clear_copies': {
+          const gone = copies.folders.filter((f) => a.folder == null || f.folderId === a.folder)
+          const folders = copies.folders.filter((f) => !gone.includes(f))
+          copies = { songs: folders.reduce((n, f) => n + f.songs, 0), bytes: folders.reduce((n, f) => n + f.bytes, 0), folders }
+          return gone.reduce((n, f) => n + f.songs, 0)
+        }
+        case 'library_missing_songs': return missingSongs
         case 'sync_move_to_sync': {
           const ids = (a.items as { id: number }[]).map((i) => i.id)
           onlyHere = onlyHere.filter((s) => !ids.includes(s.id))

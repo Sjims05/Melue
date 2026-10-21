@@ -52,6 +52,8 @@ pub struct Folder {
     pub last_scan_at: Option<i64>,
     /// Tracks found in it (not counting missing files).
     pub tracks: i64,
+    /// On another computer (network.rs): removing songs from it deletes them for good (no Recycle Bin).
+    pub network: bool,
 }
 
 const SELECT: &str = "SELECT f.id, f.kind, f.location, f.name, f.enabled, f.synced, f.added_at, f.last_scan_at,
@@ -63,6 +65,7 @@ fn folder_from(row: &Row) -> rusqlite::Result<Folder> {
     let location: String = row.get(2)?;
     let name: Option<String> = row.get(3)?;
     let kind = FolderKind::parse(&kind).unwrap_or(FolderKind::Path);
+    let network = kind == FolderKind::Path && super::network::address(&location).is_some();
     Ok(Folder {
         id: row.get(0)?,
         name: name.unwrap_or_else(|| default_name(kind, &location)),
@@ -73,6 +76,7 @@ fn folder_from(row: &Row) -> rusqlite::Result<Folder> {
         added_at: row.get(6)?,
         last_scan_at: row.get(7)?,
         tracks: row.get(8)?,
+        network,
     })
 }
 
@@ -217,6 +221,9 @@ impl Library {
     fn add_folder_as(&self, kind: FolderKind, location: &str, name: Option<&str>, synced: bool) -> Result<Folder> {
         let location = clean_location(kind, location)?;
         let existing = self.folders()?;
+        if kind == FolderKind::Path && !synced {
+            self.check_not_the_share(&existing, &location)?;
+        }
         for folder in &existing {
             if folder.kind == kind && folder.location == location {
                 return Err(format!("{} is already in the library", folder.name));
@@ -250,6 +257,28 @@ impl Library {
         let id = conn.last_insert_rowid();
         drop(conn);
         Ok(self.folder(id)?.expect("the folder just added"))
+    }
+
+    /// The share (the synced folder here, or the share itself on the network) can't be added as a music folder, nor a
+    /// folder inside it: its songs are in the library already, and Clear space / Move to sync could delete the share's
+    /// own files. One that contains it is fine (its scan skips the share's part).
+    fn check_not_the_share(&self, existing: &[Folder], location: &str) -> Result<()> {
+        const ALREADY: &str = "its songs are already in your library";
+        if let Some(synced) = existing.iter().find(|f| f.synced && f.kind == FolderKind::Path) {
+            match relation(Path::new(location), Path::new(&synced.location)) {
+                Some("same") => return Err(format!("this is your synced music: {ALREADY}")),
+                Some("inside") => return Err(format!("this folder is inside your synced music: {ALREADY}")),
+                _ => {}
+            }
+        }
+        if let (Some(folder), Some(share)) = (super::network::address(location), self.share_settings()?) {
+            match super::network::relation_to_share(&folder, &super::network::share_addresses(&share)) {
+                Some("same") => return Err(format!("this is your share: {ALREADY}")),
+                Some("inside") => return Err(format!("this folder is inside your share: {ALREADY}")),
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     /// Removes a folder and its tracks (with their likes, playlist entries and history). To keep them,
@@ -346,12 +375,22 @@ impl Library {
             .filter_map(root_of)
             .filter(|root| outer.as_ref().is_none_or(|outer| root.starts_with(&format!("{outer}/"))))
             .collect();
-        if nested.is_empty() {
+        // A network folder around the share: the share's part of it (relative to the folder, lowercase).
+        let share_parts: Vec<String> = match (folder.kind, super::network::address(&folder.location), self.share_settings()?) {
+            (FolderKind::Path, Some(outer), Some(share)) => super::network::share_addresses(&share)
+                .into_iter()
+                .filter_map(|s| s.strip_prefix(&format!("{outer}/")).map(str::to_string))
+                .collect(),
+            _ => Vec::new(),
+        };
+        if nested.is_empty() && share_parts.is_empty() {
             return Ok(listing);
         }
         let keep = |file: &super::scan::FoundFile| {
             let path = comparable(folder.kind, &folder.location, &file.path);
+            let relative = file.path.replace('\\', "/").to_lowercase();
             !nested.iter().any(|root| path.starts_with(&format!("{root}/")))
+                && !share_parts.iter().any(|part| relative.starts_with(&format!("{part}/")))
         };
         Ok(super::scan::Listing {
             songs: listing.songs.into_iter().filter(|f| keep(f)).collect(),
@@ -424,6 +463,20 @@ mod tests {
         // A name that merely starts the same isn't inside.
         let sibling = music.root.parent().unwrap().join("Music2");
         t.library.add_folder(FolderKind::Path, sibling.to_str().unwrap(), None).unwrap();
+    }
+
+    #[test]
+    fn the_synced_folder_or_a_folder_inside_it_is_refused() {
+        let t = TestLibrary::new("folders-synced");
+        let music = t.music_folder("Music");
+        std::fs::create_dir_all(music.path("Melue/ABBA")).unwrap();
+        t.library.add_synced_folder(FolderKind::Path, music.path("Melue").to_str().unwrap(), None).unwrap();
+        let same = t.library.add_folder(FolderKind::Path, music.path("Melue").to_str().unwrap(), None).unwrap_err();
+        assert!(same.contains("already in your library"), "{same}");
+        let inside = t.library.add_folder(FolderKind::Path, music.path("Melue/ABBA").to_str().unwrap(), None).unwrap_err();
+        assert!(inside.contains("inside your synced music"), "{inside}");
+        // Around it is fine: its scan skips the synced folder.
+        t.library.add_folder(FolderKind::Path, music.root.to_str().unwrap(), None).unwrap();
     }
 
     #[test]

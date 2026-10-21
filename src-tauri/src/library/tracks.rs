@@ -278,6 +278,40 @@ fn artist_row(r: &Row) -> rusqlite::Result<Artist> {
 /// The order an album's songs play in (by disc, then track number; untracked ones after, by file).
 const ALBUM_ORDER: &str = "coalesce(t.disc_no, 1), t.track_no IS NULL, t.track_no, t.path";
 
+/// A song whose file can't be found (deleted, moved, or on a drive that isn't there now): kept in the library, with
+/// its likes, plays and playlist places, in case it comes back.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MissingSong {
+    pub id: i64,
+    pub title: String,
+    pub artist: Option<String>,
+    /// Its music folder's name, and where the file was in it.
+    pub folder: String,
+    pub path: String,
+    /// Since when (ms).
+    pub missing_since: i64,
+}
+
+impl Library {
+    /// The songs that can't be found, in switched-on folders (most recently gone first).
+    pub fn missing_songs(&self) -> Result<Vec<MissingSong>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT t.id, t.title, t.artist_credit, f.name, t.path, t.missing_since FROM tracks t JOIN folders f ON f.id = t.folder_id
+                 WHERE t.missing_since IS NOT NULL AND t.copy_of IS NULL AND f.enabled ORDER BY t.missing_since DESC, t.title",
+            )
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(MissingSong { id: r.get(0)?, title: r.get(1)?, artist: r.get(2)?, folder: r.get(3)?, path: r.get(4)?, missing_since: r.get(5)? })
+            })
+            .map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+}
+
 impl Library {
     /// Songs that are there (not missing), sorted.
     pub fn tracks(&self, offset: u32, limit: u32, sort: TrackSort) -> Result<Vec<Track>> {

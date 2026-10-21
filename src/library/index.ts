@@ -35,6 +35,8 @@ export interface MusicFolder {
   lastScanAt: number | null
   /** Songs found in it. */
   tracks: number
+  /** On another computer: removing songs from it deletes them for good (no Recycle Bin). */
+  network: boolean
 }
 
 export interface MusicAccess {
@@ -372,8 +374,24 @@ export interface FolderCovers {
 export const coverUrl = (cover: string, size: 'small' | 'large' = 'small') =>
   convertFileSrc(`${cover}-${size === 'small' ? 300 : 1000}.jpg`, 'cover')
 
+/**
+ * A song whose file can't be found (deleted, moved, or on a drive that isn't there now): kept in the library, with its
+ * likes, plays and playlist places, in case it comes back.
+ */
+export interface MissingSong {
+  id: number
+  title: string
+  artist: string | null
+  /** Its music folder's name, and where the file was in it. */
+  folder: string
+  path: string
+  missingSince: number
+}
+
 export const library = {
   status: () => invoke<LibraryStatus>('library_status'),
+  /** The songs whose files can't be found (kept, in case they come back). */
+  missingSongs: () => invoke<MissingSong[]>('library_missing_songs'),
   /** An app setting saved with the library, or null when it was never set. */
   setting: (key: string) => invoke<string | null>('library_setting', { key }),
   setSetting: (key: string, value: string) => invoke<void>('library_set_setting', { key, value }),

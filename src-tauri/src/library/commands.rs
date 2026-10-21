@@ -32,6 +32,12 @@ pub fn library_status(library: State<'_, Library>) -> Result<LibraryStatus> {
     library.status()
 }
 
+/// The songs whose files can't be found (Library: Show).
+#[tauri::command(async)]
+pub fn library_missing_songs(library: State<'_, Library>) -> Result<Vec<super::tracks::MissingSong>> {
+    library.missing_songs()
+}
+
 /// An app setting saved in the library (null when it was never set).
 #[tauri::command(async)]
 pub fn library_setting(library: State<'_, Library>, key: String) -> Result<Option<String>> {

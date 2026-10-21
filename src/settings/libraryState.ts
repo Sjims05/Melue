@@ -1,15 +1,18 @@
 /**
  * The library as the Library settings show it, shared by the status card and the folder list: the counts, the
- * folders, the songs only on this device (with a share), the hidden copies of synced songs, and a scan's progress.
+ * folders, the songs that can't be found, the songs only on this device (with a share), the hidden copies of synced
+ * songs, and a scan's progress.
  * Read when first shown, and again after anything changes it (a scan, a folder added, songs moved).
  */
 import { reactive } from 'vue'
-import { library, type LibraryStatus, type MusicFolder } from '@/library'
+import { library, type LibraryStatus, type MissingSong, type MusicFolder } from '@/library'
 import { moving, sync, type Copies, type LocalSong } from '@/library/sync'
 
 export const libraryState = reactive({
   status: null as LibraryStatus | null,
   folders: [] as MusicFolder[],
+  /** Songs whose files can't be found. */
+  missing: [] as MissingSong[],
   /** Songs only on this device (not on the share); empty without a share. */
   onlyHere: [] as LocalSong[],
   copies: null as Copies | null,
@@ -20,8 +23,8 @@ export const libraryState = reactive({
 
 export async function refreshLibrary(): Promise<void> {
   try {
-    const [status, folders] = await Promise.all([library.status(), library.folders()])
-    Object.assign(libraryState, { status, folders })
+    const [status, folders, missing] = await Promise.all([library.status(), library.folders(), library.missingSongs()])
+    Object.assign(libraryState, { status, folders, missing })
     const [onlyHere, copies] = sync.available
       ? await Promise.all([moving.notOnShare(), moving.copies()])
       : [[], null]

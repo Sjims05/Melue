@@ -2,6 +2,16 @@
 import { ref } from 'vue'
 import type { ShareSettings, SyncResult, SyncTrigger } from '@/library/sync'
 
+/**
+ * Where removed originals go, as the end of a sentence ("Then the original …"): the Recycle Bin; for good from a network
+ * folder (`network`: any of them is); Android's trash. `many`: "them" instead of "it".
+ */
+export function whereOriginalsGo(isMobile: boolean, network: boolean, many: boolean): string {
+  if (isMobile) return `is removed: Android asks you to move ${many ? 'them' : 'it'} to its trash (kept 30 days).`
+  if (network) return 'is deleted for good: a network folder has no Recycle Bin.'
+  return 'goes to the Recycle Bin.'
+}
+
 /** "me@nas/music", or a network drive's path. */
 export function shareName(settings: ShareSettings | null | undefined): string {
   if (!settings) return ''

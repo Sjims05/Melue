@@ -9,11 +9,12 @@ import { save } from '@tauri-apps/plugin-dialog'
 import type { CoverAction } from '@/components/covers'
 import type { Song, SongAction } from '@/components/songs'
 import { coverUrl, library, type QueueItem, type Source, type Track } from '@/library'
-import { onlyHere } from '@/library/onlyHere'
+import { onNetwork, onlyHere } from '@/library/onlyHere'
 import { playSource } from '@/library/playback'
 import { describeSyncFailure, moving } from '@/library/sync'
 import { ask } from '@/lib/confirm'
 import { count } from '@/lib/format'
+import { whereOriginalsGo } from '@/settings/format'
 import { listPlay } from '@/lib/listPlay'
 import { toast } from '@/lib/toast'
 import { isMobile, player } from '@/platform'
@@ -186,15 +187,17 @@ export async function songAction(song: Song, action: SongAction) {
 }
 
 /**
- * Move to sync (a song only on this device): asked first, since the original goes (the Recycle Bin; on Android its
- * trash, after Android asks). It's copied into the synced music, then the original is removed; a note says how it went.
+ * Move to sync (a song only on this device): asked first, since the original goes (the Recycle Bin, or for good from a
+ * network folder; on Android its trash, after Android asks). It's copied into the synced music, then the original is removed; a note says how it went.
  */
 async function moveToSync(song: Song) {
   const yes = await ask({
     title: `Move “${song.title}” to sync?`,
-    text: `It’s copied into your synced music first, so every device gets it. Then the original ${
-      isMobile ? 'is removed: Android asks you to move it to its trash (kept 30 days).' : 'goes to the Recycle Bin.'
-    }`,
+    text: `It’s copied into your synced music first, so every device gets it. Then the original ${whereOriginalsGo(
+      isMobile,
+      onNetwork.value.has(Number(song.id)),
+      false,
+    )}`,
     action: 'Move',
   })
   if (!yes) return

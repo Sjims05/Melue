@@ -17,7 +17,7 @@ import { describeSyncFailure, moving, sync, type LocalSong } from '@/library/syn
 import { isAndroid, isDesktop, isMobile, storage } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { adding, pickSongs } from './addSongs'
-import { size } from './format'
+import { size, whereOriginalsGo } from './format'
 import { libraryState, refreshLibrary, startLibraryState } from './libraryState'
 
 const open = ref<number | null>(null)
@@ -38,7 +38,7 @@ function line(folder: MusicFolder) {
   if (folder.kind === 'android_media') return `${plural(folder.tracks, 'song')} · all music on this phone`
   if (folder.synced) return `${plural(folder.tracks, 'song')} · your share, copied here`
   const here = onlyHereIn(folder).length
-  return `${plural(folder.tracks, 'song')}${here ? ` · ${here} only here` : ''}`
+  return `${plural(folder.tracks, 'song')}${folder.network ? ' · on the network' : ''}${here ? ` · ${here} only here` : ''}`
 }
 const tile = (folder: MusicFolder) => (folder.synced ? Cloud : folder.kind === 'android_media' ? Smartphone : Folder)
 
@@ -104,7 +104,7 @@ const ask = computed(() => {
     const n = plural(a.songs.length, 'song')
     return {
       title: `Move ${n} to sync?`,
-      text: `Each song is copied into your synced music first. Then the original ${isMobile ? 'is removed: Android asks you to move them to its trash (kept 30 days).' : 'goes to the Recycle Bin.'}`,
+      text: `Each song is copied into your synced music first. Then the original ${whereOriginalsGo(isMobile, a.songs.some((s) => s.network), true)}`,
       action: `Move ${n}`,
       danger: false,
     }
