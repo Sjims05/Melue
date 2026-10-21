@@ -4,23 +4,32 @@
  * the `badges` slot), a grey line under it, and › at the right. Under the pointer, focused or with its menu open it
  * gets the songs' highlight. `menu`: its right-click menu (Play, Shuffle, Play next, Add to queue).
  */
-import { ChevronRight } from '@lucide/vue'
+import { ChevronRight, User } from '@lucide/vue'
 import type { Component } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import type { MenuItem } from '@/components/covers'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { usePhone } from '@/lib/phone'
+import { useLongPress } from '@/lib/longPress'
+import { openMenu } from '@/lib/menuDrawer'
 
 // Its attributes (a role) go on the row itself, not the menu around it.
 defineOptions({ inheritAttrs: false })
-defineProps<{ to: RouteLocationRaw; title: string; subtitle?: string; icon?: Component; menu?: MenuItem[] }>()
+const props = defineProps<{ to: RouteLocationRaw; title: string; subtitle?: string; icon?: Component; menu?: MenuItem[] }>()
 const emit = defineEmits<{ action: [action: string] }>()
+// A phone: a long press opens its menu as a drawer (instead of the right-click menu).
+const phone = usePhone()
+const press = useLongPress(() => {
+  // An artist (no picture): a person.
+  if (props.menu?.length) openMenu({ title: props.title, subtitle: props.subtitle, cover: { placeholder: props.icon ?? User }, items: props.menu, pick: (a) => emit('action', a) })
+})
 </script>
 
 <template>
   <ContextMenu :modal="false">
-    <ContextMenuTrigger as-child :disabled="!menu?.length">
+    <ContextMenuTrigger as-child :disabled="!menu?.length || phone">
       <RouterLink
-        v-bind="$attrs"
+        v-bind="{ ...$attrs, ...(phone ? press : {}) }"
         :to="to"
         class="flex h-[68px] items-center gap-4 rounded-lg px-4 outline-none hover:bg-song-highlight focus-visible:bg-song-highlight data-[state=open]:bg-song-highlight"
       >

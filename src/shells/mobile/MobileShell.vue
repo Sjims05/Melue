@@ -4,9 +4,10 @@
  * mini player and the bottom bar (Home · Library · Playlists · Search · Settings). Main pages are kept alive and slide
  * in like on a computer; a page opened from one (an artist, an album, Search) is a layer sliding in from the right,
  * with its own top bar; a swipe to the right (or the phone's back) closes it. Now playing slides up over everything
- * from the mini player; the chevron, a pull down, or the phone's back closes it.
+ * from the mini player; the chevron, a pull down, or the phone's back closes it. Pulling a main page down from its top
+ * syncs (pullToRefresh.ts).
  */
-import { ChevronDown } from '@lucide/vue'
+import { ChevronDown, RefreshCw } from '@lucide/vue'
 import { computed, provide, ref, watch } from 'vue'
 import { useRoute, type RouteLocationNormalizedLoaded } from 'vue-router'
 import { PLAYLIST_PICKER } from '@/components/songs'
@@ -24,6 +25,8 @@ import BottomBar from './BottomBar.vue'
 import MiniPlayer from './MiniPlayer.vue'
 import MobileTopBar from './MobileTopBar.vue'
 import { usePullToClose } from './pullToClose'
+import { READY, usePullToRefresh } from './pullToRefresh'
+import MenuDrawer from './MenuDrawer.vue'
 
 const route = useRoute()
 // What's playing; the song menus' Add to playlist; which songs are only on this device.
@@ -50,6 +53,8 @@ const layer = ref<HTMLElement | null>(null)
 const layerPull = usePullToClose(layer, 'right', goBack)
 // A new page on top starts where it should (not where the last one was let go).
 watch(layerKey, () => layerPull.reset())
+// Pulling a main page down from its top: everything up to date.
+const refresh = usePullToRefresh(scroller)
 </script>
 
 <template>
@@ -59,6 +64,16 @@ watch(layerKey, () => layerPull.reset())
       <div class="absolute inset-0 flex flex-col" :inert="onTop || undefined">
         <MobileTopBar />
         <div ref="scroller" data-scroller class="relative min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]" :style="{ '--page-from': from }">
+          <!-- Pull to refresh's mark: comes down with the finger, turning; spins while it refreshes. -->
+          <div class="pointer-events-none sticky top-0 z-10 flex h-0 justify-center" aria-hidden="true">
+            <span
+              class="grid size-10 place-items-center rounded-full border bg-card text-muted-foreground shadow-md"
+              :class="[!refresh.pulling.value && 'transition-[translate,opacity] duration-200 ease-out', refresh.pull.value >= READY && 'text-foreground']"
+              :style="{ translate: `0 ${refresh.pull.value - 44}px`, opacity: Math.min(1, refresh.pull.value / READY) }"
+            >
+              <RefreshCw class="size-5" :class="refresh.refreshing.value && 'animate-spin'" :style="!refresh.refreshing.value ? { rotate: `${refresh.pull.value * 4}deg` } : undefined" />
+            </span>
+          </div>
           <main class="app-column pb-8">
             <Transition name="page" :duration="{ enter: 320, leave: 0 }">
               <KeepAlive>
@@ -116,6 +131,8 @@ watch(layerKey, () => layerPull.reset())
         </div>
       </div>
     </Transition>
+    <!-- Menus: up from the bottom (⋯, a long press). -->
+    <MenuDrawer />
     <ConfirmHost />
   </div>
 </template>
@@ -125,6 +142,8 @@ watch(layerKey, () => layerPull.reset())
 .mobile-shell {
   --col-left: 1rem;
   --col-right: 1rem;
+  /* A long press opens Melue's own menus, not the browser's (copy, open link). */
+  -webkit-touch-callout: none;
 }
 /* Now playing sliding up from the bottom, and back down. */
 .sheet-enter-active,

@@ -5,11 +5,11 @@
  * its own heading ("Album/CD1"). A big folder (all your music) scrolls like the Songs tab: only what's on screen is
  * drawn. It follows the library.
  */
-import { Cloud } from '@lucide/vue'
+import { Cloud, Folder } from '@lucide/vue'
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { AUTO_COVERS, coverMenu, type CoverAction } from '@/components/covers'
-import { ListHeader } from '@/components/page'
+import { EmptyState, ListHeader } from '@/components/page'
 import { SettingsBadge } from '@/components/settings'
 import { VirtualSongList, type Song } from '@/components/songs'
 import { library, type MusicFolder, type Source, type Track } from '@/library'
@@ -17,7 +17,8 @@ import { count, totalLength } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
-import { setPageTitle } from '@/router'
+import { goBack, setPageTitle } from '@/router'
+import { Button } from '@/components/ui/button'
 
 const route = useRoute()
 // This page's own address and folder (the route moves on when another page opens on top of it).
@@ -89,6 +90,8 @@ const MENU = coverMenu({ kind: 'list' })
         @action="songAction"
       />
     </template>
-    <p v-else-if="folder === null" class="pt-2 text-lg text-muted-foreground">This folder isn't in your library (any more).</p>
+    <EmptyState v-else-if="folder === null" :icon="Folder" title="This folder isn’t in your library" text="It may have been removed from your music folders.">
+      <Button size="sm" variant="outline" @click="goBack">Back</Button>
+    </EmptyState>
   </div>
 </template>

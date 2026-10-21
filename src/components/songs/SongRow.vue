@@ -24,6 +24,8 @@ import { artistParts } from './artistParts'
 import { Button } from '@/components/ui/button'
 import PlayingBars from './PlayingBars.vue'
 import { songMenu, type Song, type SongAction, type SongMenuItem, type SongMenuPlace } from './songMenu'
+import { useLongPress } from '@/lib/longPress'
+import { openMenu } from '@/lib/menuDrawer'
 
 // The menu wraps the row, so what's set on the row (a class) goes on the row itself.
 defineOptions({ inheritAttrs: false })
@@ -83,6 +85,12 @@ const length = computed(() => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 })
 
+// A phone: its menu as a drawer (⋯, or a long press on the row; not on the drag handle, which drags).
+function openRowMenu() {
+  openMenu({ title: props.song.title, subtitle: props.song.artist, cover: { image: props.song.cover }, items: items.value, pick: (a) => pick(a as SongAction), song: props.song })
+}
+const press = useLongPress((e) => !(e.target as HTMLElement).closest('.song-handle') && !props.unavailable && openRowMenu())
+
 function pick(action: SongAction) {
   if (action === 'takeOut') emit('remove')
   else if (action === 'like') emit('like', !props.song.liked)
@@ -118,7 +126,7 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
   <ContextMenu :modal="false" @update:open="(open) => (contextOpen = open)">
     <ContextMenuTrigger as-child :disabled="unavailable || phone">
       <div
-        v-bind="$attrs"
+        v-bind="{ ...$attrs, ...(phone ? press : {}) }"
         class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none *:transition-opacity *:duration-300 phone:h-[60px] phone:gap-3 phone:px-1"
         :class="
           unavailable
@@ -196,7 +204,10 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
               <LikeHeart :liked="!!song.liked" />
             </button>
           </template>
-          <DropdownMenu @update:open="(open) => (menuOpen = open)">
+          <button v-if="phone" type="button" :class="[BUTTON, song.restore && 'opacity-45']" :aria-label="`${song.title}: more`" @click="openRowMenu">
+            <Ellipsis />
+          </button>
+          <DropdownMenu v-else @update:open="(open) => (menuOpen = open)">
             <DropdownMenuTrigger :class="[BUTTON, song.restore && 'opacity-45']" :aria-label="`${song.title}: more`"><Ellipsis /></DropdownMenuTrigger>
             <DropdownMenuContent align="end" class="min-w-48">
               <template v-for="item in items" :key="item.action">

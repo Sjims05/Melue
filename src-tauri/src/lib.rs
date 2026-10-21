@@ -3,6 +3,7 @@ mod desktop;
 mod library;
 mod logging;
 mod share;
+mod startup;
 mod sync;
 
 use std::sync::{Arc, Mutex};
@@ -72,6 +73,7 @@ async fn smb_copy_file(state: tauri::State<'_, SpikeShare>, remote_path: String,
 pub fn run() {
     // Android: Melue's messages to Android's log and a log file on the phone (logging.rs).
     logging::start();
+    startup::begin();
     let builder = tauri::Builder::default();
 
     // Android only (see Cargo.toml): android-fs (its permissions are in capabilities/android.json), and
@@ -158,6 +160,7 @@ pub fn run() {
             // Desktop: the tray, starting with the system (desktop.rs).
             #[cfg(desktop)]
             desktop::setup(app.handle())?;
+            eprintln!("melue: start-up: set up at {} ms", startup::ms());
             Ok(())
         })
         // Desktop: back into the window counts as coming back to the app (a sync if the last is a while ago).
@@ -184,6 +187,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            startup::window_ready,
             smb_connect,
             smb_list_dir,
             smb_copy_file,
@@ -197,6 +201,7 @@ pub fn run() {
             sync::commands::sync_plan,
             sync::commands::sync_now,
             sync::commands::sync_cancel,
+            sync::commands::sync_came_back,
             sync::commands::sync_status,
             sync::commands::sync_simulate_notification,
             sync::commands::sync_settings,

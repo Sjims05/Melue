@@ -34,6 +34,12 @@ pub fn sync_cancel(app: AppHandle) {
     scheduler::cancel(&app);
 }
 
+/// The user is using the app again after `away_ms` without touching it (see scheduler::came_back).
+#[tauri::command]
+pub fn sync_came_back(app: AppHandle, away_ms: i64) {
+    scheduler::came_back(&app, away_ms);
+}
+
 /// Spike: shows the "Syncing music" notification for a slow pretend sync (Android).
 #[tauri::command]
 pub fn sync_simulate_notification(app: AppHandle) -> Result<(), String> {

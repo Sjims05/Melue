@@ -2,6 +2,9 @@
 //! (in the tray, without the window; or with it), and one Melue at a time. The Display settings "Start Melue with
 //! Windows", "When Windows starts it" and "Closing the window".
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::plugin::TauriPlugin;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -29,11 +32,31 @@ pub fn single_instance() -> TauriPlugin<Wry> {
     tauri_plugin_single_instance::init(|app, _args, _cwd| show_window(app))
 }
 
+/// The window waits to be shown until the UI is ready (see [`ui_ready`]).
+static SHOW_WHEN_READY: AtomicBool = AtomicBool::new(false);
+/// The longest the window waits for the UI (a slow start, or the UI failing to load: never a Melue without a window).
+const READY_AT_MOST: Duration = Duration::from_secs(5);
+
 /// First thing at start: the window, unless the system started Melue (then it stays in the tray). The window starts
-/// hidden (tauri.windows.conf.json) so starting in the tray doesn't flash it; it's shown before the rest of the
-/// start-up (the library, the sync), which can take a while.
+/// hidden (tauri.windows.conf.json) and shows once the UI has drawn itself, not as a white window before that.
 pub fn show_at_start(app: &AppHandle) {
     if !std::env::args().any(|a| a == HIDDEN) {
+        show_when_ready(app);
+    }
+}
+
+fn show_when_ready(app: &AppHandle) {
+    SHOW_WHEN_READY.store(true, Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(READY_AT_MOST);
+        ui_ready(&app);
+    });
+}
+
+/// The UI has drawn itself (main.ts): the window shows, if it's waiting to.
+pub fn ui_ready(app: &AppHandle) {
+    if SHOW_WHEN_READY.swap(false, Ordering::SeqCst) {
         show_window(app);
     }
 }
@@ -65,7 +88,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     // Started by the system, set to start with its window: shown now (show_at_start couldn't read the setting yet).
     let with_window = app.state::<Library>().setting(AUTOSTART_WINDOW_SETTING).ok().flatten();
     if std::env::args().any(|a| a == HIDDEN) && with_window.as_deref() == Some("window") {
-        show_window(app);
+        show_when_ready(app);
     }
     Ok(())
 }

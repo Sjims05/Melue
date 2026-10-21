@@ -5,20 +5,21 @@
  * (Display settings); then Recently played (the lists you played, newest first: one row, See all for the rest) and
  * Recent songs (the last ones you played).
  */
-import { Music } from '@lucide/vue'
+import { CircleAlert, History, Music } from '@lucide/vue'
 import { computed, onActivated, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Cover, CoverCard, coverMenu, type CoverAction } from '@/components/covers'
-import { PageHeader } from '@/components/page'
+import { EmptyState, PageHeader } from '@/components/page'
 import { SongList, type Song } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { library, type Track } from '@/library'
 import { RECENT_LISTS } from '@/library/playback'
-import { minutesAndSeconds, playbackSync, type PlaybackFile } from '@/library/sync'
+import { minutesAndSeconds, playbackSync, sync, type PlaybackFile } from '@/library/sync'
 import { appearance, primaryArea } from '@/lib/appearance'
 import { isDesktop, trackedLists } from '@/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { listAction, playSong, songAction, trackSong } from '@/player/songs'
+import { rememberedHome, rememberHome } from './home/homeMemory'
 import { listCards, type ListCard } from './home/listCards'
 
 const router = useRouter()
@@ -40,18 +41,27 @@ async function answer(go: boolean) {
 
 // ---- Recently played lists, and recent songs (read again whenever Home is shown)
 const ROW = 6
-const lists = ref<ListCard[]>([])
+// Until the library answers, Home as it was last shown (homeMemory.ts): there at once at start.
+const remembered = rememberedHome()
+const lists = ref<ListCard[]>(remembered?.lists ?? [])
 const allLists = ref(false)
-const recent = ref<Track[]>([])
+const recent = ref<Track[]>(remembered?.recent ?? [])
+// No songs at all (a fresh start): Home welcomes you instead. The library can't be read: it says so.
+const noMusic = ref(false)
+const problem = ref('')
 async function load() {
-  const [played, songs, offered] = await Promise.all([
+  problem.value = ''
+  const [played, songs, offered, status] = await Promise.all([
     trackedLists.get(RECENT_LISTS).catch(() => []),
     library.recentlyPlayed(8).catch(() => []),
     playbackSync.offer().catch(() => null),
+    library.status().catch((e) => void (problem.value = String(e))),
   ])
+  noMusic.value = !!status && status.tracks === 0
   lists.value = await listCards(played.map((e) => String(e.id)))
   recent.value = songs
   offer.value = offered
+  if (!problem.value) rememberHome(lists.value, songs)
 }
 onActivated(load)
 stops.push(library.onChange((change) => change.reason !== 'likes' && load()))
@@ -98,67 +108,90 @@ const MENU = coverMenu({ kind: 'list' })
               </span>
             </RouterLink>
           </Transition>
-          <!-- On a phone its buttons go on a line of their own, at the right. -->
-          <div v-if="offer" class="flex min-w-0 flex-wrap items-center gap-4 rounded-xl p-4 phone:gap-x-4 phone:gap-y-3" :class="cardClass">
-            <span class="grid size-16 flex-none place-items-center rounded-md bg-well text-muted-foreground"><Music class="size-6" /></span>
-            <span class="flex min-w-0 flex-1 flex-col phone:basis-[calc(100%-5rem)]">
-              <span class="truncate text-sm text-muted-foreground">Continue from {{ offer.deviceName }}?</span>
-              <span class="truncate text-[17px] font-semibold">{{ offer.title ?? 'A song' }}</span>
-              <span class="truncate text-muted-foreground">{{ [offer.artist, minutesAndSeconds(offer.positionS)].filter(Boolean).join(' · ') }}</span>
-            </span>
-            <Button variant="outline" size="sm" class="phone:ml-auto" @click="answer(false)">Not now</Button>
-            <Button size="sm" @click="answer(true)">Continue</Button>
-          </div>
+          <!-- On a phone its buttons go on a line of their own, at the right. It fades away once answered. -->
+          <Transition name="fade">
+            <div v-if="offer" class="flex min-w-0 flex-wrap items-center gap-4 rounded-xl p-4 phone:gap-x-4 phone:gap-y-3" :class="cardClass">
+              <span class="grid size-16 flex-none place-items-center rounded-md bg-well text-muted-foreground"><Music class="size-6" /></span>
+              <span class="flex min-w-0 flex-1 flex-col phone:basis-[calc(100%-5rem)]">
+                <span class="truncate text-sm text-muted-foreground">Continue from {{ offer.deviceName }}?</span>
+                <span class="truncate text-[17px] font-semibold">{{ offer.title ?? 'A song' }}</span>
+                <span class="truncate text-muted-foreground">{{ [offer.artist, minutesAndSeconds(offer.positionS)].filter(Boolean).join(' · ') }}</span>
+              </span>
+              <Button variant="outline" size="sm" class="phone:ml-auto" @click="answer(false)">Not now</Button>
+              <Button size="sm" @click="answer(true)">Continue</Button>
+            </div>
+          </Transition>
         </div>
       </div>
     </div>
 
-    <div class="grid gap-12 lg:grid-cols-2">
-      <section>
-        <div class="mb-2 flex items-center justify-between">
-          <h2 class="text-xl font-semibold">Recently played</h2>
-          <button
-            v-if="lists.length > ROW"
-            type="button"
-            class="text-sm text-muted-foreground hover:text-foreground hover:underline"
-            @click="allLists = !allLists"
-          >
-            {{ allLists ? 'Show less' : 'See all' }}
-          </button>
-        </div>
-        <div v-if="lists.length" class="cover-grid [--cover-min:10rem]">
-          <CoverCard
-            v-for="list in shownLists"
-            :key="list.source"
-            :title="list.title"
-            :subtitle="list.subtitle"
-            :image="list.image"
-            :collage="list.collage"
-            :colors="list.colors"
-            :icon="list.icon"
-            :placeholder="list.placeholder"
-            :menu="MENU"
-            @open="router.push(list.page)"
-            @action="(action) => listAction(list.source, action as CoverAction)"
+    <!-- A problem, the welcome (no music yet), or Home itself: a fade between them. -->
+    <Transition name="part" mode="out-in">
+      <EmptyState v-if="problem" :icon="CircleAlert" title="Can’t read your library" :text="problem" problem>
+        <Button size="sm" variant="outline" @click="load">Try again</Button>
+      </EmptyState>
+      <EmptyState
+        v-else-if="noMusic"
+        :icon="Music"
+        title="Add your music"
+        text="Melue plays the music in your folders. With a share it keeps your music, likes and playlists the same on all your devices."
+      >
+        <Button size="sm" @click="router.push('/settings')">Add a music folder</Button>
+        <Button v-if="!sync.available" size="sm" variant="outline" @click="router.push('/settings')">Set up a share</Button>
+      </EmptyState>
+      <div v-else class="grid gap-12 lg:grid-cols-2">
+        <section>
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-xl font-semibold">Recently played</h2>
+            <button
+              v-if="lists.length > ROW"
+              type="button"
+              class="text-sm text-muted-foreground hover:text-foreground hover:underline"
+              @click="allLists = !allLists"
+            >
+              {{ allLists ? 'Show less' : 'See all' }}
+            </button>
+          </div>
+          <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
+          <Transition name="part" mode="out-in">
+          <div v-if="lists.length" class="cover-grid [--cover-min:10rem]">
+            <CoverCard
+              v-for="list in shownLists"
+              :key="list.source"
+              :title="list.title"
+              :subtitle="list.subtitle"
+              :image="list.image"
+              :collage="list.collage"
+              :colors="list.colors"
+              :icon="list.icon"
+              :placeholder="list.placeholder"
+              :menu="MENU"
+              @open="router.push(list.page)"
+              @action="(action) => listAction(list.source, action as CoverAction)"
+            />
+          </div>
+          <EmptyState v-else :icon="History" title="Nothing played yet" text="Albums, playlists and artists you play show up here." small />
+          </Transition>
+        </section>
+        <section>
+          <h2 class="mb-2 text-xl font-semibold">Recent songs</h2>
+          <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
+          <Transition name="part" mode="out-in">
+          <SongList
+            v-if="songs.length"
+            :songs="songs"
+            :current-id="current?.id"
+            :playing="!!nowPlaying.state?.isPlaying"
+            :place="{ showInFolder: isDesktop }"
+            @play="playSong"
+            @pause="togglePlay"
+            @like="(song, liked) => like(Number(song.id), liked)"
+            @action="songAction"
           />
-        </div>
-        <p v-else class="text-muted-foreground">Play an album, a playlist or an artist, and it shows up here.</p>
-      </section>
-      <section>
-        <h2 class="mb-2 text-xl font-semibold">Recent songs</h2>
-        <SongList
-          v-if="songs.length"
-          :songs="songs"
-          :current-id="current?.id"
-          :playing="!!nowPlaying.state?.isPlaying"
-          :place="{ showInFolder: isDesktop }"
-          @play="playSong"
-          @pause="togglePlay"
-          @like="(song, liked) => like(Number(song.id), liked)"
-          @action="songAction"
-        />
-        <p v-else class="text-muted-foreground">Songs you play show up here.</p>
-      </section>
-    </div>
+          <EmptyState v-else :icon="Music" title="No songs played yet" text="Songs you play show up here." small />
+          </Transition>
+        </section>
+      </div>
+    </Transition>
   </div>
 </template>

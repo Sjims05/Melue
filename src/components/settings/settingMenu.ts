@@ -16,3 +16,6 @@ export interface SettingMenu {
 }
 
 export const SETTING_MENU: InjectionKey<SettingMenu> = Symbol('setting menu')
+
+/** The row's title, for what's in it (a DropValue's drawer on a phone says which setting it's choosing for). */
+export const ROW_TITLE: InjectionKey<() => string | undefined> = Symbol('setting row title')

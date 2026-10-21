@@ -5,19 +5,27 @@
  * next: Queue settings), a double-click adds it to Up next; Play and Shuffle above play them all. It follows the
  * library: a scan or a folder change shows at once.
  */
+import { CircleAlert, Music } from '@lucide/vue'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { letterOf, VirtualSongList, type Song } from '@/components/songs'
 import { library, type Track, type TrackSort } from '@/library'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { playSong, songAction, trackSong } from '@/player/songs'
+import { useRouter } from 'vue-router'
+import { EmptyState } from '@/components/page'
+import { Button } from '@/components/ui/button'
 
 const props = defineProps<{ sort: TrackSort }>()
 
 // All of them at once (a few thousand are quick to read); the list draws only what's on screen.
 const tracks = ref<Track[] | null>(null)
+// Why the list couldn't be read (shown instead of an empty list).
+const problem = ref('')
+const router = useRouter()
 async function load() {
-  tracks.value = await library.tracks(0, 1_000_000, props.sort).catch(() => [])
+  problem.value = ''
+  tracks.value = await library.tracks(0, 1_000_000, props.sort).catch((e) => ((problem.value = String(e)), []))
 }
 watch(() => props.sort, load, { immediate: true })
 // Likes show through the player's liked songs (at once, everywhere); anything else reloads the list.
@@ -56,19 +64,28 @@ const place = { showInFolder: isDesktop }
 <template>
   <!-- One root: page switches move the page as one. -->
   <div>
-    <VirtualSongList
-      v-if="tracks?.length"
-      :songs="songs"
-      :heading-of="headingOf"
-      :number-of="numberOf"
-      :current-id="current?.id"
-      :playing="!!nowPlaying.state?.isPlaying"
-      :place="place"
-      @play="playSong"
-      @pause="togglePlay"
-      @like="(song, liked) => like(Number(song.id), liked)"
-      @action="songAction"
-    />
-    <p v-else-if="tracks" class="px-2 text-muted-foreground">No songs yet: add a music folder in Settings, and they show up here.</p>
+    <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
+    <Transition name="part" mode="out-in">
+      <VirtualSongList
+        v-if="tracks?.length"
+        :songs="songs"
+        :heading-of="headingOf"
+        :number-of="numberOf"
+        :current-id="current?.id"
+        :playing="!!nowPlaying.state?.isPlaying"
+        :place="place"
+        @play="playSong"
+        @pause="togglePlay"
+        @like="(song, liked) => like(Number(song.id), liked)"
+        @action="songAction"
+      />
+      <!-- Can't be read (Try again), or nothing yet (where to add music). -->
+      <EmptyState v-else-if="problem" :icon="CircleAlert" title="Can’t read your library" :text="problem" problem>
+        <Button size="sm" variant="outline" @click="load">Try again</Button>
+      </EmptyState>
+      <EmptyState v-else-if="tracks" :icon="Music" title="No songs yet" text="Add a music folder, and its songs show up here.">
+        <Button size="sm" @click="router.push('/settings')">Add a music folder</Button>
+      </EmptyState>
+    </Transition>
   </div>
 </template>

@@ -4,6 +4,8 @@
  * list's buttons and card menu do (an album's Play and Shuffle; Play next, Add to queue, Go to artist).
  */
 import { CloudUpload, ListEnd, ListStart } from '@lucide/vue'
+import { audioDir, join } from '@tauri-apps/api/path'
+import { save } from '@tauri-apps/plugin-dialog'
 import type { CoverAction } from '@/components/covers'
 import type { Song, SongAction } from '@/components/songs'
 import { coverUrl, library, type QueueItem, type Source, type Track } from '@/library'
@@ -52,8 +54,6 @@ export async function playList(source: Source, options: { shuffle?: boolean; sta
  * title, artist and length. Resolves with where it went (nothing when cancelled).
  */
 export async function exportList(source: Source, name: string): Promise<string | null> {
-  const { save } = await import('@tauri-apps/plugin-dialog')
-  const { audioDir, join } = await import('@tauri-apps/api/path')
   const file = `${name.replace(/[\\/:*?"<>|]/g, '').trim() || 'Playlist'}.m3u8`
   const path = await save({ defaultPath: await join(await audioDir().catch(() => ''), file), filters: [{ name: 'Playlist', extensions: ['m3u8'] }] })
   if (!path) return null

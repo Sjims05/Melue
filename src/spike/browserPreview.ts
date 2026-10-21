@@ -15,7 +15,19 @@ import type { OutputDevices } from '@/platform'
 import { PLAYER_DEFAULTS, QUEUE_FOLLOW_DEFAULTS } from '@/settings/defaults'
 
 const minutes = (n: number) => n * 60_000
-const status = new URLSearchParams(location.search).get('status') ?? 'synced'
+// ?state=empty: a fresh install (no music, no playlists, nothing played, no share). ?state=broken: the library can't
+// be read, the share can't be reached, the playing song can't play. To look at the empty and error states.
+const previewState = new URLSearchParams(location.search).get('state')
+const status = new URLSearchParams(location.search).get('status') ?? (previewState === 'empty' ? 'none' : previewState === 'broken' ? 'error' : 'synced')
+const EMPTY: Record<string, unknown> = {
+  library_sync_available: false, library_tracks: [], library_albums: [], library_artists: [], library_folders: [], library_playlists: [],
+  library_auto_playlists: [], library_recently_played: [], library_liked_ids: [], playback_offer: null,
+  playlist_conflicts: [], deleted_playlists: [], library_deleted_linked_playlists: [], library_let_go_files: [],
+  library_status: { schemaVersion: 1, folders: 0, tracks: 0, albums: 0, artists: 0, playlists: 0 },
+  library_search: { tracks: [], trackCount: 0, albums: [], artists: [], playlists: [] },
+  'plugin:native-audio|get_tracked_list': { entries: [] },
+}
+const BROKEN = new Set(['library_tracks', 'library_albums', 'library_artists', 'library_folders', 'library_playlists', 'library_recently_played', 'library_status', 'library_auto_playlists', 'library_search'])
 
 const result = (copied: number, moved: number): SyncResult => ({
   copied, bytes: copied * 9_000_000, moved, adopted: 0, removed: 0, failed: [], waitingForWifi: 0, removalsWaiting: 0, cancelled: false, stopped: null,
@@ -57,7 +69,7 @@ const QUEUE_SONGS: [string, string, string, number][] = [
   ['Sunday kind of love', 'Nia Rivers', 'Sunday kind of love', 265], ['Coastline', 'Oliver Hayes', 'Open water', 198],
   ['All the way home', 'Mira Okafor', 'The long way', 221], ['Midnight City Lights', 'Neon Dreams', 'Someway', 225],
 ]
-const noQueue = new URLSearchParams(location.search).get('player') === 'empty'
+const noQueue = new URLSearchParams(location.search).get('player') === 'empty' || previewState === 'empty'
 let queueItems = noQueue ? [] : QUEUE_SONGS.map(([title, artist, album], i) => ({ id: 201 + i, src: `C:/Music/${title}.mp3`, title, artist, album }))
 let playerState = {
   status: 'playing', currentTime: 54, duration: 252, isPlaying: true, queueIndex: noQueue ? -1 : 0, queueLength: queueItems.length,
@@ -215,6 +227,11 @@ export function installBrowserPreview() {
   mockIPC(
     async (cmd, args) => {
       const a = (args ?? {}) as Record<string, unknown>
+      if (previewState === 'empty' && cmd in EMPTY) return EMPTY[cmd]
+      if (previewState === 'broken' && BROKEN.has(cmd)) throw 'the library database is locked (the preview of a broken library)'
+      if (previewState === 'broken' && cmd === 'plugin:native-audio|get_state') {
+        return { ...playerState, status: 'error', isPlaying: false, error: 'The file is gone: C:/Music/Golden hour.mp3' }
+      }
       switch (cmd) {
         case 'library_sync_available': return info.settings !== null
         case 'sync_status': return syncStatus

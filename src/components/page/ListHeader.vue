@@ -15,6 +15,9 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { PlayIcon } from '@/components/player/icons'
 import { Button } from '@/components/ui/button'
+import { usePhone } from '@/lib/phone'
+import { useLongPress } from '@/lib/longPress'
+import { openMenu } from '@/lib/menuDrawer'
 
 const props = defineProps<{
   title: string
@@ -30,6 +33,14 @@ const props = defineProps<{
   coverLabel?: string
 }>()
 const emit = defineEmits<{ play: []; shuffle: []; rename: [name: string]; action: [action: string]; cover: [] }>()
+
+// A phone: ⋯ opens the menu as a drawer.
+const phone = usePhone()
+const openListMenu = () =>
+  props.menu &&
+  openMenu({ title: props.title, cover: { image: props.image, colors: props.colors, icon: props.icon, collage: props.collage }, items: props.menu, pick: (a) => emit('action', a) })
+
+const press = useLongPress(() => !editing.value && openListMenu())
 
 const editing = ref(false)
 const name = ref('')
@@ -52,8 +63,8 @@ defineExpose({ rename })
 
 <template>
   <ContextMenu :modal="false">
-    <ContextMenuTrigger as-child :disabled="!menu?.length || editing">
-      <div class="mb-10 flex items-center gap-12 pt-2 phone:mb-6 phone:flex-col phone:items-stretch phone:gap-5 phone:pt-1">
+    <ContextMenuTrigger as-child :disabled="!menu?.length || editing || phone">
+      <div v-bind="phone ? press : {}" class="mb-10 flex items-center gap-12 pt-2 phone:mb-6 phone:flex-col phone:items-stretch phone:gap-5 phone:pt-1">
         <button
           v-if="coverLabel"
           type="button"
@@ -86,7 +97,8 @@ defineExpose({ rename })
             <Button size="lg" :disabled="empty" @click="emit('play')"><PlayIcon class="size-3.5" />Play</Button>
             <Button size="lg" variant="outline" :disabled="empty" @click="emit('shuffle')"><Shuffle />Shuffle</Button>
             <slot name="actions" />
-            <DropdownMenu v-if="menu?.length">
+            <Button v-if="menu?.length && phone" size="icon-lg" variant="outline" :aria-label="`${title}: more`" @click="openListMenu"><Ellipsis /></Button>
+            <DropdownMenu v-else-if="menu?.length">
               <DropdownMenuTrigger as-child>
                 <Button size="icon-lg" variant="outline" :aria-label="`${title}: more`"><Ellipsis /></Button>
               </DropdownMenuTrigger>

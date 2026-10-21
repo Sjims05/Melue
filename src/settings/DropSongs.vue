@@ -6,6 +6,7 @@
  * too (ticked). Adding, it says what it did.
  */
 import { Plus } from '@lucide/vue'
+import { audioDir } from '@tauri-apps/api/path'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Button } from '@/components/ui/button'
@@ -54,7 +55,6 @@ async function findPlaces() {
     })
   }
   if (!found.length) {
-    const { audioDir } = await import('@tauri-apps/api/path')
     const music = await audioDir().catch(() => '')
     if (music)
       found.push({

@@ -4,16 +4,12 @@
  * see Settings"). A quick sync is held on screen a moment, like on the status card (shownSync.ts). It opens Settings,
  * where the status card has the details and Sync now.
  */
-import { useIntervalFn } from '@vueuse/core'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { StatusDot } from '@/components/settings'
 import { sync } from '@/library/sync'
 import { ago } from '@/settings/format'
 import { useShownSync } from '@/settings/shownSync'
 
-// "12 min ago" moves on by itself.
-const now = ref(Date.now())
-useIntervalFn(() => (now.value = Date.now()), 30_000)
 const shown = useShownSync()
 
 const state = computed(() => {
@@ -21,7 +17,7 @@ const state = computed(() => {
   const p = shown.value
   if (p) return { dot: 'busy' as const, words: p.filesTotal ? `Syncing ${p.filesDone} of ${p.filesTotal}` : 'Syncing…' }
   if (s?.problem) return { dot: 'bad' as const, words: 'Can’t sync: see Settings' }
-  if (s?.last) return { dot: 'ok' as const, words: `Synced ${ago(s.last.atMs, now.value)}` }
+  if (s?.last) return { dot: 'ok' as const, words: `Synced ${ago(s.last.atMs)}` }
   return { dot: 'ok' as const, words: 'Not synced yet' }
 })
 </script>

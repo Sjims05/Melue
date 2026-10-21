@@ -4,7 +4,7 @@
 //! across restarts. On Android a running sync shows a "Syncing music" notification with a progress bar
 //! (which also keeps it going in the background), and on a metered connection song copies wait for Wi-Fi.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -37,6 +37,8 @@ pub enum SyncFailure {
     NotEnoughSpace { needed: u64, free: u64 },
     /// A sync is running already.
     Running,
+    /// Cancel was pressed while it was still reaching the share.
+    Cancelled,
     Other { detail: String },
 }
 
@@ -75,6 +77,10 @@ pub struct SyncStatus {
 pub struct Syncing {
     running: AtomicBool,
     cancel: AtomicBool,
+    /// Numbers the syncs, and which one is still reaching the share and planning (Cancel lets go of that one
+    /// at once: reaching a share that isn't there can take a minute).
+    runs: AtomicU64,
+    connecting: Mutex<Option<u64>>,
     status: Mutex<SyncStatus>,
     triggers: Mutex<Option<Sender<Trigger>>>,
     /// Watching the share for changes (with the share it runs on).
@@ -173,9 +179,17 @@ pub fn sync_once(app: &AppHandle, trigger: Trigger, confirmed_removal: bool) -> 
         return Err(SyncFailure::Running);
     }
     syncing.cancel.store(false, Ordering::SeqCst);
+    let me = syncing.runs.fetch_add(1, Ordering::SeqCst) + 1;
+    *syncing.connecting.lock().unwrap() = Some(me);
     set_status(app, |s| s.syncing = Some(Progress::default()));
+    let planned = plan_now(app);
+    // Cancelled while reaching the share: cancel() has let go of this sync already (another may be running).
+    if syncing.connecting.lock().unwrap().take() != Some(me) {
+        eprintln!("melue: sync: cancelled while reaching the share");
+        return Err(SyncFailure::Cancelled);
+    }
     let result: std::result::Result<(SyncResult, Box<dyn Share>), SyncFailure> = (|| {
-        let (share, folder, plan) = plan_now(app).map_err(|error| SyncFailure::Setup { error })?;
+        let (share, folder, plan) = planned.map_err(|error| SyncFailure::Setup { error })?;
         let target = local::target(app, &folder)?;
         let library = app.state::<Library>();
         let settings = library.sync_settings()?;
@@ -331,8 +345,11 @@ pub fn network_changed(app: &AppHandle) {
 pub fn trigger(app: &AppHandle, trigger: Trigger) {
     let syncing = app.state::<Syncing>();
     if trigger == Trigger::Return {
-        let away = syncing.left_at_ms.lock().unwrap().take().map(|left| now_ms() - left);
-        *syncing.away_ms.lock().unwrap() = away;
+        // Kept until the scheduler reads it: Windows often says the window got focus twice, and the second time
+        // there's no leaving to count from.
+        if let Some(left) = syncing.left_at_ms.lock().unwrap().take() {
+            came_back_after(&syncing, now_ms() - left);
+        }
     }
     let triggers = syncing.triggers.lock().unwrap();
     if let Some(triggers) = triggers.as_ref() {
@@ -364,9 +381,28 @@ pub fn went_away(app: &AppHandle) {
     *app.state::<Syncing>().left_at_ms.lock().unwrap() = Some(now_ms());
 }
 
-/// Stops a running sync after the file it's copying.
+/// The user is using the app again after `away_ms` without touching it (the window can stay in front while they're
+/// away: the computer idles or locks): counts as coming back, like switching back to it.
+pub fn came_back(app: &AppHandle, away_ms: i64) {
+    came_back_after(&app.state::<Syncing>(), away_ms);
+    trigger(app, Trigger::Return);
+}
+
+fn came_back_after(syncing: &Syncing, away_ms: i64) {
+    let mut away = syncing.away_ms.lock().unwrap();
+    *away = Some(away.map_or(away_ms, |a| a.max(away_ms)));
+}
+
+/// Stops a running sync after the file it's copying, or at once while it's still reaching the share (it's let
+/// go of: what it finds when it gets through is ignored).
 pub fn cancel(app: &AppHandle) {
-    app.state::<Syncing>().cancel.store(true, Ordering::SeqCst);
+    let syncing = app.state::<Syncing>();
+    syncing.cancel.store(true, Ordering::SeqCst);
+    if syncing.connecting.lock().unwrap().take().is_some() {
+        notify(app, None);
+        syncing.running.store(false, Ordering::SeqCst);
+        set_status(app, |s| s.syncing = None);
+    }
 }
 
 /// Starts the scheduler: a sync shortly after start-up (when that's on), then on the triggers it's sent.

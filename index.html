@@ -5,6 +5,24 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Melue</title>
+    <!-- The first frame already in Melue's colours (not white while the app loads): light or dark as lib/theme.ts
+         decides it (which then takes over), and the page's background (style.css's --background). -->
+    <script>
+      (function () {
+        var mode = 'system', times = { dark: '21:00', light: '07:00' }
+        try {
+          mode = localStorage.getItem('melue-theme') || mode
+          var kept = localStorage.getItem('melue-theme-times')
+          if (kept) times = Object.assign(times, JSON.parse(kept))
+        } catch (e) {}
+        var min = function (t) { var p = t.split(':'); return p[0] * 60 + +p[1] }
+        var now = new Date(), t = now.getHours() * 60 + now.getMinutes(), d = min(times.dark), l = min(times.light)
+        var byClock = d !== l && (d < l ? t >= d && t < l : t >= d || t < l)
+        var dark = mode === 'dark' || (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches) || (mode === 'adaptive' && byClock)
+        document.documentElement.classList.toggle('dark', dark)
+        document.documentElement.style.background = dark ? 'oklch(0.145 0 0)' : 'oklch(0.95 0 0)'
+      })()
+    </script>
   </head>
 
   <body>

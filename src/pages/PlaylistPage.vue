@@ -6,11 +6,11 @@
  * songs another device added that aren't on this device yet; a linked playlist's songs new in the file or removed here
  * are greyed with Add / Restore. It follows the library.
  */
-import { CircleAlert, FileText } from '@lucide/vue'
+import { CircleAlert, FileText, ListMusic } from '@lucide/vue'
 import { computed, nextTick, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
-import { ListHeader } from '@/components/page'
+import { EmptyState, ListHeader } from '@/components/page'
 import { SettingsBadge, SettingsTip } from '@/components/settings'
 import { SongList, type Song, type SongAction } from '@/components/songs'
 import { Button } from '@/components/ui/button'
@@ -181,23 +181,34 @@ const choosing = ref(false)
         </span>
       </SettingsTip>
 
-      <SongList
-        v-if="songs.length"
-        :songs="songs"
-        reorderable
-        :keep-on-remove="staysWhenRemoved"
-        :unavailable="greyed"
-        :current-id="current?.id"
-        :playing="!!nowPlaying.state?.isPlaying"
-        :place="{ inPlaylist: true, showInFolder: isDesktop }"
-        @play="playSong"
-        @pause="togglePlay"
-        @like="(song, liked) => like(Number(song.id), liked)"
-        @remove="(song) => remove(song)"
-        @move="move"
-        @action="act"
-      />
-      <p v-else class="text-muted-foreground">No songs yet: add some with a song’s menu, Add to playlist.</p>
+      <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
+      <Transition name="part" mode="out-in">
+        <SongList
+          v-if="songs.length"
+          :songs="songs"
+          reorderable
+          :keep-on-remove="staysWhenRemoved"
+          :unavailable="greyed"
+          :current-id="current?.id"
+          :playing="!!nowPlaying.state?.isPlaying"
+          :place="{ inPlaylist: true, showInFolder: isDesktop }"
+          @play="playSong"
+          @pause="togglePlay"
+          @like="(song, liked) => like(Number(song.id), liked)"
+          @remove="(song) => remove(song)"
+          @move="move"
+          @action="act"
+        />
+        <EmptyState
+          v-else
+          :icon="ListMusic"
+          title="No songs in this playlist yet"
+          :text="`Add songs with a song’s ⋯ → Add to playlist${isDesktop ? ', or drop music files here' : ''}.`"
+          small
+        >
+          <Button size="sm" variant="outline" @click="$router.push('/library')">Go to Library</Button>
+        </EmptyState>
+      </Transition>
 
       <PlaylistDialogs v-model="asking" @confirm="confirm" />
       <CoverCropDialog
@@ -209,6 +220,8 @@ const choosing = ref(false)
       />
       <ConflictDialog v-if="conflict" v-model:open="choosing" :conflict="conflict" @answered="load" />
     </template>
-    <p v-else-if="playlist === null" class="pt-2 text-lg text-muted-foreground">This playlist isn't in your library (any more).</p>
+    <EmptyState v-else-if="playlist === null" :icon="ListMusic" title="This playlist isn’t in your library" text="It may have been deleted: Settings keeps deleted ones for a while.">
+      <Button size="sm" variant="outline" @click="goBack">Back</Button>
+    </EmptyState>
   </div>
 </template>

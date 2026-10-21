@@ -32,6 +32,22 @@ export async function startSync(): Promise<void> {
   })
   await refresh()
   sync.status = await invoke<SyncStatus>('sync_status').catch(() => null)
+  followUse()
+}
+
+/**
+ * Coming back after a while without touching the app counts as coming back too, not only switching back to it (the
+ * window can stay in front while you're away: the computer idles or locks). Whether that syncs is the scheduler's
+ * call ("Sync when coming back after…").
+ */
+function followUse() {
+  let last = Date.now()
+  const used = () => {
+    const away = Date.now() - last
+    last = Date.now()
+    if (away >= 60_000) invoke('sync_came_back', { awayMs: away }).catch(() => {})
+  }
+  for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel']) window.addEventListener(type, used, { capture: true, passive: true })
 }
 
 async function refresh() {
@@ -248,6 +264,7 @@ export type SyncFailure =
   | { kind: 'setup'; error: SetupError }
   | { kind: 'notEnoughSpace'; needed: number; free: number }
   | { kind: 'running' }
+  | { kind: 'cancelled' }
   | { kind: 'other'; detail: string }
 
 export function describeSyncFailure(e: unknown): string {
@@ -260,6 +277,8 @@ export function describeSyncFailure(e: unknown): string {
       return `Not enough free space: needs ${gb(failure.needed)}, ${gb(failure.free)} free`
     case 'running':
       return 'A sync is running already'
+    case 'cancelled':
+      return 'Cancelled'
     case 'other':
       return failure.detail
     default:
@@ -275,7 +294,7 @@ export const syncing = {
    * from the share than the setting allows. Rejects with a SyncFailure.
    */
   now: (confirmedRemoval = false) => invoke<SyncResult>('sync_now', { confirmedRemoval }),
-  /** Stops a running sync after the file it's copying. */
+  /** Stops a running sync after the file it's copying (at once while it's still reaching the share). */
   cancel: () => invoke<void>('sync_cancel'),
   status: () => invoke<SyncStatus>('sync_status'),
   settings: () => invoke<SyncSettings>('sync_settings'),

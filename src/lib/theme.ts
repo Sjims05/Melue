@@ -56,6 +56,8 @@ function apply() {
   const mode = themeMode.value
   const dark = mode === 'dark' || (mode === 'system' && system.matches) || (mode === 'adaptive' && darkByClock())
   document.documentElement.classList.toggle('dark', dark)
+  // index.html's first-frame background: the stylesheet's from now on.
+  document.documentElement.style.background = ''
   isDark.value = dark
 }
 

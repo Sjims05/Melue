@@ -5,7 +5,6 @@
  * tip) goes to the share's form under Library. It gives the rows' right-click menus their extras (settingsMenu.ts),
  * and opens at a setting when asked (?setting=sync.atStart).
  */
-import { useIntervalFn } from '@vueuse/core'
 import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PageHeader } from '@/components/page'
@@ -41,10 +40,8 @@ const ready = providePageLoading()
 const SKELETON = [{ rows: 1 }, { rows: 3 }, { rows: 4 }]
 
 // The grey line under the title: the last sync in short ("Synced just now · 2 copied · 0 moved · 0 removed"), or the
-// one running (held a moment, like the status card), and "12 min ago" moving on by itself.
+// one running (held a moment, like the status card), and "12 min ago" moving on by itself (format.ts).
 const shown = useShownSync()
-const now = ref(Date.now())
-useIntervalFn(() => (now.value = Date.now()), 30_000)
 const summary = computed(() => {
   const s = sync.status
   if (!sync.available) return 'No share set up'
@@ -52,7 +49,7 @@ const summary = computed(() => {
   if (s?.problem) return 'Last sync didn’t finish: see below'
   if (!s?.last) return 'Not synced yet'
   const r = s.last.result
-  return `Synced ${ago(s.last.atMs, now.value)} · ${r.copied} copied · ${r.moved} moved · ${r.removed} removed`
+  return `Synced ${ago(s.last.atMs)} · ${r.copied} copied · ${r.moved} moved · ${r.removed} removed`
 })
 
 // A setting's link (melue://settings/<id>, pasted in Search: ?setting=<id>): the page opens at it, once its rows are

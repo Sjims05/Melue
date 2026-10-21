@@ -1,4 +1,5 @@
 /** How the settings put things into words: the share's name, times, sizes, what a sync did. */
+import { ref } from 'vue'
 import type { ShareSettings, SyncResult, SyncTrigger } from '@/library/sync'
 
 /** "me@nas/music", or a network drive's path. */
@@ -39,8 +40,24 @@ export function readablePath(location: string): string {
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
 
+// The time "12 min ago" counts from: one clock for the app, moving on every 30 s and as soon as the app is looked at
+// again (after hours in the background it would say "15 min ago" still). Read in a computed or a template, the words
+// keep up by themselves.
+const clockNow = ref(Date.now())
+let ticking = false
+function currentTime(): number {
+  if (!ticking && typeof window !== 'undefined') {
+    ticking = true
+    const tick = () => (clockNow.value = Date.now())
+    setInterval(tick, 30_000)
+    document.addEventListener('visibilitychange', tick)
+    window.addEventListener('focus', tick)
+  }
+  return clockNow.value
+}
+
 /** "just now", "12 min ago", "at 10:42", "yesterday at 21:05", "3 Oct". */
-export function ago(ms: number, now = Date.now()): string {
+export function ago(ms: number, now = currentTime()): string {
   const minutes = Math.floor((now - ms) / 60_000)
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes} min ago`

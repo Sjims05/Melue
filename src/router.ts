@@ -56,6 +56,8 @@ export function preloadPages() {
       const page = route.components?.default
       if (typeof page === 'function' && !('setup' in page) && !('render' in page)) (page as () => Promise<unknown>)().catch(() => {})
     }
+    // Settings' page, loaded on its own (SettingsRoute.vue).
+    import('@/settings/SettingsPage.vue').catch(() => {})
   }
   if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 3000 })
   else setTimeout(load, 1500)

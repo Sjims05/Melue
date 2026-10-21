@@ -10,8 +10,8 @@
  * is). `setting` names the setting ("sync.atStart"); where the page provides the menu's extras (settingMenu.ts), it
  * adds the default in words, About this setting, Copy link, and This device only (then the title says so).
  */
-import { Info, Link, RotateCcw } from '@lucide/vue'
-import { computed, inject, ref } from 'vue'
+import { Cloud, Info, Link, RotateCcw, Smartphone } from '@lucide/vue'
+import { computed, inject, provide, ref } from 'vue'
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -22,15 +22,19 @@ import {
 } from '@/components/ui/context-menu'
 import ConfirmDialog from './ConfirmDialog.vue'
 import SettingsBadge from './SettingsBadge.vue'
-import { SETTING_MENU } from './settingMenu'
+import { ROW_TITLE, SETTING_MENU } from './settingMenu'
+import type { MenuItem } from '@/components/covers/coverMenu'
+import { useLongPress } from '@/lib/longPress'
+import { openMenu } from '@/lib/menuDrawer'
+import { usePhone } from '@/lib/phone'
 
 // The menu wraps the row, so what's set on the row (a click, aria-expanded, a class) goes on the row itself.
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(
   defineProps<{
-  /** On a phone: its controls on a line of their own under the text (a long title or description beside a button). */
-  stack?: boolean
+    /** On a phone: its controls on a line of their own under the text (a long title or description beside a button). */
+    stack?: boolean
     title?: string
     description?: string
     detail?: boolean
@@ -48,14 +52,45 @@ const menu = inject(SETTING_MENU, null)
 const info = computed(() => (menu && props.setting ? menu.info(props.setting) : undefined))
 const deviceOnly = computed(() => !!(menu && props.setting && menu.isDeviceOnly(props.setting)))
 const about = ref(false)
+provide(ROW_TITLE, () => props.title ?? info.value?.title)
+
+// A phone: a long press opens its menu as a drawer (Reset to default, About, Copy link, This device only).
+const phone = usePhone()
+const press = useLongPress(() => {
+  const items: MenuItem[] = []
+  if (props.reset && !props.isDefault) items.push({ action: 'reset', label: `Reset to default${info.value?.default ? ` (${info.value.default})` : ''}`, icon: RotateCcw })
+  if (menu && props.setting && info.value) {
+    items.push({ action: 'about', label: 'About this setting', icon: Info, apart: items.length > 0 })
+    items.push({ action: 'link', label: 'Copy link to this setting', icon: Link })
+    if (!info.value.perDevice) {
+      items.push(
+        deviceOnly.value
+          ? { action: 'shared', label: 'Share across devices again', icon: Cloud, apart: true }
+          : { action: 'deviceOnly', label: 'Only on this device', icon: Smartphone, apart: true },
+      )
+    }
+  }
+  if (!items.length) return
+  openMenu({
+    title: props.title ?? info.value?.title ?? 'This setting',
+    subtitle: deviceOnly.value ? 'This device only' : undefined,
+    items,
+    pick: (action) => {
+      if (action === 'reset') props.reset?.()
+      else if (action === 'about') about.value = true
+      else if (action === 'link') menu!.copyLink(props.setting!)
+      else if (action === 'deviceOnly' || action === 'shared') menu!.setDeviceOnly(props.setting!, action === 'deviceOnly')
+    },
+  })
+})
 </script>
 
 <template>
   <ContextMenu :modal="false">
-    <ContextMenuTrigger as-child :disabled="!reset && !info">
+    <ContextMenuTrigger as-child :disabled="(!reset && !info) || phone">
       <component
         :is="as"
-        v-bind="$attrs"
+        v-bind="{ ...$attrs, ...(phone ? press : {}) }"
         class="settings-row relative flex w-full items-center gap-x-3.5 gap-y-2.5 text-left phone:gap-x-2.5"
         :class="{ wide, detail, stack, 'has-end': !!$slots.end, 'cursor-pointer': as !== 'div' }"
         :type="as === 'button' ? 'button' : undefined"

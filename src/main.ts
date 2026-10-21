@@ -1,5 +1,5 @@
 import { createApp } from "vue";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import "./style.css";
 // Light or dark (follows the system unless set).
 import "./lib/theme";
@@ -22,6 +22,14 @@ function start(shell = isMobile ? MobileShell : DesktopShell) {
   // The platform is fixed at build time, so the other shell is left out of the build.
   createApp(shell).use(router).mount("#app");
   preloadPages();
+  // The app has drawn itself: the desktop window waits for this, hidden (no white window first), and so does
+  // background work (startup.rs). A hidden window may not get animation frames, so a timer too.
+  if (isTauri()) {
+    let told = false;
+    const ready = () => !told && (told = true) && invoke("window_ready", { pageMs: performance.now() }).catch(() => {});
+    requestAnimationFrame(() => requestAnimationFrame(ready));
+    setTimeout(ready, 100);
+  }
 
   // The player's buttons, and counting what it plays (also what played while the app wasn't running).
   // Then what's playing is read again: the player may have resumed the last queue meanwhile.

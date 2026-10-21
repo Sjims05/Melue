@@ -18,6 +18,9 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import Cover from './Cover.vue'
 import type { MenuItem } from './coverMenu'
 import type { CoverColors } from './coverRecipe'
+import { usePhone } from '@/lib/phone'
+import { useLongPress } from '@/lib/longPress'
+import { openMenu } from '@/lib/menuDrawer'
 
 const props = defineProps<{
   title: string
@@ -58,6 +61,15 @@ function hintPlay() {
   playButton.value?.animate([{ scale: 1 }, { scale: 1.18, offset: 0.4 }, { scale: 1 }], { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' })
 }
 
+// A phone: a long press opens its menu as a drawer (instead of the right-click menu).
+const phone = usePhone()
+const press = useLongPress(() => {
+  if (props.menu?.length && !props.editing) {
+    const { image, colors, icon, collage, placeholder } = props
+    openMenu({ title: props.title, subtitle: props.subtitle, cover: { image, colors, icon, collage, placeholder }, items: props.menu, pick: (a) => emit('action', a) })
+  }
+})
+
 function finish(save: boolean) {
   if (done) return
   done = true
@@ -68,7 +80,7 @@ function finish(save: boolean) {
 
 <template>
   <ContextMenu :modal="false">
-    <ContextMenuTrigger as-child :disabled="!menu?.length || editing">
+    <ContextMenuTrigger as-child :disabled="!menu?.length || editing || phone">
       <component
         :is="editing || song ? 'div' : 'button'"
         :type="editing || song ? undefined : 'button'"
@@ -76,6 +88,7 @@ function finish(save: boolean) {
         :role="song ? 'group' : undefined"
         :aria-label="song ? title : undefined"
         class="group/cover cover-card min-w-0 text-left outline-none"
+        v-bind="phone ? press : {}"
         @click="!editing && (song ? hintPlay() : emit('open'))"
         @dblclick="song && emit('queue')"
         @keydown.enter.self="song && emit('play')"

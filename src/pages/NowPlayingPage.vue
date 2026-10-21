@@ -14,7 +14,7 @@ import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PlannedCard } from '@/components/page'
 import Slider from '@/components/player/Slider.vue'
-import { AddToPlaylist, songMenu, SongList } from '@/components/songs'
+import { AddToPlaylist, songMenu, SongList, SongMenuArea, type SongAction } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { appearance, primaryArea } from '@/lib/appearance'
@@ -42,6 +42,8 @@ import {
   upNext,
   upNextShown,
 } from '@/player/nowPlaying'
+import { openMenu } from '@/lib/menuDrawer'
+import { usePhone } from '@/lib/phone'
 
 const route = useRoute()
 const state = computed(() => nowPlaying.state)
@@ -124,6 +126,12 @@ function clear() {
 }
 
 const menu = computed(() => (current.value ? songMenu(current.value).filter((i) => i.action !== 'playNext' && i.action !== 'addToQueue') : []))
+// A phone: More actions opens the song's menu as a drawer.
+const phone = usePhone()
+function openSongMenu() {
+  const song = current.value
+  if (song) openMenu({ title: song.title, subtitle: song.artist, cover: { image: song.cover }, items: menu.value, pick: (a) => songAction(song, a as SongAction), song })
+}
 // A button's colour is one class or the other (two colour classes: the stylesheet's order would decide, not this).
 const BIG = 'relative grid size-11 place-items-center rounded-md transition-colors hover:text-foreground [&_svg]:size-5'
 const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
@@ -132,16 +140,20 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
 <template>
   <div class="pt-2">
     <div v-if="current && state" class="grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,384px)_minmax(0,1fr)] 3xl:grid-cols-[384px_minmax(0,1fr)_384px]">
-      <!-- The cover. -->
-      <div class="relative aspect-square w-full overflow-hidden rounded-xl bg-well">
-        <Transition name="fade">
-          <img v-if="currentCoverLarge" :key="currentCoverLarge" :src="currentCoverLarge" alt="" class="absolute inset-0 size-full object-cover" draggable="false" />
-        </Transition>
-      </div>
+      <!-- The cover; its right-click (a long press on a phone) is the song's menu, like a list page's header. -->
+      <SongMenuArea :song="current" :items="menu" @action="(action) => songAction(current!, action)">
+        <div class="relative aspect-square w-full overflow-hidden rounded-xl bg-well">
+          <Transition name="fade">
+            <img v-if="currentCoverLarge" :key="currentCoverLarge" :src="currentCoverLarge" alt="" class="absolute inset-0 size-full object-cover" draggable="false" />
+          </Transition>
+        </div>
+      </SongMenuArea>
 
       <!-- The song and its controls. -->
       <div class="flex min-w-0 flex-col justify-between gap-3">
-        <!-- As tall as a two-line title with its artist, always (the invisible copy), so nothing under it moves. -->
+        <!-- As tall as a two-line title with its artist, always (the invisible copy), so nothing under it moves. Its
+             right-click (a long press) is the song's menu too. -->
+        <SongMenuArea :song="current" :items="menu" @action="(action) => songAction(current!, action)">
         <div class="relative grid min-w-0">
           <div aria-hidden="true" class="invisible col-start-1 row-start-1">
             <p class="text-[17px]">&nbsp;</p>
@@ -167,6 +179,7 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
             <component :is="VolumeIcon" class="size-5 text-muted-foreground" />
           </div>
         </div>
+        </SongMenuArea>
         <div>
           <Slider :value="position" :max="state.duration || 1" label="Seek" @change="seek" />
           <div class="mt-1 flex justify-between text-sm text-muted-foreground tabular-nums">
@@ -205,7 +218,8 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
               <span class="col-start-1 row-start-1 transition-opacity duration-200" :class="!current.liked && 'opacity-0'">Liked</span>
             </span>
           </Button>
-          <DropdownMenu>
+          <Button v-if="phone" variant="outline" @click="openSongMenu"><Ellipsis />More actions</Button>
+          <DropdownMenu v-else>
             <DropdownMenuTrigger as-child>
               <Button variant="outline"><Ellipsis />More actions</Button>
             </DropdownMenuTrigger>

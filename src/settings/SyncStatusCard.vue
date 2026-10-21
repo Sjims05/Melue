@@ -9,7 +9,7 @@
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Chevron, EditRow, Reveal, SettingsCard, SettingsRow, StatusDot } from '@/components/settings'
-import { describeSetupError, describeSyncFailure, share, sync, syncing, type ShareInfo } from '@/library/sync'
+import { describeSetupError, describeSyncFailure, share, sync, syncing, type ShareInfo, type SyncFailure } from '@/library/sync'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { ago, at, didWords, lastPart, middle, shareName, size, TRIGGER, when } from './format'
 import { usePhone } from '@/lib/phone'
@@ -110,7 +110,7 @@ async function syncNow(confirmedRemoval = false) {
   try {
     await syncing.now(confirmedRemoval)
   } catch (e) {
-    error.value = describeSyncFailure(e)
+    if ((e as SyncFailure)?.kind !== 'cancelled') error.value = describeSyncFailure(e)
   }
 }
 

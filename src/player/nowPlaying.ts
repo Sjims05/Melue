@@ -5,12 +5,14 @@
  *
  * Up next is the queue after the playing song, in the order it plays.
  */
+import { CircleAlert } from '@lucide/vue'
 import { computed, reactive } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { artistParts, type Song } from '@/components/songs'
 import { coverUrl, library, type Track } from '@/library'
 import { onlyHere } from '@/library/onlyHere'
 import { setLiked } from '@/library/playback'
+import { toast } from '@/lib/toast'
 import { playbackSync } from '@/library/sync'
 import { player, type PlayerQueue, type PlayerState, type PlayerTrack, type RepeatMode } from '@/platform'
 
@@ -59,6 +61,11 @@ function applyState(state: PlayerState) {
   // sync): its length as known, or the progress bar would show it played to the end until the length is back.
   const before = nowPlaying.state
   if (!(state.duration > 0) && before && before.currentId === state.currentId && before.duration > 0) state = { ...state, duration: before.duration }
+  // A song that can't play (its file gone, a format the player can't read): a note says which, and why.
+  if (state.status === 'error' && before?.status !== 'error') {
+    const title = nowPlaying.queue?.items.find((i) => i.id === state.currentId)?.title ?? 'This song'
+    toast(`Can’t play “${title}”${state.error ? `: ${state.error}` : ''}`, CircleAlert)
+  }
   nowPlaying.state = state
   nowPlaying.stateAt = performance.now()
   // The queue changed (another song, added, removed, moved, shuffled, or repeat, which decides the next pass): read it

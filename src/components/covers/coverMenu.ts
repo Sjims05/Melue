@@ -40,7 +40,8 @@ export type CoverKind =
 export interface MenuItem<A extends string = string> {
   action: A
   label: string
-  icon: Component
+  /** None: a choice in a phone's choice drawer (DropValue). */
+  icon?: Component
   /** The icon filled (Remove from liked). */
   filled?: boolean
   /** It takes something away (red). */

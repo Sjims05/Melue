@@ -7,11 +7,11 @@
  * Settings whose names have it anywhere (accents and case ignored); an artist's songs and albums come with them. Each
  * group shows its first few, See all the rest. A setting's link pasted here, Enter: Settings, at that setting.
  */
-import { Search, X } from '@lucide/vue'
+import { Search, SearchX, X } from '@lucide/vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CoverCard, coverMenu, type CoverAction } from '@/components/covers'
-import { LinkRow, PageHeader } from '@/components/page'
+import { EmptyState, LinkRow, PageHeader } from '@/components/page'
 import { SongList, songMenu, type Song, type SongAction } from '@/components/songs'
 import { coverUrl, library, type Track } from '@/library'
 import { count } from '@/lib/format'
@@ -169,7 +169,7 @@ const LIST_MENU = coverMenu({ kind: 'list' })
       </div>
 
       <div v-else-if="found" :key="`found:${foundFor}`">
-        <p v-if="nothing" class="text-lg text-muted-foreground">Nothing found for “{{ foundFor }}”.</p>
+        <EmptyState v-if="nothing" :icon="SearchX" :title="`Nothing found for “${foundFor}”`" text="Check the spelling, or try a part of a name." />
 
         <section v-if="songs.length" class="mb-10">
           <div class="mb-2 flex items-baseline justify-between">

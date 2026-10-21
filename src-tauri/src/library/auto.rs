@@ -145,6 +145,7 @@ pub fn start(app: &AppHandle) {
     std::thread::Builder::new()
         .name("android-auto-library".into())
         .spawn(move || {
+            crate::startup::wait_for_ui(crate::startup::UI_AT_MOST);
             send(&app);
             while wake.recv().is_ok() {
                 loop {

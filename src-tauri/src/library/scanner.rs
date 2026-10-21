@@ -59,6 +59,8 @@ pub fn start(app: &AppHandle) {
     std::thread::Builder::new()
         .name("library-scanner".into())
         .spawn(move || {
+            // After the first screen (it reads the library too).
+            crate::startup::wait_for_ui(crate::startup::UI_AT_MOST);
             let _ = scan_all(&handle);
             while wake.recv().is_ok() {
                 // Wait for a quiet moment.

@@ -6,9 +6,9 @@
  */
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalized } from 'vue-router'
-import { Shuffle } from '@lucide/vue'
+import { Shuffle, User } from '@lucide/vue'
 import { CoverCard, coverMenu, type CoverAction } from '@/components/covers'
-import { PageHeader } from '@/components/page'
+import { EmptyState, PageHeader } from '@/components/page'
 import { PlayIcon } from '@/components/player/icons'
 import { SongList, type Song } from '@/components/songs'
 import { Button } from '@/components/ui/button'
@@ -17,7 +17,7 @@ import { count } from '@/lib/format'
 import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
-import { setPageTitle } from '@/router'
+import { goBack, setPageTitle } from '@/router'
 
 const route = useRoute()
 const router = useRouter()
@@ -103,6 +103,8 @@ const ALBUM_MENU = coverMenu({ kind: 'album' })
         />
       </section>
     </template>
-    <p v-else-if="page === null" class="pt-2 text-lg text-muted-foreground">This artist isn't in your library (any more).</p>
+    <EmptyState v-else-if="page === null" :icon="User" title="This artist isn’t in your library" text="Their songs may have been removed, or their folder switched off.">
+      <Button size="sm" variant="outline" @click="goBack">Back</Button>
+    </EmptyState>
   </div>
 </template>

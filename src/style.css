@@ -187,6 +187,11 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Melue's links are places in the app, not links to drag out of it: dragging one (a side dot, the sync status, the
+     phone's mini player) does nothing. On some phones a link dragged to the screen's edge asks to share it. */
+  a {
+    -webkit-user-drag: none;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     /* An app, not a document: clicking and tapping don't select text or flash (text fields still select). */

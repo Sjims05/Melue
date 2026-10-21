@@ -31,6 +31,12 @@
     position: absolute;
     visibility: hidden;
   }
+  /* Hidden at once, all of it: something inside with its own transition (a button's transition-all covers visibility)
+     would stay on screen for a moment, out of place, while the rest is gone. */
+  .page-leave-active * {
+    transition: none !important;
+    animation: none !important;
+  }
 
   /* A page opened on top (an artist, a folder, Search), its own layer with its own top bar (the playground's overlay):
      opening, it slides in from the right over what's there, which stays put under it (layer-in); going back, it slides

@@ -8,11 +8,11 @@
  * Liked songs, the Top songs lists and the music folders (with two or more), each can be hidden (Settings shows them
  * again). It follows the library and the sync.
  */
-import { CircleAlert, Plus } from '@lucide/vue'
+import { CircleAlert, ListMusic, Plus } from '@lucide/vue'
 import { computed, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { CoverBadge, CoverCard, coverMenu, type CoverAction } from '@/components/covers'
-import { PageHeader } from '@/components/page'
+import { EmptyState, PageHeader } from '@/components/page'
 import { SettingsTip } from '@/components/settings'
 import { Button } from '@/components/ui/button'
 import { library, type AutoPlaylist, type DeletedLinkedPlaylist, type Playlist } from '@/library'
@@ -32,9 +32,12 @@ const playlists = ref<Playlist[]>([])
 const autos = ref<AutoPlaylist[]>([])
 const deleted = ref<(DeletedPlaylist | DeletedLinkedPlaylist)[]>([])
 const conflicts = ref<PlaylistConflict[]>([])
+// Why the playlists couldn't be read (shown instead of "No playlists yet").
+const problem = ref('')
 async function load() {
+  problem.value = ''
   ;[playlists.value, autos.value, deleted.value, conflicts.value] = await Promise.all([
-    library.playlists().catch(() => []),
+    library.playlists().catch((e) => ((problem.value = String(e)), [])),
     library.autoPlaylists().catch(() => []),
     Promise.all([librarySync.deletedPlaylists().catch(() => []), library.deletedLinkedPlaylists().catch(() => [])]).then((lists) => lists.flat()),
     librarySync.conflicts().catch(() => []),
@@ -89,27 +92,35 @@ const choosing = ref<PlaylistConflict | null>(null)
         <h2 class="text-xl font-semibold">Your playlists</h2>
         <Button variant="ghost" size="icon-sm" aria-label="New playlist" title="New playlist" @click="create"><Plus /></Button>
       </div>
-      <div v-if="playlists.length" class="cover-grid [--cover-min:13rem]">
-        <CoverCard
-          v-for="p in playlists"
-          :key="p.id"
-          :title="p.name"
-          :subtitle="playlistLine(p)"
-          v-bind="playlistCover(p)"
-          :menu="coverMenu(playlistKind(p, sync.available), isDesktop)"
-          :editing="renaming === p.id"
-          @open="conflictOf(p) ? (choosing = conflictOf(p)!) : router.push(`/playlist/${p.id}`)"
-          @action="(action) => act(p, action as CoverAction)"
-          @rename="(name) => rename(p, name)"
-          @cancel="renaming = null"
-        >
-          <template #badge>
-            <CoverBadge v-if="conflictOf(p)" :icon="CircleAlert" label="Needs a choice" open />
-            <CoverBadge v-else-if="playlistBadge(p, sync.available)" v-bind="playlistBadge(p, sync.available)!" />
-          </template>
-        </CoverCard>
-      </div>
-      <p v-else class="text-muted-foreground">No playlists yet: + makes one.</p>
+      <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
+      <Transition name="part" mode="out-in">
+        <div v-if="playlists.length" class="cover-grid [--cover-min:13rem]">
+          <CoverCard
+            v-for="p in playlists"
+            :key="p.id"
+            :title="p.name"
+            :subtitle="playlistLine(p)"
+            v-bind="playlistCover(p)"
+            :menu="coverMenu(playlistKind(p, sync.available), isDesktop)"
+            :editing="renaming === p.id"
+            @open="conflictOf(p) ? (choosing = conflictOf(p)!) : router.push(`/playlist/${p.id}`)"
+            @action="(action) => act(p, action as CoverAction)"
+            @rename="(name) => rename(p, name)"
+            @cancel="renaming = null"
+          >
+            <template #badge>
+              <CoverBadge v-if="conflictOf(p)" :icon="CircleAlert" label="Needs a choice" open />
+              <CoverBadge v-else-if="playlistBadge(p, sync.available)" v-bind="playlistBadge(p, sync.available)!" />
+            </template>
+          </CoverCard>
+        </div>
+        <EmptyState v-else-if="problem" :icon="CircleAlert" title="Can’t read your playlists" :text="problem" problem small>
+          <Button size="sm" variant="outline" @click="load">Try again</Button>
+        </EmptyState>
+        <EmptyState v-else :icon="ListMusic" title="No playlists yet" text="Make one to keep songs together, in the order you like." small>
+          <Button size="sm" @click="create">New playlist</Button>
+        </EmptyState>
+      </Transition>
       <p v-if="deleted.length" class="mt-4 text-sm text-muted-foreground">
         <RouterLink to="/settings" class="hover:text-foreground hover:underline">Recently deleted ({{ deleted.length }})</RouterLink>: kept for 30 days, in Settings.
       </p>

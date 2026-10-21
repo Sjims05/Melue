@@ -6,7 +6,7 @@
  */
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
-import { ListHeader } from '@/components/page'
+import { EmptyState, ListHeader } from '@/components/page'
 import { SongList, type Song } from '@/components/songs'
 import { coverUrl, library, type AlbumPage, type Source } from '@/library'
 import { count, totalLength } from '@/lib/format'
@@ -14,7 +14,9 @@ import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
-import { setPageTitle } from '@/router'
+import { goBack, setPageTitle } from '@/router'
+import { Disc3 } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
 
 const route = useRoute()
 // This page's own address and album (the route moves on when another page opens on top of it).
@@ -81,6 +83,8 @@ const MENU = coverMenu({ kind: 'album' })
         @action="songAction"
       />
     </template>
-    <p v-else-if="page === null" class="pt-2 text-lg text-muted-foreground">This album isn't in your library (any more).</p>
+    <EmptyState v-else-if="page === null" :icon="Disc3" title="This album isn’t in your library" text="Its songs may have been removed, or their folder switched off.">
+      <Button size="sm" variant="outline" @click="goBack">Back</Button>
+    </EmptyState>
   </div>
 </template>

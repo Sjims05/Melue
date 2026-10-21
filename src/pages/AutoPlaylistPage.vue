@@ -5,11 +5,11 @@
  * "Made for you", its name and line, Play, Shuffle and ⋯ (its card's menu: Hide). The songs scroll like the Songs tab
  * (only what's on screen is drawn). It follows the library and your likes.
  */
-import { Sparkles } from '@lucide/vue'
+import { ListMusic, Sparkles } from '@lucide/vue'
 import { computed, onUnmounted, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
-import { ListHeader } from '@/components/page'
+import { EmptyState, ListHeader } from '@/components/page'
 import { Segmented, SettingsBadge } from '@/components/settings'
 import { letterOf, VirtualSongList, type Song } from '@/components/songs'
 import { AUTO_PLAYLIST_SIZES, library, type AutoPlaylist, type Source, type Track } from '@/library'
@@ -19,6 +19,7 @@ import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { exportList, listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
 import { goBack, setPageTitle } from '@/router'
 import { autoCard } from './playlists/playlists'
+import { Button } from '@/components/ui/button'
 
 const route = useRoute()
 // This page's own address and list (the route moves on when another page opens on top of it).
@@ -113,6 +114,8 @@ async function pick(action: CoverAction) {
         {{ source === 'liked' ? 'No liked songs yet: the heart on a song likes it.' : top ? 'Nothing played in this time yet.' : 'No songs yet.' }}
       </p>
     </template>
-    <p v-else-if="auto === null" class="pt-2 text-lg text-muted-foreground">This list isn't in your library.</p>
+    <EmptyState v-else-if="auto === null" :icon="ListMusic" title="This list isn’t in your library" text="It may have been hidden: Settings has it under Hidden auto playlists.">
+      <Button size="sm" variant="outline" @click="goBack">Back</Button>
+    </EmptyState>
   </div>
 </template>
