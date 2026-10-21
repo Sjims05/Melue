@@ -86,6 +86,7 @@ pub fn run() {
     let builder = builder.plugin(desktop::single_instance()).plugin(desktop::autostart());
 
     builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_native_audio::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -188,6 +189,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             startup::window_ready,
+            logging::log_show,
             smb_connect,
             smb_list_dir,
             smb_copy_file,
@@ -202,6 +204,7 @@ pub fn run() {
             sync::commands::sync_now,
             sync::commands::sync_cancel,
             sync::commands::sync_came_back,
+            sync::commands::shared_settings_checked,
             sync::commands::sync_status,
             sync::commands::sync_simulate_notification,
             sync::commands::sync_settings,

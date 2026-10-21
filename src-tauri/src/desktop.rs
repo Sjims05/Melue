@@ -1,4 +1,4 @@
-//! Desktop: the tray icon, closing the window (hidden, the music keeps playing; or quit), starting with the system
+//! Desktop: the tray icon (show the window, play / pause, next, previous, quit), closing the window (hidden, the music keeps playing; or quit), starting with the system
 //! (in the tray, without the window; or with it), and one Melue at a time. The Display settings "Start Melue with
 //! Windows", "When Windows starts it" and "Closing the window".
 
@@ -64,14 +64,20 @@ pub fn ui_ready(app: &AppHandle) {
 /// At start, after the rest: the tray, and starting with the system the first time.
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Show Melue", true, None::<&str>)?;
+    // The player, without opening the window.
+    let play = MenuItem::with_id(app, "play", "Play / pause", true, None::<&str>)?;
+    let next = MenuItem::with_id(app, "next", "Next song", true, None::<&str>)?;
+    let previous = MenuItem::with_id(app, "previous", "Previous song", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Melue", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &PredefinedMenuItem::separator(app)?, &quit_item])?;
+    let line = || PredefinedMenuItem::separator(app);
+    let menu = Menu::with_items(app, &[&show, &line()?, &play, &next, &previous, &line()?, &quit_item])?;
     let mut tray = TrayIconBuilder::with_id("main")
         .tooltip("Melue")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_window(app),
+            "play" | "next" | "previous" => player(app, event.id.as_ref()),
             "quit" => quit(app),
             _ => {}
         })
@@ -109,6 +115,21 @@ fn show_window(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+    }
+}
+
+/// The tray's player items (the window follows: the player tells it, as with media keys).
+fn player(app: &AppHandle, action: &str) {
+    use tauri_plugin_native_audio::NativeAudioExt;
+    let audio = app.native_audio();
+    let done = match action {
+        "next" => audio.next(),
+        "previous" => audio.previous(),
+        _ if audio.get_state().is_ok_and(|s| s.is_playing) => audio.pause(),
+        _ => audio.play(),
+    };
+    if let Err(e) = done {
+        eprintln!("melue: tray: can't {action}: {e}");
     }
 }
 

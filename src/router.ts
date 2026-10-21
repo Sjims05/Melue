@@ -8,6 +8,7 @@
  */
 import { computed, ref } from 'vue'
 import { createRouter, createWebHashHistory, type RouteLocationNormalized } from 'vue-router'
+import type { StartOn } from '@/lib/appearance'
 // The main pages load with the app (switching to one slides it in at once); the others when first opened.
 import HomePage from '@/pages/HomePage.vue'
 import LibraryPage from '@/pages/LibraryPage.vue'
@@ -91,6 +92,30 @@ export const backLabel = computed(() => {
 export function goBack() {
   if (backPath.value) router.back()
   else router.push('/')
+}
+
+// ---- Start on (Display settings): the page Melue opens on. The last main page shown is kept for "Where I left off".
+const LAST_PAGE = 'melue-last-page'
+router.afterEach((to) => {
+  if (!to.meta.main || to.name === 'now-playing' || to.name === 'dev') return
+  try {
+    localStorage.setItem(LAST_PAGE, to.path)
+  } catch {
+    // Not kept: Home next time.
+  }
+})
+/** The page to open at start when none is asked for (the address has none). */
+export function startPage(startOn: StartOn): string {
+  if (startOn === 'library') return '/library'
+  if (startOn === 'last') {
+    try {
+      const last = localStorage.getItem(LAST_PAGE)
+      if (last && router.resolve(last).meta.main) return last
+    } catch {
+      // Nothing kept.
+    }
+  }
+  return '/'
 }
 
 // Development: a change to this file reloads the page. Swapped in place (hot reload), the app would keep the router it

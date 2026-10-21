@@ -10,7 +10,7 @@
  */
 import { computed, ref } from 'vue'
 import { Switch } from '@/components/ui/switch'
-import { Chevron, DropValue, Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
+import { Chevron, DropValue, resetTo, Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library, type QueueFollow } from '@/library'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { QUEUE_FOLLOW_DEFAULTS } from './defaults'
@@ -59,7 +59,7 @@ async function save(change: Partial<QueueFollow>) {
 
 const resetFollow = <K extends keyof QueueFollow>(key: K) => ({
   setting: `queue.${key}`,
-  reset: () => save({ [key]: QUEUE_FOLLOW_DEFAULTS[key] }),
+  reset: resetTo(() => follow.value?.[key] ?? QUEUE_FOLLOW_DEFAULTS[key], (value) => save({ [key]: value }), QUEUE_FOLLOW_DEFAULTS[key]),
   isDefault: follow.value?.[key] === QUEUE_FOLLOW_DEFAULTS[key],
 })
 

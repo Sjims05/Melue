@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -347,6 +348,11 @@ pub fn run(app: &AppHandle) -> Result<()> {
     // Settings another device changed: the app sets them here.
     if !settings.is_empty() {
         let _ = app.emit(super::settings_sync::EVENT, &settings);
+    }
+    // Once everything has started: the app checks that every shared setting here is the shared one.
+    static CHECKED: AtomicBool = AtomicBool::new(false);
+    if !CHECKED.swap(true, Ordering::SeqCst) {
+        let _ = app.emit(super::settings_sync::CHECK_EVENT, library.shared_settings_snapshot()?);
     }
     if !data.likes_changed.is_empty() {
         let change = LibraryChange { reason: ChangeReason::Likes, tracks: data.likes_changed, sources: vec!["liked".into()] };

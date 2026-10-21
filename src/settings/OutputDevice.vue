@@ -10,7 +10,7 @@
 import { Unplug } from '@lucide/vue'
 import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
-import { RadioMark, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
+import { RadioMark, resetTo, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { player, type OutputDevices } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 
@@ -68,7 +68,7 @@ const missing = computed(() => {
   return { id: selected, name: remembered()[selected] ?? 'Your chosen device' }
 })
 // Reset to default: back to System default.
-const reset = computed(() => ({ setting: 'output.device', reset: () => choose(null), isDefault: outputs.value?.selected === null }))
+const reset = computed(() => ({ setting: 'output.device', reset: resetTo(() => outputs.value?.selected ?? null, choose, null), isDefault: !outputs.value?.selected }))
 </script>
 
 <template>

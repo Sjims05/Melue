@@ -1,6 +1,6 @@
 //! Melue's own Android code (see android/): the permissions to read the music (and, opt-in, photos) on
 //! the phone, Android's music index, and secrets kept with Android Keystore encryption (the share's
-//! password). Melue's Rust code uses it through [`MelueAndroidExt`]; there are no JavaScript commands.
+//! password), and sharing a file with another app (the log). Melue's Rust code uses it through [`MelueAndroidExt`]; there are no JavaScript commands.
 //! Elsewhere than Android the plugin does nothing.
 
 use serde::{Deserialize, Serialize};
@@ -150,6 +150,14 @@ mod android {
         /// Asks for the photos permission when it isn't granted (waits for the user's answer).
         pub fn request_photos_permission(&self) -> Result<PermissionState, String> {
             self.0.run_mobile_plugin::<State>("requestPhotosPermission", ()).map(|s| s.state).map_err(|e| e.to_string())
+        }
+
+        /// Hands a file in Melue's own folder (its log) to Android's share sheet, `title` its heading.
+        pub fn share_file(&self, path: &str, title: &str) -> Result<(), String> {
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("shareFile", serde_json::json!({ "path": path, "title": title }))
+                .map(|_| ())
+                .map_err(|e| e.to_string())
         }
 
         /// How many songs Android's music index has.

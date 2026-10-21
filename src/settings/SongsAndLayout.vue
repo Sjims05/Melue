@@ -7,7 +7,7 @@
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
-import { Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, Stepper } from '@/components/settings'
+import { resetTo, Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, Stepper } from '@/components/settings'
 import { describeSyncFailure, shareLayout, sync, type LayoutStatus, type ReorganiseResult, type ShareLayout } from '@/library/sync'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { SYNC_DEFAULTS } from './defaults'
@@ -89,7 +89,7 @@ const didWords = (r: ReorganiseResult) =>
         title="Folders on the share"
         wide
         setting="sync.shareLayout"
-        :reset="() => pickLayout(SYNC_DEFAULTS.shareLayout)"
+        :reset="resetTo(() => syncSettings.value?.shareLayout ?? SYNC_DEFAULTS.shareLayout, pickLayout, SYNC_DEFAULTS.shareLayout)"
         :is-default="syncSettings.value.shareLayout === SYNC_DEFAULTS.shareLayout"
       >
         <template #description>

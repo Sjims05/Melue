@@ -9,6 +9,7 @@
     "core:default",
     "opener:default",
     "dialog:default",
+    "deep-link:default",
     "fs:default",
     "native-audio:default"
   ]

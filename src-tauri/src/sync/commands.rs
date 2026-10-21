@@ -191,6 +191,16 @@ pub fn record_shared_settings(
     Ok(())
 }
 
+/// The start-up check of the shared settings (sharedSettings.ts): the ones that weren't the shared value here, now set.
+#[tauri::command]
+pub fn shared_settings_checked(fixed: Vec<String>) {
+    if fixed.is_empty() {
+        eprintln!("melue: settings: checked, all the shared ones match");
+    } else {
+        eprintln!("melue: settings: checked, set to the shared value: {fixed:?}");
+    }
+}
+
 /// Hidden copies of synced songs waiting for a choice (also sent as `song-copies` events).
 #[tauri::command(async)]
 pub fn sync_copies(library: tauri::State<'_, Library>) -> Result<Copies, String> {

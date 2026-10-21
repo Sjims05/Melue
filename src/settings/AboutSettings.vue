@@ -1,14 +1,14 @@
 <script setup lang="ts">
 /**
  * About: Melue's version, details to copy when something goes wrong (version, device, share and sync status, the
- * library's counts; never a password), and (phone) sharing Melue's log (logging.rs: the phone keeps one).
- *
- * Not wired yet: sharing the log (Melue can't hand a file to Android's share sheet yet).
+ * library's counts; never a password), and Melue's log (logging.rs): shared from the phone (Android's share sheet),
+ * shown in its folder on a computer.
  */
 import { getVersion } from '@tauri-apps/api/app'
+import { invoke } from '@tauri-apps/api/core'
 import { ref } from 'vue'
 import { Button } from '@/components/ui/button'
-import { SettingsBadge, SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
+import { SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
 import { library } from '@/library'
 import { share, sync } from '@/library/sync'
 import { isAndroid, isMobile } from '@/platform'
@@ -18,6 +18,10 @@ import { ago, didWords, shareName } from './format'
 const version = ref('')
 const copied = ref(false)
 const error = ref('')
+async function showLog() {
+  error.value = ''
+  await invoke('log_show').catch((e) => (error.value = String(e)))
+}
 
 onPageLoad(async () => {
   version.value = await getVersion().catch(() => '')
@@ -60,9 +64,8 @@ async function copy() {
         <Transition name="swap" mode="out-in"><span :key="String(copied)">{{ copied ? 'Copied' : 'Copy' }}</span></Transition>
       </Button>
     </SettingsRow>
-    <SettingsRow v-if="isAndroid" description="What Melue did in the last days, as a file">
-      <template #title>Share the log <SettingsBadge class="ml-1.5">Not wired yet</SettingsBadge></template>
-      <Button variant="outline" size="sm" disabled>Share</Button>
+    <SettingsRow :title="isMobile ? 'Share the log' : 'Melue’s log'" description="What Melue did in the last days, as a file">
+      <Button variant="outline" size="sm" @click="showLog">{{ isMobile ? 'Share' : 'Show' }}</Button>
     </SettingsRow>
   </SettingsCard>
   <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>

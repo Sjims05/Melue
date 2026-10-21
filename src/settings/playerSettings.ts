@@ -4,6 +4,7 @@
  * (which saves it too). A failed save puts the old value back.
  */
 import { reactive } from 'vue'
+import { resetTo } from '@/components/settings/settingMenu'
 import { library, type PlayerSettings } from '@/library'
 import { applyPlayerSettings } from '@/library/playback'
 import { PLAYER_DEFAULTS } from './defaults'
@@ -47,7 +48,7 @@ export async function savePlayerSettings(change: Partial<PlayerSettings>): Promi
 export function resetPlayer<K extends keyof PlayerSettings>(key: K) {
   return {
     setting: `player.${key}`,
-    reset: () => savePlayerSettings({ [key]: PLAYER_DEFAULTS[key] }),
+    reset: resetTo(() => playerSettings.value?.[key] ?? PLAYER_DEFAULTS[key], (value) => savePlayerSettings({ [key]: value }), PLAYER_DEFAULTS[key]),
     isDefault: playerSettings.value?.[key] === PLAYER_DEFAULTS[key],
   }
 }

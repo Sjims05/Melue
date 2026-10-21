@@ -3,6 +3,7 @@ package com.simon.melue.android
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.Network
@@ -18,6 +19,7 @@ import android.provider.MediaStore
 import android.webkit.WebView
 import app.tauri.PermissionState
 import app.tauri.annotation.Command
+import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.Permission
 import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
@@ -184,6 +186,38 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
         observer?.let { activity.contentResolver.unregisterContentObserver(it) }
         observer = null
         super.onDestroy()
+    }
+
+    @InvokeArg
+    class ShareArgs {
+        var path: String = ""
+        var title: String = ""
+    }
+
+    /**
+     * Hands a file in Melue's own folder (its log) to Android's share sheet: email, a chat, Drive... Through the
+     * app's file provider (Tauri's, `<package>.fileprovider`, which covers shared storage).
+     */
+    @Command
+    fun shareFile(invoke: Invoke) {
+        val args = invoke.parseArgs(ShareArgs::class.java)
+        val file = java.io.File(args.path)
+        if (!file.exists()) {
+            invoke.reject("There's no ${file.name} yet")
+            return
+        }
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
+            val send = Intent(Intent.ACTION_SEND)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .putExtra(Intent.EXTRA_SUBJECT, args.title)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            activity.startActivity(Intent.createChooser(send, args.title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject("Can't share it: ${e.message}")
+        }
     }
 
     /**

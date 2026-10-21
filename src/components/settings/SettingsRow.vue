@@ -11,7 +11,7 @@
  * adds the default in words, About this setting, Copy link, and This device only (then the title says so).
  */
 import { Cloud, Info, Link, RotateCcw, Smartphone } from '@lucide/vue'
-import { computed, inject, provide, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, provide, ref } from 'vue'
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/context-menu'
 import ConfirmDialog from './ConfirmDialog.vue'
 import SettingsBadge from './SettingsBadge.vue'
+import { keepReset } from './rowResets'
 import { ROW_TITLE, SETTING_MENU } from './settingMenu'
 import type { MenuItem } from '@/components/covers/coverMenu'
 import { useLongPress } from '@/lib/longPress'
@@ -41,7 +42,8 @@ const props = withDefaults(
     wide?: boolean
     dim?: boolean
     as?: 'div' | 'button' | 'label'
-    reset?: () => void
+    /** Reset to default (it may return its undo: see settingMenu.ts's resetTo). */
+    reset?: () => unknown
     isDefault?: boolean
     setting?: string
   }>(),
@@ -52,7 +54,15 @@ const menu = inject(SETTING_MENU, null)
 const info = computed(() => (menu && props.setting ? menu.info(props.setting) : undefined))
 const deviceOnly = computed(() => !!(menu && props.setting && menu.isDeviceOnly(props.setting)))
 const about = ref(false)
+// Through the page's menu when there is one (Undo, and shared with the other devices); else just reset.
+const resetIt = () => (menu && props.reset ? menu.reset([{ setting: props.setting, reset: props.reset }]) : props.reset?.())
 provide(ROW_TITLE, () => props.title ?? info.value?.title)
+
+// Its heading's "Reset these to default" (rowResets.ts) resets it too.
+const rowEl = ref<HTMLElement>()
+let forget = () => {}
+onMounted(() => (forget = keepReset({ el: () => rowEl.value, setting: () => props.setting, reset: () => props.reset?.(), isDefault: () => !props.reset || !!props.isDefault })))
+onBeforeUnmount(() => forget())
 
 // A phone: a long press opens its menu as a drawer (Reset to default, About, Copy link, This device only).
 const phone = usePhone()
@@ -76,7 +86,7 @@ const press = useLongPress(() => {
     subtitle: deviceOnly.value ? 'This device only' : undefined,
     items,
     pick: (action) => {
-      if (action === 'reset') props.reset?.()
+      if (action === 'reset') resetIt()
       else if (action === 'about') about.value = true
       else if (action === 'link') menu!.copyLink(props.setting!)
       else if (action === 'deviceOnly' || action === 'shared') menu!.setDeviceOnly(props.setting!, action === 'deviceOnly')
@@ -90,6 +100,7 @@ const press = useLongPress(() => {
     <ContextMenuTrigger as-child :disabled="(!reset && !info) || phone">
       <component
         :is="as"
+        ref="rowEl"
         v-bind="{ ...$attrs, ...(phone ? press : {}) }"
         class="settings-row relative flex w-full items-center gap-x-3.5 gap-y-2.5 text-left phone:gap-x-2.5"
         :class="{ wide, detail, stack, 'has-end': !!$slots.end, 'cursor-pointer': as !== 'div' }"
@@ -122,7 +133,7 @@ const press = useLongPress(() => {
       </component>
     </ContextMenuTrigger>
     <ContextMenuContent v-if="reset || info" class="min-w-56">
-      <ContextMenuItem v-if="reset" :disabled="isDefault" @select="reset()">
+      <ContextMenuItem v-if="reset" :disabled="isDefault" @select="resetIt">
         <RotateCcw />Reset to default
         <span v-if="info?.default" class="ml-auto pl-4 text-muted-foreground">{{ info.default }}</span>
       </ContextMenuItem>

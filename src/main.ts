@@ -9,7 +9,8 @@ import { syncNowPlaying } from "./player/nowPlaying";
 import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
-import { preloadPages, router } from "./router";
+import { appearance } from "./lib/appearance";
+import { preloadPages, router, startPage } from "./router";
 
 // No browser right-click menu: Melue's own menus (e.g. a setting's "Reset to default") open where there is one.
 // Text fields keep it, for copy and paste.
@@ -17,7 +18,11 @@ document.addEventListener("contextmenu", (e) => {
   if (!(e.target as Element | null)?.closest?.("input, textarea, [contenteditable]")) e.preventDefault();
 });
 
-function start(shell = isMobile ? MobileShell : DesktopShell) {
+async function start(shell = isMobile ? MobileShell : DesktopShell) {
+  // Opening without a page asked for: the one Start on says (Display settings), there before the app mounts (mounting
+  // takes the router to Home otherwise).
+  const page = startPage(appearance.startOn);
+  if ((!location.hash || location.hash === "#/") && page !== "/") await router.replace(page).catch(() => {});
   // Phone and desktop have their own shell (navigation and layout) around the same pages.
   // The platform is fixed at build time, so the other shell is left out of the build.
   createApp(shell).use(router).mount("#app");
@@ -36,6 +41,8 @@ function start(shell = isMobile ? MobileShell : DesktopShell) {
   startPlayback()
     .catch((e) => console.error("melue: playback setup failed", e))
     .then(() => syncNowPlaying());
+  // Links to Melue from outside it (melue://settings/<id>).
+  if (isTauri()) import("./lib/links").then(({ followLinks }) => followLinks(router)).catch(() => {});
   // Whether a share is set up (sync buttons show only then), kept live.
   startSync().catch((e) => console.error("melue: sync status failed", e));
 }

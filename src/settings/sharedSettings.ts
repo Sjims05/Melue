@@ -93,6 +93,19 @@ const ADAPTERS: Record<string, Adapter> = {
   'display.lightFrom': own(themeTimes, 'light'),
   'display.upNextPrimary': own(appearance, 'upNextPrimary'),
   'display.homeCardsPrimary': own(appearance, 'homeCardsPrimary'),
+  'display.startOn': own(appearance, 'startOn'),
+}
+
+/** A setting's value here (one shared across devices; undefined for others). */
+export async function readSetting(id: string): Promise<unknown> {
+  return ADAPTERS[id] ? Promise.resolve(ADAPTERS[id].read()).catch(() => undefined) : undefined
+}
+
+/** Sets a setting here (one shared across devices); it goes to the other devices like a change made here. */
+export async function writeSetting(id: string, value: unknown) {
+  if (!ADAPTERS[id]) return
+  await ADAPTERS[id].write(value)
+  settingsTouched()
 }
 
 /** The settings shared now: not this device's own, nor set to "This device only". */
@@ -106,17 +119,45 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 // Being set from another device: not told back as a change here.
 let applying = false
 
-/** Tells Melue the shared settings that changed here since it last knew them. */
-async function check() {
+/**
+ * Tells Melue the shared settings that changed here since it last knew them. `start`: Melue just started, and a
+ * difference isn't something changed here (only settings it has never shared go, as never changed, so another
+ * device's choice wins over them); the start-up check (`checkAll`) sets the rest to the shared values.
+ */
+async function check(start = false) {
   if (!sync.available || applying) return
   const known = (await invoke<Record<string, unknown> | null>('shared_settings')) ?? {}
-  const first = Object.keys(known).length === 0
+  const first = start || Object.keys(known).length === 0
   const changes: Record<string, unknown> = {}
   for (const id of await sharedIds()) {
+    if (start && id in known) continue
     const value = await Promise.resolve(ADAPTERS[id].read()).catch(() => undefined)
     if (value !== undefined && !(id in known && same(known[id], value))) changes[id] = value
   }
   if (Object.keys(changes).length) await invoke('record_shared_settings', { changes, first })
+}
+
+/**
+ * The start-up check, once everything is running and the first sync with the share is done: every shared setting
+ * here is the shared value (`shared`: all of them, as merged); one that isn't is set to it. One the share doesn't
+ * have yet keeps its value here (check() shares it).
+ */
+async function checkAll(shared: Record<string, unknown>) {
+  const fixed: string[] = []
+  applying = true
+  try {
+    for (const id of await sharedIds()) {
+      if (!(id in shared)) continue
+      const value = await Promise.resolve(ADAPTERS[id].read()).catch(() => undefined)
+      if (same(value, shared[id])) continue
+      await Promise.resolve(ADAPTERS[id].write(shared[id]))
+        .then(() => fixed.push(id))
+        .catch((e) => console.error(`melue: setting ${id}`, e))
+    }
+  } finally {
+    applying = false
+  }
+  await invoke('shared_settings_checked', { fixed }).catch(() => {})
 }
 
 async function apply(settings: Record<string, unknown>) {
@@ -151,7 +192,11 @@ let waiting: ReturnType<typeof setTimeout> | undefined
 /** A setting may have changed (the settings page was used): checked a few seconds from now. */
 export function settingsTouched() {
   clearTimeout(waiting)
-  waiting = setTimeout(() => check().catch((e) => console.error('melue: shared settings', e)), 3000)
+  waiting = setTimeout(checkNow, 3000)
+}
+function checkNow() {
+  waiting = undefined
+  check().catch((e) => console.error('melue: shared settings', e))
 }
 
 let started = false
@@ -160,7 +205,10 @@ export function followSharedSettings() {
   if (started) return
   started = true
   listen<Record<string, unknown>>('shared-settings', (e) => apply(e.payload)).catch(() => {})
-  watch(() => sync.available, (available) => available && settingsTouched(), { immediate: true })
+  listen<Record<string, unknown>>('shared-settings-check', (e) => checkAll(e.payload)).catch(() => {})
+  watch(() => sync.available, (available) => available && check(true).catch((e) => console.error('melue: shared settings', e)), { immediate: true })
+  // Leaving the app: a change waiting to be told goes now (it would be lost if the app closes).
+  document.addEventListener('visibilitychange', () => document.hidden && waiting !== undefined && (clearTimeout(waiting), checkNow()))
   // The app's own settings (kept here, changed anywhere in the app): checked after they change.
   watch([() => ({ ...listPlay }), () => ({ ...appearance }), themeMode, () => ({ ...themeTimes })], () => !applying && settingsTouched())
 }

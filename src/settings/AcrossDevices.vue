@@ -7,7 +7,7 @@
  * with a share: it all goes through the share.
  */
 import { ref } from 'vue'
-import { Chevron, DropValue, EditRow, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
+import { Chevron, DropValue, EditRow, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { playbackSync, sync, type PlaybackMode, type PlaybackSettings } from '@/library/sync'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { PLAYBACK_DEFAULTS } from './defaults'
@@ -54,7 +54,7 @@ async function save(change: Partial<PlaybackSettings>) {
 // "Reset to default" for one setting. The name's default is the system's, which only Melue knows: always offered.
 const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
   setting: `playback.${key}`,
-  reset: () => save({ [key]: PLAYBACK_DEFAULTS[key] }),
+  reset: resetTo(() => settings.value?.[key] ?? PLAYBACK_DEFAULTS[key], (value) => save({ [key]: value }), PLAYBACK_DEFAULTS[key]),
   isDefault: key !== 'deviceName' && settings.value?.[key] === PLAYBACK_DEFAULTS[key],
 })
 </script>

@@ -3,6 +3,7 @@
  * mobile data): read once, and saved as they change (a failed save puts the old value back).
  */
 import { reactive } from 'vue'
+import { resetTo } from '@/components/settings/settingMenu'
 import { syncing, type SyncSettings } from '@/library/sync'
 import { SYNC_DEFAULTS } from './defaults'
 
@@ -44,7 +45,7 @@ export async function saveSyncSettings(change: Partial<SyncSettings>): Promise<v
 export function resetSync<K extends keyof SyncSettings>(key: K) {
   return {
     setting: `sync.${key}`,
-    reset: () => saveSyncSettings({ [key]: SYNC_DEFAULTS[key] }),
+    reset: resetTo(() => syncSettings.value?.[key] ?? SYNC_DEFAULTS[key], (value) => saveSyncSettings({ [key]: value }), SYNC_DEFAULTS[key]),
     isDefault: syncSettings.value?.[key] === SYNC_DEFAULTS[key],
   }
 }

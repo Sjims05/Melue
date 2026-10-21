@@ -20,6 +20,8 @@ pub const FILE: &str = ".melue/settings.json";
 /// The snapshot here (Melue's settings).
 const SNAPSHOT: &str = "shared_settings";
 pub const EVENT: &str = "shared-settings";
+/// After the first merge since Melue started: all the shared settings (the app makes sure it has every one of them).
+pub const CHECK_EVENT: &str = "shared-settings-check";
 
 /// A setting's value and when it was last changed (ms; 0: never changed, the device's first snapshot).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

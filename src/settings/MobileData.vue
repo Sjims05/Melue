@@ -7,7 +7,7 @@
  * them): Nothing, the limits and the month's use; they keep their values only here, for the design.
  */
 import { computed, reactive, ref } from 'vue'
-import { DropValue, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsHeading, SettingsRow } from '@/components/settings'
+import { DropValue, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsHeading, SettingsRow } from '@/components/settings'
 import { isMobile } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { loadSyncSettings, saveSyncSettings, syncSettings } from './syncSettings'
@@ -33,7 +33,7 @@ const limits = reactive({ ...LIMITS_DEFAULT })
 // "Reset to default" for a limit (local only, like the limits).
 const resetLimit = (key: keyof typeof LIMITS_DEFAULT) => ({
   setting: `mobile.${key}`,
-  reset: () => (limits[key] = LIMITS_DEFAULT[key]),
+  reset: resetTo(() => limits[key], (value) => (limits[key] = value), LIMITS_DEFAULT[key]),
   isDefault: limits[key] === LIMITS_DEFAULT[key],
 })
 
@@ -51,7 +51,7 @@ function pick(next: Level) {
     description="Settings controlling when to sync on mobile data. They apply on your phones, and can be changed from any device."
   />
   <SettingsCard v-if="syncSettings.value">
-    <SettingsRow :description="LEVEL_LINE[level]" wide setting="mobile.level" :reset="() => pick('small')" :is-default="level === 'small'">
+    <SettingsRow :description="LEVEL_LINE[level]" wide setting="mobile.level" :reset="resetTo(() => level, pick, 'small')" :is-default="level === 'small'">
       <template #title>On mobile data, sync <SettingsBadge v-if="level === 'nothing'" class="ml-1.5">Not wired yet</SettingsBadge></template>
       <Segmented :model-value="level" :options="LEVELS" @update:model-value="pick" />
     </SettingsRow>

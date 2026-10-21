@@ -1,13 +1,14 @@
 /**
  * How some parts look (Display settings, this device's own like the theme): Up next on Now playing and Home's Playing /
  * Continue cards in the primary colour (white in dark mode, black in light mode: they stand out in both, as in the
- * concepts), or like the other cards.
+ * concepts), or like the other cards; and the page Melue opens on (Start on: Home, Library, or where it was left).
  */
 import { computed, reactive, watch } from 'vue'
 import { isDark } from './theme'
 
 const KEY = 'melue-appearance'
-const DEFAULTS = { upNextPrimary: true, homeCardsPrimary: true }
+export type StartOn = 'home' | 'library' | 'last'
+const DEFAULTS = { upNextPrimary: true, homeCardsPrimary: true, startOn: 'home' as StartOn }
 
 function saved(): typeof DEFAULTS {
   try {
@@ -27,7 +28,7 @@ export const primaryArea = computed(() => (isDark.value ? 'light-area' : 'dark-a
 
 watch(appearance, (value) => {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ upNextPrimary: value.upNextPrimary, homeCardsPrimary: value.homeCardsPrimary }))
+    localStorage.setItem(KEY, JSON.stringify({ upNextPrimary: value.upNextPrimary, homeCardsPrimary: value.homeCardsPrimary, startOn: value.startOn }))
   } catch {
     // Not kept without storage.
   }

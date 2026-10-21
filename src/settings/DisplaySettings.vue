@@ -4,12 +4,11 @@
  * and what closing the window does (src-tauri: desktop.rs). The theme is kept on this device for now (lib/theme.ts);
  * it syncs across devices once settings sync.
  *
- * Not wired yet: Start on (Melue's pages aren't there yet).
  */
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { computed, ref } from 'vue'
 import { Switch } from '@/components/ui/switch'
-import { DropValue, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsHeading, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
+import { DropValue, resetTo, Reveal, Segmented, SettingsCard, SettingsHeading, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library } from '@/library'
 import { APPEARANCE_DEFAULTS, appearance } from '@/lib/appearance'
 import { THEME_TIMES_DEFAULT, themeMode, themeTimes, type ThemeMode } from '@/lib/theme'
@@ -48,10 +47,9 @@ const CLOSE_LINE: Record<Close, string> = {
 // Read by desktop.rs when the window closes.
 const CLOSE_SETTING = 'close_window'
 
-// Not wired yet: kept only here.
-const startOn = ref<(typeof STARTS)[number][0]>('home')
 const autostart = ref<boolean | null>(null)
-// A development build can't be started with Windows (it needs the dev server for its page, and opens a console).
+// A development build can't be started with Windows (it needs the dev server for its page, and opens a console): the
+// switch is locked there (the UI says nothing about it; it's the installed app's setting).
 const devBuild = import.meta.env.DEV
 const close = ref<Close>('tray')
 const autostartWindow = ref<AutostartWindow>('tray')
@@ -69,6 +67,8 @@ onPageLoad(async () => {
 })
 
 async function setAutostart(on: boolean) {
+  // Never a development build (it would register the debug build to start with Windows).
+  if (devBuild && on) return
   error.value = ''
   try {
     await (on ? enable() : disable())
@@ -151,9 +151,14 @@ async function setClose(mode: Close) {
     >
       <Segmented v-model="homeCards" :options="PRIMARY" />
     </SettingsRow>
-    <SettingsRow description="Where Melue opens" setting="display.startOn" :reset="() => (startOn = 'home')" :is-default="startOn === 'home'">
-      <template #title>Start on <SettingsBadge class="ml-1.5">Not wired yet</SettingsBadge></template>
-      <DropValue v-model="startOn" :options="STARTS" />
+    <SettingsRow
+      title="Start on"
+      description="Where Melue opens"
+      setting="display.startOn"
+      :reset="() => (appearance.startOn = APPEARANCE_DEFAULTS.startOn)"
+      :is-default="appearance.startOn === APPEARANCE_DEFAULTS.startOn"
+    >
+      <DropValue v-model="appearance.startOn" :options="STARTS" />
     </SettingsRow>
   </SettingsCard>
 
@@ -164,12 +169,8 @@ async function setClose(mode: Close) {
         v-if="autostart !== null"
         title="Start Melue with Windows"
         setting="display.autostart"
-        :description="
-          devBuild ? 'In the installed app only: a development build would start without its page, in a console window'
-          : autostartWindow === 'window' ? 'With its window open'
-          : 'In the tray, ready for the media keys'
-        "
-        :reset="() => setAutostart(true)"
+        :description="autostartWindow === 'window' ? 'With its window open' : 'In the tray, ready for the media keys'"
+        :reset="devBuild ? undefined : resetTo(() => !!autostart, setAutostart, true)"
         :is-default="autostart"
       >
         <Switch :model-value="autostart" :disabled="devBuild" @update:model-value="setAutostart" />
@@ -179,13 +180,13 @@ async function setClose(mode: Close) {
           title="When Windows starts it"
           wide
           setting="display.autostartWindow"
-          :reset="() => setAutostartWindow('tray')"
+          :reset="resetTo(() => autostartWindow, setAutostartWindow, 'tray')"
           :is-default="autostartWindow === 'tray'"
         >
           <Segmented :model-value="autostartWindow" :options="AUTOSTART_WINDOWS" @update:model-value="setAutostartWindow" />
         </SettingsRow>
       </Reveal>
-      <SettingsRow title="Closing the window" wide setting="display.closeWindow" :reset="() => setClose('tray')" :is-default="close === 'tray'">
+      <SettingsRow title="Closing the window" wide setting="display.closeWindow" :reset="resetTo(() => close, setClose, 'tray')" :is-default="close === 'tray'">
         <template #description>
           <Transition name="swap" mode="out-in"><span :key="close">{{ CLOSE_LINE[close] }}</span></Transition>
         </template>
