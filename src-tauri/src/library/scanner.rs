@@ -62,6 +62,7 @@ pub fn start(app: &AppHandle) {
             // After the first screen (it reads the library too).
             crate::startup::wait_for_ui(crate::startup::UI_AT_MOST);
             let _ = scan_all(&handle);
+                super::online_lyrics::soon(&handle);
             while wake.recv().is_ok() {
                 // Wait for a quiet moment.
                 loop {
@@ -72,6 +73,7 @@ pub fn start(app: &AppHandle) {
                     }
                 }
                 let _ = scan_all(&handle);
+                super::online_lyrics::soon(&handle);
             }
         })
         .expect("the library scanner thread");

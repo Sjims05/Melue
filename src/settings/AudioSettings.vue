@@ -10,6 +10,7 @@ import type { PlayerSettings } from '@/library'
 import { isMobile } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { loadPlayerSettings, playerSettings, resetPlayer, savePlayerSettings } from './playerSettings'
+import { lyricsOnline, resetLyricsOnline, setLyricsOnline } from './lyricsSetting'
 
 const CURVES = [['quadratic', 'Quadratic'], ['cubic', 'Cubic'], ['linear', 'Linear']] as const
 const CURVE_LINE: Record<PlayerSettings['volumeCurve'], string> = {
@@ -23,6 +24,7 @@ const RESTARTS = [[0, 'Never'], [3, '3 seconds'], [5, '5 seconds'], [10, '10 sec
 const READY = [[5, '5 min'], [15, '15 min'], [30, '30 min'], [60, '1 hour']] as const
 
 onPageLoad(loadPlayerSettings)
+onPageLoad(() => lyricsOnline.load())
 </script>
 
 <template>
@@ -68,6 +70,14 @@ onPageLoad(loadPlayerSettings)
         :options="RESTARTS"
         @update:model-value="(previousRestartsAfterSeconds) => savePlayerSettings({ previousRestartsAfterSeconds })"
       />
+    </SettingsRow>
+    <SettingsRow
+      title="Find lyrics online"
+      description="On Wi-Fi, from LRCLIB, for songs without their own: it’s sent each song’s artist, title, album and length"
+      setting="lyrics.online"
+      v-bind="resetLyricsOnline()"
+    >
+      <Switch :model-value="lyricsOnline.on" @update:model-value="setLyricsOnline" />
     </SettingsRow>
     <template v-if="isMobile">
       <SettingsRow title="Keep the player ready after pausing" description="So the car and the notification can resume it" v-bind="resetPlayer('pausedKeepAliveMinutes')">

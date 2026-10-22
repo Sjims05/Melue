@@ -23,7 +23,9 @@ pub mod grouping;
 #[cfg(test)]
 mod grouping_tests;
 pub mod linked;
+pub mod lyrics;
 pub mod network;
+pub mod online_lyrics;
 #[cfg(test)]
 mod linked_tests;
 pub mod m3u;

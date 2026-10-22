@@ -390,6 +390,11 @@ export interface MissingSong {
 
 export const library = {
   status: () => invoke<LibraryStatus>('library_status'),
+  /**
+   * Music folders that are the share, inside it, or look like it (a network folder of nearly all synced songs' copies):
+   * Melue never removes files from them. Their ids and why.
+   */
+  shareFolders: () => invoke<[number, 'share' | 'insideShare' | 'looksLikeShare'][]>('library_share_folders'),
   /** The songs whose files can't be found (kept, in case they come back). */
   missingSongs: () => invoke<MissingSong[]>('library_missing_songs'),
   /** An app setting saved with the library, or null when it was never set. */

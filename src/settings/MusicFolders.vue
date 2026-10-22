@@ -30,10 +30,19 @@ onPageLoad(startLibraryState)
 
 // Your folders first (by name), the synced one last.
 const folders = computed(() => [...libraryState.folders].sort((a, b) => Number(a.synced) - Number(b.synced) || a.name.localeCompare(b.name)))
+const shareLike = computed(() => folders.value.filter((f) => libraryState.shareFolders.has(f.id)))
 const onlyHereIn = (folder: MusicFolder) => (folder.synced ? [] : libraryState.onlyHere.filter((s) => s.folder === folder.name))
 const plural = (n: number, one: string) => `${n.toLocaleString()} ${one}${n === 1 ? '' : 's'}`
 
+// A folder that is the share (or looks like it): its songs are in the library already, as your synced music.
+const SHARE_LINE: Record<string, string> = {
+  share: 'This is your share: its songs are already in your library',
+  insideShare: 'This is inside your share: its songs are already in your library',
+  looksLikeShare: 'This looks like your share: its songs are already in your library',
+}
 function line(folder: MusicFolder) {
+  const share = libraryState.shareFolders.get(folder.id)
+  if (share) return SHARE_LINE[share]
   if (!folder.enabled) return 'Switched off: its songs are hidden'
   if (folder.kind === 'android_media') return `${plural(folder.tracks, 'song')} · all music on this phone`
   if (folder.synced) return `${plural(folder.tracks, 'song')} · your share, copied here`
@@ -191,6 +200,13 @@ function confirm() {
       </SettingsRow>
     </template>
   </SettingsCard>
+  <SettingsTip v-for="folder in shareLike" :key="folder.id" class="mt-3">
+    {{ folder.name }} {{ libraryState.shareFolders.get(folder.id) === 'looksLikeShare' ? 'looks like your share' : 'is your share' }}: Melue
+    never removes files from it. Take it out of your folders? The files stay.
+    <template #action>
+      <Button size="sm" variant="secondary" @click="asking = { what: 'remove', folder }">Remove from your folders</Button>
+    </template>
+  </SettingsTip>
   <SettingsTip v-if="adding.result && !adding.error" kind="ok" class="mt-3">Added songs: {{ adding.result }}</SettingsTip>
   <SettingsTip v-if="error || adding.error" kind="bad" class="mt-3">{{ error || adding.error }}</SettingsTip>
 

@@ -153,6 +153,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: 'Load the last queue, paused',
     help: 'What the queue does when you open Melue: the last one ready to play, the last one playing, or nothing.',
   },
+  'lyrics.online': {
+    title: 'Find lyrics online',
+    default: 'On',
+    help: 'Songs without their own lyrics (no .lrc next to them, none in their tags) get them from LRCLIB, a free lyrics database, on Wi-Fi only. It’s sent the song’s artist, title, album and length. What’s found is kept, so it works offline.',
+  },
   'player.previousRestartsAfterSeconds': {
     title: 'Previous restarts the song after',
     default: '3 seconds',

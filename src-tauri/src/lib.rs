@@ -121,6 +121,9 @@ pub fn run() {
             // Android Auto's library: sent now and after changes (Android only).
             app.manage(library::auto::AutoSender::default());
             library::auto::start(app.handle());
+            // Lyrics for songs without their own, found online on Wi-Fi (online_lyrics.rs).
+            app.manage(library::online_lyrics::LyricsLookup::default());
+            library::online_lyrics::start(app.handle());
             // Syncing with the share by itself (start-up, coming back, the share's changes; see sync/schedule.rs).
             sync::scheduler::start(app.handle());
             // Synced playback: what plays here goes to the share; another device's is offered (see sync/handoff.rs).
@@ -152,7 +155,10 @@ pub fn run() {
             });
             library::android::on_network_change(app.handle(), {
                 let app = app.handle().clone();
-                move || sync::scheduler::network_changed(&app)
+                move || {
+                    sync::scheduler::network_changed(&app);
+                    library::online_lyrics::soon(&app);
+                }
             });
             library::android::on_sync_cancel(app.handle(), {
                 let app = app.handle().clone();
@@ -234,6 +240,10 @@ pub fn run() {
             sync::commands::set_playlist_local_only,
             library::library_status,
             library::library_missing_songs,
+            library::library_lyrics,
+            library::library_set_lyrics_timing,
+            library::library_lyrics_other_version,
+            library::library_share_folders,
             library::library_setting,
             library::library_set_setting,
             library::library_sync_available,

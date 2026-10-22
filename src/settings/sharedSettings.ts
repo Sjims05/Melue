@@ -8,6 +8,7 @@
  * the settings page or to the app's own settings, and Melue sends it on with its next library data sync; settings
  * another device changed come back as an event, and are set here.
  */
+import { readLyricsOnline, setLyricsOnline } from './lyricsSetting'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { watch } from 'vue'
@@ -71,6 +72,7 @@ const ADAPTERS: Record<string, Adapter> = {
   'sync.removeGone': syncField('removeGone'),
   'sync.askBeforeRemoving': syncField('askBeforeRemoving'),
   'sync.moveNewSongs': syncField('moveNewSongs'),
+  'lyrics.online': { read: readLyricsOnline, write: (on) => setLyricsOnline(on as boolean) },
   'mobile.level': {
     read: async () => {
       const s = await syncing.settings()

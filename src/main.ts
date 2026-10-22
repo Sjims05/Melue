@@ -10,7 +10,11 @@ import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
 import { appearance } from "./lib/appearance";
+import { startHoverTips } from "./lib/hoverTips";
 import { preloadPages, router, startPage } from "./router";
+
+// Hover tips in Melue's style (every title: lib/hoverTips.ts).
+startHoverTips();
 
 // No browser right-click menu: Melue's own menus (e.g. a setting's "Reset to default") open where there is one.
 // Text fields keep it, for copy and paste.

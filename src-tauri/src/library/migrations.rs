@@ -24,6 +24,11 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/013_unfollowed_and_kept.sql"),
     include_str!("sql/014_playlist_covers.sql"),
     include_str!("sql/015_cover_sync.sql"),
+    include_str!("sql/016_online_lyrics.sql"),
+    include_str!("sql/017_lyrics_offsets.sql"),
+    include_str!("sql/018_lyrics_offset_times.sql"),
+    include_str!("sql/019_online_lyrics_entry.sql"),
+    include_str!("sql/020_lyrics_anchors.sql"),
 ];
 
 /// The newest schema version.

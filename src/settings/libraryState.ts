@@ -13,6 +13,8 @@ export const libraryState = reactive({
   folders: [] as MusicFolder[],
   /** Songs whose files can't be found. */
   missing: [] as MissingSong[],
+  /** Music folders that are the share or look like it (id → why). */
+  shareFolders: new Map<number, string>(),
   /** Songs only on this device (not on the share); empty without a share. */
   onlyHere: [] as LocalSong[],
   copies: null as Copies | null,
@@ -23,8 +25,13 @@ export const libraryState = reactive({
 
 export async function refreshLibrary(): Promise<void> {
   try {
-    const [status, folders, missing] = await Promise.all([library.status(), library.folders(), library.missingSongs()])
-    Object.assign(libraryState, { status, folders, missing })
+    const [status, folders, missing, shareFolders] = await Promise.all([
+      library.status(),
+      library.folders(),
+      library.missingSongs(),
+      library.shareFolders().catch(() => []),
+    ])
+    Object.assign(libraryState, { status, folders, missing, shareFolders: new Map(shareFolders) })
     const [onlyHere, copies] = sync.available
       ? await Promise.all([moving.notOnShare(), moving.copies()])
       : [[], null]

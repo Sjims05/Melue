@@ -1,24 +1,26 @@
 <script setup lang="ts">
 /**
  * Now playing (Melue's design): the big cover; where it plays from, the song, volume, the seek bar, the controls, and
- * Connect device (planned: Phase 4), Like, More actions (the song's menu); Lyrics (planned), beside them when there's
+ * Connect device (planned: Phase 4), Like, More actions (the song's menu); Lyrics (LyricsPanel.vue: following the
+ * song, in the cover's colours; full size from its button, a step in the history), beside them when there's
  * room for three columns (as in the concept at 1920 px), under them otherwise. The middle is as tall as the cover. Under it, Up next (the
  * queue after the playing song): white or like the cards (Display settings), opened with its chevron or the player
  * bar's queue button (?queue=open), with drag, ✕, Clear and double-click to play.
  */
 import { ChevronDown, Ellipsis, Library, MonitorSpeaker, Music, Repeat, Search, Shuffle, Volume1, Volume2, VolumeX } from '@lucide/vue'
 import LikeHeart from '@/components/player/LikeHeart.vue'
+import LyricsPanel from '@/components/player/LyricsPanel.vue'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player/icons'
-import { useResizeObserver } from '@vueuse/core'
+import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { PlannedCard } from '@/components/page'
 import Slider from '@/components/player/Slider.vue'
 import { AddToPlaylist, songMenu, SongList, SongMenuArea, type SongAction } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { appearance, primaryArea } from '@/lib/appearance'
 import { isDesktop } from '@/platform/platform'
+import { followLyrics } from '@/player/lyrics'
 import { songAction } from '@/player/songs'
 import {
   clearUpNext,
@@ -55,6 +57,14 @@ const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
 // how far the page can scroll grows as it goes. It goes only as far as it takes to show all of Up next (the player
 // stays in view above a short one), or its top just under the top bar when it's taller than the window.
 const router = useRouter()
+
+// Lyrics: read for each song that plays; full size as a step in the history (back, Escape or ✕ closes it).
+followLyrics()
+const lyricsFull = computed(() => route.name === 'now-playing' && 'lyrics' in route.query)
+const openLyrics = () => router.push({ query: { ...route.query, lyrics: '1' } })
+const closeLyrics = () => router.back()
+useEventListener('keydown', (e: KeyboardEvent) => lyricsFull.value && e.key === 'Escape' && closeLyrics())
+
 const open = ref(route.query.queue === 'open')
 const upNextPanel = ref<HTMLElement>()
 const SCROLL_MS = 600
@@ -240,8 +250,11 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
         </div>
       </div>
 
-      <!-- Lyrics: planned. -->
-      <PlannedCard class="h-full lg:col-span-2 3xl:col-span-1" title="Lyrics" text="Planned: the song's lyrics, read from its file, following along as it plays." />
+      <!-- Lyrics: beside the controls (three columns), as tall as the cover and no taller (it doesn't make the row grow:
+           it fills its place); under them, a few lines. -->
+      <div class="relative h-44 lg:col-span-2 3xl:col-span-1 3xl:h-auto">
+        <LyricsPanel class="absolute inset-0" @expand="openLyrics" />
+      </div>
     </div>
 
     <!-- Nothing playing: the page is there, and says what to do, in the middle of the window. -->
@@ -256,6 +269,16 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
         </div>
       </div>
     </div>
+
+    <!-- Lyrics full size: on a computer over the page (the top bar and the player bar stay, for the window and the
+         controls); on a phone over everything, with its own controls. -->
+    <Teleport to="#page-overlay" :disabled="phone">
+      <Transition name="fade">
+        <div v-if="lyricsFull && current" class="z-30 bg-background pt-[env(safe-area-inset-top)]" :class="phone ? 'fixed inset-0' : 'absolute inset-0'">
+          <LyricsPanel big :controls="phone" class="h-full" @close="closeLyrics" />
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Up next. -->
     <section

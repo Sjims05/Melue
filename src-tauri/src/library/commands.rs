@@ -32,6 +32,53 @@ pub fn library_status(library: State<'_, Library>) -> Result<LibraryStatus> {
     library.status()
 }
 
+/// A song's lyrics (Now playing): from a .lrc next to it, its tags, or found online; null when it has none. A song
+/// without any that wasn't looked up online yet is looked up now, when Melue may (Wi-Fi, the setting on).
+#[tauri::command(async)]
+pub fn library_lyrics(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<Option<super::lyrics::Lyrics>> {
+    let open = |job: &super::tags::TagJob, path: &str| super::scanner::open_file(&app, job, path);
+    if let Some(lyrics) = library.lyrics(id, &open)? {
+        return Ok(Some(lyrics));
+    }
+    if library.online_lyrics(id)?.is_none() && super::online_lyrics::may_look_up(&app) {
+        if let Err(e) = super::online_lyrics::look_up_now(&app, id) {
+            eprintln!("melue: lyrics: LRCLIB can't be reached now: {e}");
+        }
+        return library.lyrics(id, &open);
+    }
+    Ok(None)
+}
+
+/// "Try another version": the song's lyrics from LRCLIB's next entry, read again (null: there's no other).
+#[tauri::command(async)]
+pub fn library_lyrics_other_version(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<Option<super::lyrics::Lyrics>> {
+    if !super::online_lyrics::try_other_version(&app, id)? {
+        return Ok(None);
+    }
+    library.lyrics(id, &|job, path| super::scanner::open_file(&app, job, path))
+}
+
+/// A song's lyrics timing set by hand: moved earlier or later (ms; positive: later), and lines tapped.
+#[tauri::command(async)]
+pub fn library_set_lyrics_timing(
+    app: AppHandle,
+    library: State<'_, Library>,
+    id: i64,
+    offset_ms: i64,
+    anchors: Vec<super::lyrics::Anchor>,
+) -> Result<()> {
+    library.set_lyrics_timing(id, &super::lyrics::Timing { offset_ms, anchors }, super::now_ms())?;
+    // To the other devices with the library data.
+    crate::sync::data::soon(&app);
+    Ok(())
+}
+
+/// Music folders that are the share, inside it, or look like it (folders.rs share_folders): their ids and why.
+#[tauri::command(async)]
+pub fn library_share_folders(library: State<'_, Library>) -> Result<Vec<(i64, &'static str)>> {
+    library.share_folders()
+}
+
 /// The songs whose files can't be found (Library: Show).
 #[tauri::command(async)]
 pub fn library_missing_songs(library: State<'_, Library>) -> Result<Vec<super::tracks::MissingSong>> {
@@ -125,6 +172,10 @@ pub fn library_set_setting(app: AppHandle, library: State<'_, Library>, key: Str
     library.set_setting(&key, &value)?;
     if library.sync_available()? != sync_before {
         changes::emit(&app, LibraryChange::sync());
+    }
+    // Finding lyrics online switched on: a round now.
+    if key == super::online_lyrics::SETTING {
+        super::online_lyrics::soon(&app);
     }
     Ok(())
 }

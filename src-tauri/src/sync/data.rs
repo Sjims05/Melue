@@ -53,6 +53,9 @@ pub struct DeviceData {
     pub counts: Vec<CountRecord>,
     pub days: Vec<DayRecord>,
     pub history: Vec<PlayRecord>,
+    /// Songs' lyrics moved earlier or later by hand, and when (the share's clock): the newest change wins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lyrics_offsets: Vec<OffsetRecord>,
     /// A phone's song data on mobile data this month (mobile.rs), for the other devices' Mobile data settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mobile: Option<super::mobile::MobileUse>,
@@ -67,6 +70,17 @@ pub struct DeviceData {
 pub struct LikeRecord {
     pub path: String,
     pub liked: bool,
+    pub at_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OffsetRecord {
+    pub path: String,
+    pub offset_ms: i64,
+    /// Lines tapped as they started (lyrics.rs Anchor).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub anchors: Vec<crate::library::lyrics::Anchor>,
     pub at_ms: i64,
 }
 
@@ -178,6 +192,17 @@ impl Library {
                 }
             }
         }
+        let mut lyrics_offsets = Vec::new();
+        let mut stmt = conn.prepare("SELECT track_id, offset_ms, anchors, changed_at FROM lyrics_offsets").map_err(err)?;
+        let timings = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, i64>(3)?)))
+            .map_err(err)?;
+        for timing in timings {
+            let (track, offset_ms, anchors, at) = timing.map_err(err)?;
+            let Some(path) = path(track) else { continue };
+            let anchors = anchors.and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
+            lyrics_offsets.push(OffsetRecord { path, offset_ms, anchors, at_ms: share_time(at) });
+        }
         let mut data = DeviceData {
             device_id: device_id.into(),
             device_name: device_name.into(),
@@ -186,11 +211,13 @@ impl Library {
             counts,
             days,
             history,
+            lyrics_offsets,
             mobile,
             share_ms: 0,
         };
         // A steady order: the same data is the same file.
         data.likes.sort_by(|a, b| a.path.cmp(&b.path));
+        data.lyrics_offsets.sort_by(|a, b| a.path.cmp(&b.path));
         data.counts.sort_by(|a, b| a.path.cmp(&b.path));
         data.days.sort_by(|a, b| (&a.path, a.day).cmp(&(&b.path, b.day)));
         Ok(data)
@@ -262,6 +289,16 @@ impl Library {
             }
         }
         changed.sort_unstable();
+
+        // Lyrics timings: the newest change wins.
+        for record in others.iter().flat_map(|d| &d.lyrics_offsets) {
+            let Some(t) = track(&record.path) else { continue };
+            let theirs = crate::library::lyrics::Timing { offset_ms: record.offset_ms, anchors: record.anchors.clone() };
+            let here = self.lyrics_timing(t)?.map(|(timing, at)| (timing, at + ahead_ms));
+            if here.is_none_or(|(timing, at)| record.at_ms > at && timing != theirs) {
+                self.set_lyrics_timing(t, &theirs, here_time(record.at_ms))?;
+            }
+        }
         Ok(changed)
     }
 

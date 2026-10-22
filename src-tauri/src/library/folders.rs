@@ -281,6 +281,40 @@ impl Library {
         Ok(())
     }
 
+    /// Music folders that are the share, inside it, or look like it (a network folder whose songs are nearly all
+    /// copies of synced songs: the share under another name, its address or the VPN's), with why: "share",
+    /// "insideShare" or "looksLikeShare". Melue never removes files from these (they're the share's own), and
+    /// Music folders offers to take them out of the library.
+    pub fn share_folders(&self) -> Result<Vec<(i64, &'static str)>> {
+        let share = self.share_settings()?.map(|s| super::network::share_addresses(&s)).unwrap_or_default();
+        let mut found = Vec::new();
+        for folder in self.folders()? {
+            if folder.synced || folder.kind != FolderKind::Path {
+                continue;
+            }
+            if let Some(address) = super::network::address(&folder.location) {
+                match super::network::relation_to_share(&address, &share) {
+                    Some("same") => found.push((folder.id, "share")),
+                    Some("inside") => found.push((folder.id, "insideShare")),
+                    _ => {
+                        let (all, copies): (i64, i64) = self
+                            .conn()
+                            .query_row(
+                                "SELECT count(*), count(copy_of) FROM tracks WHERE folder_id = ?1 AND missing_since IS NULL",
+                                [folder.id],
+                                |r| Ok((r.get(0)?, r.get(1)?)),
+                            )
+                            .map_err(err)?;
+                        if all >= 5 && copies * 10 >= all * 9 {
+                            found.push((folder.id, "looksLikeShare"));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(found)
+    }
+
     /// Removes a folder and its tracks (with their likes, playlist entries and history). To keep them,
     /// switch the folder off instead.
     pub fn remove_folder(&self, id: i64) -> Result<()> {

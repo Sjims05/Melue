@@ -54,6 +54,8 @@ onKeyStroke('Escape', (e) => {
           <TopBar />
           <div class="relative min-h-0 flex-1">
             <DotsNav />
+            <!-- Over the page, under the top bar (its window buttons and dragging stay): Now playing's lyrics full size. -->
+            <div id="page-overlay" class="contents" />
             <!-- The scrollbar's room is always kept, so the page doesn't shift when it comes or goes. No scroll anchoring:
                  the page being replaced is above the new one for a moment, and the browser would move the new one's
                  place up by its height when it goes. -->
@@ -83,10 +85,11 @@ onKeyStroke('Escape', (e) => {
         <!-- Notes like "Added to the queue", just above the player bar (over any page). -->
         <Toasts />
       </div>
-      <!-- The player bar, except on Now playing itself (not under a page opened from it): it slides away down. -->
+      <!-- The player bar, except on Now playing itself (not under a page opened from it): it slides away down. With the
+           lyrics full size (?lyrics) it's back: the controls for them. -->
       <div
         class="grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(.2,.8,.2,1)]"
-        :class="route.path === '/now-playing' ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'"
+        :class="route.path === '/now-playing' && !('lyrics' in route.query) ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'"
       >
         <div class="min-h-0 overflow-hidden"><PlayerBar /></div>
       </div>

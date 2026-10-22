@@ -139,6 +139,8 @@ pub fn serve(covers_dir: &Path, request_path: &str) -> tauri::http::Response<Vec
         Some(bytes) => response
             .header("Content-Type", "image/jpeg")
             .header("Cache-Control", "max-age=31536000, immutable")
+            // The page reads a cover's colours (Now playing's lyrics), which needs the page allowed to.
+            .header("Access-Control-Allow-Origin", "*")
             .body(bytes),
         None => response.status(404).body(Vec::new()),
     }

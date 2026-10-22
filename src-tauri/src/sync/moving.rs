@@ -310,6 +310,9 @@ impl Library {
             .map_err(err)?;
         drop(stmt);
         drop(conn);
+        // Not the share's own files (a folder that is the share, or looks like it: never removed).
+        let share_folders: Vec<i64> = self.share_folders()?.into_iter().map(|(id, _)| id).collect();
+        folders.retain(|f| !share_folders.contains(&f.folder_id));
         // The folder's name and kind as the library has them (a name can be the path's, made when read).
         for copies in &mut folders {
             if let Some(folder) = self.folder(copies.folder_id)? {
@@ -517,7 +520,13 @@ pub fn remove_files(app: &AppHandle, tracks: &[i64]) -> Result<usize> {
         by_folder.entry(file.folder_id).or_default().push(file);
     }
     let mut removed = 0;
+    // Never the share's own files (a music folder that is the share, or looks like it).
+    let share_folders: Vec<i64> = library.share_folders()?.into_iter().map(|(id, _)| id).collect();
     for (folder_id, files) in by_folder {
+        if share_folders.contains(&folder_id) {
+            eprintln!("melue: not removing {} files from a folder that is (or looks like) the share", files.len());
+            continue;
+        }
         let Some(folder) = library.folder(folder_id)? else { continue };
         match folder.kind {
             FolderKind::Path => {

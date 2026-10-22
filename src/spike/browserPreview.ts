@@ -196,6 +196,33 @@ let copies: Copies = {
     { folderId: 2, name: 'Downloads', network: true, songs: 3, bytes: 24_000_000 },
   ],
 }
+// Made-up lines for the lyrics card: each line 3 s after the last, each word timed (enhanced LRC).
+const LYRIC_LINES = [
+  'Paper lanterns drifting over quiet water',
+  'Counting every window lit along the bay',
+  'I kept the map you drew in yellow marker',
+  'Folded in my pocket since the first of May',
+  '',
+  'Turn the radio up, the night is ours',
+  'Every station humming like a hive of stars',
+  'Turn the radio up and let it ring',
+  'Till the morning finds us still remembering',
+]
+function previewLyrics() {
+  return {
+    synced: true,
+    source: 'file',
+    instrumental: false,
+    offsetMs: 0,
+    anchors: [],
+    estimated: false,
+    lines: LYRIC_LINES.map((text, i) => {
+      const atMs = 2000 + i * 3000
+      const words = text ? text.split(' ').map((word, j, all) => ({ atMs: atMs + j * 330, text: j < all.length - 1 ? `${word} ` : word })) : []
+      return { atMs, text, words }
+    }),
+  }
+}
 const missingSongs = [
   { id: 901, title: 'Dancing Queen (live)', artist: 'ABBA', folder: 'Music', path: 'ABBA/Live/01 Dancing Queen.mp3', missingSince: Date.now() - 3_600_000 },
   { id: 902, title: 'Old demo', artist: null, folder: 'Downloads', path: 'demo.wav', missingSince: Date.now() - 9 * 86_400_000 },
@@ -344,6 +371,13 @@ export function installBrowserPreview() {
           return gone.reduce((n, f) => n + f.songs, 0)
         }
         case 'library_missing_songs': return missingSongs
+        case 'library_lyrics': return previewLyrics()
+        // ?share=like: the last music folder looks like the share (Music folders' note).
+        case 'library_share_folders': {
+          if (!new URLSearchParams(location.search).has('share')) return []
+          const last = folders.filter((f) => !f.synced).slice(-1)[0]
+          return last ? [[last.id, 'looksLikeShare']] : []
+        }
         case 'sync_mobile_use':
           return new URLSearchParams(location.search).has('phone')
             ? [{ device: 'This phone', here: true, month: '2026-10-15', bytes: 412_000_000 }]
