@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.5.17"
+version = "0.5.18"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -51,6 +51,9 @@ fs4 = "0.13"
 trash = "5"
 # Starting Melue with the system (Display: Start Melue with Windows).
 tauri-plugin-autostart = "2"
+# Updating itself from Melue's GitHub releases (stable ones only), signed (update.rs), and restarting after.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 # One Melue at a time: opening it again (it may be in the tray) shows the running one.
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 

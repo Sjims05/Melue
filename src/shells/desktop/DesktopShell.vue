@@ -21,6 +21,8 @@ import { followOnlyHere } from '@/library/onlyHere'
 import { followSharedSettings } from '@/settings/sharedSettings'
 import ConfirmHost from '../ConfirmHost.vue'
 import DropSongs from '@/settings/DropSongs.vue'
+import UpdateDialog from './UpdateDialog.vue'
+import CopyMenu from './CopyMenu.vue'
 import DotsNav from './DotsNav.vue'
 import PlayerBar from './PlayerBar.vue'
 import Toasts from '../Toasts.vue'
@@ -95,6 +97,10 @@ onKeyStroke('Escape', (e) => {
       </div>
       <!-- Music files dragged over Melue, on any page: the drop area, then the question. -->
       <DropSongs />
+      <!-- An update found: Melue asks (lib/updates.ts). -->
+      <UpdateDialog />
+      <!-- Copy, for selected text or an error tip (lib/copyMenu.ts). -->
+      <CopyMenu />
       <!-- Questions asked from anywhere (lib/confirm.ts: a song's Move to sync). -->
       <ConfirmHost />
     </div>

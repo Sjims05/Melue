@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * A strip with an icon and a line of text. `note` (a tip; the primary colour), `ok` (green: it worked), `bad`
- * (red: it didn't). The `action` slot holds a link or button at its end.
+ * (red: it didn't; its words can be copied with a right-click). The `action` slot holds a link or button at its end.
  */
 import { CircleCheck, CircleX, Info } from '@lucide/vue'
 import type { Component } from 'vue'
@@ -22,7 +22,8 @@ const icon = computed(() => props.icon ?? { note: Info, ok: CircleCheck, bad: Ci
     }"
   >
     <component :is="icon" class="size-[15px] flex-none" />
-    <span class="flex-1"><slot /></span>
+    <!-- An error's words can be copied (a right-click, or a long press on a phone: lib/copyMenu.ts). -->
+    <span class="flex-1" :class="kind === 'bad' && 'select-text'" :data-copy="kind === 'bad' ? '' : undefined"><slot /></span>
     <slot name="action" />
   </div>
 </template>

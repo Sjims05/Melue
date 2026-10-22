@@ -146,7 +146,7 @@ const copies = computed(() => libraryState.copies?.songs ?? 0)
     @confirm="removeCopies"
   />
   <Dialog v-model:open="showMissing">
-    <DialogContent class="max-w-lg">
+    <DialogContent class="max-w-lg rounded-xl bg-card" @open-auto-focus.prevent>
       <DialogTitle>Songs that can’t be found</DialogTitle>
       <DialogDescription>
         Melue keeps them, with their likes, plays and places in playlists, in case they come back: put the files back or

@@ -296,16 +296,19 @@ pub struct MissingSong {
 impl Library {
     /// The songs that can't be found, in switched-on folders (most recently gone first).
     pub fn missing_songs(&self) -> Result<Vec<MissingSong>> {
+        // The folders' names as the library has them (a name can be the path's, made when read: none in the table).
+        let names: std::collections::HashMap<i64, String> = self.folders()?.into_iter().map(|f| (f.id, f.name)).collect();
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, t.title, t.artist_credit, f.name, t.path, t.missing_since FROM tracks t JOIN folders f ON f.id = t.folder_id
+                "SELECT t.id, t.title, t.artist_credit, t.folder_id, t.path, t.missing_since FROM tracks t JOIN folders f ON f.id = t.folder_id
                  WHERE t.missing_since IS NOT NULL AND t.copy_of IS NULL AND f.enabled ORDER BY t.missing_since DESC, t.title",
             )
             .map_err(err)?;
         let rows = stmt
             .query_map([], |r| {
-                Ok(MissingSong { id: r.get(0)?, title: r.get(1)?, artist: r.get(2)?, folder: r.get(3)?, path: r.get(4)?, missing_since: r.get(5)? })
+                let folder = names.get(&r.get::<_, i64>(3)?).cloned().unwrap_or_default();
+                Ok(MissingSong { id: r.get(0)?, title: r.get(1)?, artist: r.get(2)?, folder, path: r.get(4)?, missing_since: r.get(5)? })
             })
             .map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)

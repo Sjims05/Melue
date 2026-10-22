@@ -1,0 +1,63 @@
+# A release, at the end of a phase: pushing its version tag (v0.6.0: a phase's versions end in .0; the steps' don't, and
+# make no release) builds Melue for Windows here (or Run workflow on GitHub, for a tag), signs its update with Melue's key
+# (the repository secret TAURI_SIGNING_PRIVATE_KEY), and makes a draft release with the installer, the update and
+# latest.json, its notes from CHANGELOG.md. Publishing the draft (on GitHub) makes it the latest release: installed
+# copies then update to it (src/lib/updates.ts). Drafts and pre-releases never reach them.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.0']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      # Melue, and its player plugin beside it (as on the development PC: ../tauri-plugin-native-audio).
+      - uses: actions/checkout@v4
+        with:
+          path: melue
+      - uses: actions/checkout@v4
+        with:
+          repository: Sjims05/tauri-plugin-native-audio
+          path: tauri-plugin-native-audio
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: melue/src-tauri -> target
+
+      # The version's notes: its section of CHANGELOG.md, without the heading.
+      - name: Release notes
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo 'text<<END_OF_NOTES'
+            awk -v v="$version" '/^## /{ p = index($0, "## " v " ") == 1; next } p' melue/CHANGELOG.md
+            echo 'END_OF_NOTES'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install packages
+        working-directory: melue
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: melue
+          tagName: ${{ github.ref_name }}
+          releaseName: Melue ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.text }}
+          releaseDraft: true
+          includeUpdaterJson: true

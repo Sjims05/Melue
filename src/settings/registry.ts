@@ -218,6 +218,12 @@ export const SETTINGS: Record<string, SettingInfo> = {
     help: 'Started with Windows, Melue waits in the tray (no window), or opens its window too.',
     perDevice: true,
   },
+  'updates.ask': {
+    title: 'Ask when an update is found',
+    default: 'On',
+    help: 'When Melue finds a newer version, it asks whether to update now. Off: it only says so in About, under Updates.',
+    perDevice: true,
+  },
   'display.closeWindow': {
     title: 'Closing the window',
     default: 'Keep playing',

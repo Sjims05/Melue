@@ -137,3 +137,16 @@ fn a_folders_songs_go_by_where_they_are() {
     let file = t.library.track_file(tracks[0].id).unwrap().unwrap();
     assert!(file.ends_with("A/01.wav"), "{}", file.display());
 }
+
+#[test]
+fn songs_that_cant_be_found_are_listed_with_their_folders_name() {
+    // A folder without a name of its own (its name is the path's, made when it's read).
+    let (t, m, f) = setup("missing-list");
+    m.add("gone.wav", &song("Gone", "Band", "", 1));
+    m.add("here.wav", &song("Here", "Band", "", 1));
+    t.scan(f, &m);
+    std::fs::remove_file(m.path("gone.wav")).unwrap();
+    t.scan(f, &m);
+    let missing = t.library.missing_songs().unwrap();
+    assert_eq!(missing.iter().map(|s| (s.title.as_str(), s.folder.as_str())).collect::<Vec<_>>(), vec![("Gone", "Music")]);
+}

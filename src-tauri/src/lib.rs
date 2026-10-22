@@ -83,7 +83,11 @@ pub fn run() {
     // Desktop only: one Melue at a time (registered first, so a second start goes no further), and starting with
     // the system (desktop.rs).
     #[cfg(desktop)]
-    let builder = builder.plugin(desktop::single_instance()).plugin(desktop::autostart());
+    let builder = builder
+        .plugin(desktop::single_instance())
+        .plugin(desktop::autostart())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
 
     builder
         .plugin(tauri_plugin_deep_link::init())

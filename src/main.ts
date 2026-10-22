@@ -1,5 +1,9 @@
 import { createApp } from "vue";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Sparkles } from "@lucide/vue";
+import { toast } from "./lib/toast";
+import { updatedSinceLastRun } from "./lib/updatedNote";
 import "./style.css";
 // Light or dark (follows the system unless set).
 import "./lib/theme";
@@ -10,16 +14,20 @@ import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
 import { appearance } from "./lib/appearance";
+import { offerCopy } from "./lib/copyMenu";
 import { startHoverTips } from "./lib/hoverTips";
 import { preloadPages, router, startPage } from "./router";
 
 // Hover tips in Melue's style (every title: lib/hoverTips.ts).
 startHoverTips();
 
-// No browser right-click menu: Melue's own menus (e.g. a setting's "Reset to default") open where there is one.
-// Text fields keep it, for copy and paste.
+// No browser right-click menu: Melue's own menus (e.g. a setting's "Reset to default") open where there is one; on an
+// error, Copy (lib/copyMenu.ts). Text fields keep the browser's, for copy and paste.
 document.addEventListener("contextmenu", (e) => {
-  if (!(e.target as Element | null)?.closest?.("input, textarea, [contenteditable]")) e.preventDefault();
+  if ((e.target as Element | null)?.closest?.("input, textarea, [contenteditable]")) return;
+  const taken = e.defaultPrevented;
+  e.preventDefault();
+  if (!taken) offerCopy(e, isMobile);
 });
 
 async function start(shell = isMobile ? MobileShell : DesktopShell) {
@@ -47,6 +55,16 @@ async function start(shell = isMobile ? MobileShell : DesktopShell) {
     .then(() => syncNowPlaying());
   // Links to Melue from outside it (melue://settings/<id>).
   if (isTauri()) import("./lib/links").then(({ followLinks }) => followLinks(router)).catch(() => {});
+  // Updated since it last ran: a note, with What's new at hand (lib/updatedNote.ts).
+  if (isTauri()) {
+    getVersion().then((version) => {
+      if (updatedSinceLastRun(version)) {
+        toast(`Updated to Melue ${version}`, Sparkles, { label: "What's new", run: () => router.push({ path: "/settings", query: { whatsNew: "1" } }) });
+      }
+    }).catch(() => {});
+  }
+  // Desktop: updating itself from the newest stable release (lib/updates.ts).
+  if (isTauri() && !isMobile) import("./lib/updates").then(({ followUpdates }) => followUpdates()).catch(() => {});
   // Whether a share is set up (sync buttons show only then), kept live.
   startSync().catch((e) => console.error("melue: sync status failed", e));
 }
