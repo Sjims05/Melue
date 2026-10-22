@@ -160,6 +160,15 @@ mod android {
                 .map_err(|e| e.to_string())
         }
 
+        /// Hands a downloaded APK to Android's installer (the user confirms). Err("allow"): the user has to allow
+        /// Melue to install apps first (Android's screen for it is open).
+        pub fn install_apk(&self, path: &str) -> Result<(), String> {
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("installApk", serde_json::json!({ "path": path }))
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+
         /// How many songs Android's music index has.
         pub fn count_music(&self) -> Result<u64, String> {
             self.0.run_mobile_plugin::<Count>("countMusic", ()).map(|c| c.count).map_err(|e| e.to_string())

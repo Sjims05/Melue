@@ -189,6 +189,44 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @InvokeArg
+    class ApkArgs {
+        var path: String = ""
+    }
+
+    /**
+     * Updating Melue: hands a downloaded APK (in the app's cache) to Android's installer, which asks the user and
+     * installs it only when it's signed like this app. The first time, Android needs the user to allow Melue to install
+     * apps: its settings screen for that opens, and this rejects with "allow" (the app asks to tap Update again).
+     */
+    @Command
+    fun installApk(invoke: Invoke) {
+        val args = invoke.parseArgs(ApkArgs::class.java)
+        val file = java.io.File(args.path)
+        if (!file.exists()) {
+            invoke.reject("The update's file is gone")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.packageManager.canRequestPackageInstalls()) {
+            activity.startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            invoke.reject("allow")
+            return
+        }
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
+            val install = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            activity.startActivity(install)
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject("Can't install it: ${e.message}")
+        }
+    }
+
+    @InvokeArg
     class ShareArgs {
         var path: String = ""
         var title: String = ""

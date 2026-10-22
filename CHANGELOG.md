@@ -3,6 +3,15 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.5.19 (2026-10-22)
+
+Melue updates itself on phones too.
+
+- Phones: Melue looks for a newer release like on a computer, asks (a drawer: Update, Not now, Don't ask again),
+  downloads it and hands it to Android's installer. The first time, Android asks to allow Melue to install apps.
+  Android installs only an update signed like the installed app.
+- Releases carry the phone's APK too.
+
 ## 0.5.18 (2026-10-22)
 
 What's new, and Melue updates itself.

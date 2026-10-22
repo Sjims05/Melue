@@ -34,7 +34,7 @@ const updateLine = computed(() => {
     case 'downloading':
       return updates.progress == null ? 'Downloading…' : `Downloading · ${Math.round(updates.progress * 100)}%`
     case 'installing':
-      return 'Installing: Melue starts again in a moment'
+      return isMobile ? 'Android is installing it: open Melue again when it’s done' : 'Installing: Melue starts again in a moment'
     case 'failed':
       return `Couldn’t update: ${updates.error}`
     default:
@@ -88,12 +88,11 @@ async function copy() {
         <Transition name="swap" mode="out-in"><span :key="String(copied)">{{ copied ? 'Copied' : 'Copy' }}</span></Transition>
       </Button>
     </SettingsRow>
-    <SettingsRow v-if="!isMobile" title="Updates" :description="updateLine">
+    <SettingsRow title="Updates" :description="updateLine">
       <Button v-if="updates.state === 'available'" size="sm" @click="installUpdate">Update</Button>
       <Button v-else variant="outline" size="sm" :disabled="['checking', 'downloading', 'installing'].includes(updates.state)" @click="checkForUpdate()">Check now</Button>
     </SettingsRow>
     <SettingsRow
-      v-if="!isMobile"
       title="Ask when an update is found"
       description="Off: no question; About shows it here"
       detail

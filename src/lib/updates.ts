@@ -5,13 +5,21 @@
  * "Ask when an update is found" is off (then About's Updates row offers it). Update downloads it, installs it
  * (Windows' installer, without questions) and starts Melue again; the new version then says so (lib/updatedNote.ts).
  *
+ * On a phone (src-tauri phone_update.rs) the release's APK is downloaded and handed to Android's installer, which asks
+ * and installs it (only when it's signed like the installed app); the first time, Android wants Melue allowed to install
+ * apps (its screen opens; then Update again). The question is a drawer there.
+ *
  * A development build goes through all of it without updating: the look finds a made-up next version, the download
  * and the install only seem to happen, and instead of starting again it shows the note a new version would.
  */
-import { Sparkles } from '@lucide/vue'
+import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
+import { CircleSlash, Clock, Download, Sparkles } from '@lucide/vue'
 import { reactive } from 'vue'
 import { library } from '@/library'
+import { isMobile } from '@/platform'
 import { router } from '@/router'
+import { openMenu } from './menuDrawer'
 import { toast } from './toast'
 
 type Update = NonNullable<Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>>>
@@ -38,6 +46,16 @@ export const updates = reactive({
 })
 
 let found: Update | null = null
+/** A phone's: the newest release's APK (phone_update.rs), and whether it was downloaded (allowing installs was asked). */
+let apk: { url: string; size: number } | null = null
+let downloaded = false
+
+/** Whether version `a` ("0.6.0") is newer than `b`. */
+const newer = (a: string, b: string) => {
+  const [x, y] = [a, b].map((v) => v.split('.').map(Number))
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0)
+  return false
+}
 const FIRST_MS = 60_000
 const EVERY_MS = 6 * 3_600_000
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
@@ -60,6 +78,16 @@ export async function checkForUpdate(quiet = false) {
       await wait(800)
       version = await nextVersion()
       updates.notes = 'The changes in this version, as its release notes say them.'
+    } else if (isMobile) {
+      const release = await invoke<{ version: string; notes: string; url: string; size: number } | null>('update_latest_release')
+      const { getVersion } = await import('@tauri-apps/api/app')
+      const here = await getVersion()
+      if (release && newer(release.version, here)) {
+        version = release.version
+        updates.notes = release.notes
+        if (apk?.url !== release.url) downloaded = false
+        apk = { url: release.url, size: release.size }
+      }
     } else {
       const { check } = await import('@tauri-apps/plugin-updater')
       found = await check()
@@ -70,7 +98,7 @@ export async function checkForUpdate(quiet = false) {
     if (version) {
       updates.state = 'available'
       updates.version = version
-      if (updates.ask) updates.asking = true
+      if (updates.ask) askNow()
     } else {
       updates.state = 'latest'
       if (!quiet) toast('Melue is up to date')
@@ -82,9 +110,26 @@ export async function checkForUpdate(quiet = false) {
   }
 }
 
-/** Downloads and installs the newer release, then starts Melue again. */
+/** Asks about the update: the dialog (UpdateDialog.vue), or on a phone the menu drawer. */
+function askNow() {
+  if (!isMobile) return void (updates.asking = true)
+  const first = updates.notes.split('\n').find((l) => l.trim() && !l.startsWith('#'))
+  openMenu({
+    title: `Melue ${updates.version} is ready`,
+    subtitle: first?.replace(/^[-*]\s*/, '') || 'Update now? Your music and settings stay as they are.',
+    items: [
+      { action: 'update', label: 'Update', icon: Download },
+      { action: 'later', label: 'Not now', icon: Clock },
+      { action: 'never', label: 'Don’t ask again', icon: CircleSlash, apart: true },
+    ],
+    pick: (action) => (action === 'update' ? installUpdate() : action === 'never' ? setAskForUpdates(false) : notNow()),
+  })
+}
+
+/** Downloads and installs the newer release, then starts Melue again (a phone: Android's installer takes over). */
 export async function installUpdate() {
   updates.asking = false
+  if (isMobile && !pretend) return installOnPhone()
   if (!found && !pretend) return
   updates.state = 'downloading'
   updates.progress = 0
@@ -115,6 +160,35 @@ export async function installUpdate() {
   } catch (e) {
     updates.state = 'failed'
     updates.error = String(e)
+  }
+}
+
+/** A phone: the APK downloaded (its progress shown), then Android's installer. */
+async function installOnPhone() {
+  if (!apk) return
+  updates.state = 'downloading'
+  updates.progress = downloaded ? 1 : 0
+  const stop = await listen<{ done: number; total: number }>('update-download', (e) => {
+    updates.progress = e.payload.total ? e.payload.done / e.payload.total : null
+  })
+  try {
+    if (downloaded) await invoke('update_install_downloaded')
+    else await invoke('update_install_apk', { url: apk.url, size: apk.size })
+    downloaded = true
+    // Android's installer is asking; installing replaces Melue (open it again after).
+    updates.state = 'installing'
+  } catch (e) {
+    if (String(e).includes('allow')) {
+      // Android's screen to allow it is open: back here, Update again (the file is there already).
+      downloaded = true
+      updates.state = 'available'
+      toast('Allow Melue to install updates, then tap Update again', Download, { label: 'Update', run: installUpdate })
+    } else {
+      updates.state = 'failed'
+      updates.error = String(e)
+    }
+  } finally {
+    stop()
   }
 }
 

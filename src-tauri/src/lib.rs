@@ -2,6 +2,7 @@
 mod desktop;
 mod library;
 mod logging;
+mod phone_update;
 mod share;
 mod startup;
 mod sync;
@@ -199,6 +200,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             startup::window_ready,
+            phone_update::update_latest_release,
+            phone_update::update_install_apk,
+            phone_update::update_install_downloaded,
             logging::log_show,
             smb_connect,
             smb_list_dir,
