@@ -24,6 +24,7 @@ import DropSongs from '@/settings/DropSongs.vue'
 import UpdateDialog from './UpdateDialog.vue'
 import CopyMenu from './CopyMenu.vue'
 import KeyboardShortcuts from './KeyboardShortcuts.vue'
+import ReportDialog from '@/components/report/ReportDialog.vue'
 import { startHotkeys } from '@/lib/hotkeys'
 import DotsNav from './DotsNav.vue'
 import PlayerBar from './PlayerBar.vue'
@@ -107,6 +108,8 @@ onKeyStroke('Escape', (e) => {
       <CopyMenu />
       <!-- Keyboard shortcuts (lib/hotkeys.ts) and their list (?). -->
       <KeyboardShortcuts />
+      <!-- Report a bug (About, or Ctrl+Shift+B). -->
+      <ReportDialog />
       <!-- Questions asked from anywhere (lib/confirm.ts: a song's Move to sync). -->
       <ConfirmHost />
     </div>

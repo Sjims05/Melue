@@ -2,7 +2,8 @@
 /**
  * About: Melue's version, details to copy when something goes wrong (version, device, share and sync status, the
  * library's counts; never a password), and Melue's log (logging.rs): shared from the phone (Android's share sheet),
- * shown in its folder on a computer.
+ * shown in its folder on a computer. Report a bug (lib/report/report.ts), whether a screenshot is kept with reports,
+ * and this device's reports: waiting to be sent, or sent (with their issue).
  */
 import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
@@ -18,6 +19,8 @@ import { troubleshootingDetails } from './troubleshooting'
 import { shortcuts } from '@/lib/hotkeys'
 import { checkForUpdate, installUpdate, setAskForUpdates, updates } from '@/lib/updates'
 import { Switch } from '@/components/ui/switch'
+import { listReports, openReport, readScreenshotSetting, reporting, setKeepScreenshots, type SavedReport } from '@/lib/report/report'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 const version = ref('')
 const copied = ref(false)
@@ -62,8 +65,24 @@ async function showLog() {
   await invoke('log_show').catch((e) => (error.value = String(e)))
 }
 
+// This device's reports (newest first), read again when the report dialog closes.
+const reports = ref<SavedReport[]>([])
+const showReports = ref(false)
+const loadReports = async () => (reports.value = await listReports())
+watch(
+  () => reporting.open,
+  (open) => !open && setTimeout(loadReports, 300),
+)
+const reportsLine = computed(() => {
+  const waiting = reports.value.filter((r) => !r.sentUrl).length
+  const sent = reports.value.length - waiting
+  return [waiting && `${waiting} waiting to be sent`, sent && `${sent} sent`].filter(Boolean).join(' · ')
+})
+const reportLine = (r: SavedReport) => (r.sentUrl ? `Sent ${ago(r.sentMs ?? r.madeMs)}` : `Made ${ago(r.madeMs)} · waiting to be sent`)
+
 onPageLoad(async () => {
   version.value = await getVersion().catch(() => '')
+  await Promise.all([loadReports(), readScreenshotSetting()])
 })
 
 async function copy() {
@@ -103,6 +122,27 @@ async function copy() {
     >
       <Switch :model-value="updates.ask" @update:model-value="setAskForUpdates" />
     </SettingsRow>
+    <SettingsRow title="Report a bug" :description="isMobile ? 'Tell what went wrong; you see the report before it’s sent' : 'Tell what went wrong; you see the report before it’s sent (Ctrl+Shift+B)'">
+      <Button variant="outline" size="sm" @click="openReport">Report</Button>
+    </SettingsRow>
+    <SettingsRow
+      title="Keep a screenshot with reports"
+      description="The window as it was, kept with the report on your share for you; never sent"
+      detail
+      setting="reports.screenshot"
+      :reset="() => setKeepScreenshots(false)"
+      :is-default="!reporting.keepScreenshots"
+    >
+      <Switch :model-value="reporting.keepScreenshots" @update:model-value="setKeepScreenshots" />
+    </SettingsRow>
+    <SettingsRow v-if="reports.length" title="Your reports" :description="reportsLine" detail>
+      <Button variant="outline" size="sm" @click="showReports = !showReports">{{ showReports ? 'Hide' : 'Show' }}</Button>
+    </SettingsRow>
+    <template v-if="showReports">
+      <SettingsRow v-for="r in reports.slice(0, 8)" :key="r.id" :title="r.title" :description="reportLine(r)" detail>
+        <Button v-if="r.sentUrl" variant="ghost" size="sm" @click="openUrl(r.sentUrl)">Open</Button>
+      </SettingsRow>
+    </template>
     <SettingsRow v-if="!isMobile" title="Keyboard shortcuts" description="The player and the pages from the keyboard (or press ?)">
       <Button variant="outline" size="sm" @click="shortcuts.open = true">Show</Button>
     </SettingsRow>

@@ -396,6 +396,10 @@ pub fn run(app: &AppHandle) -> Result<()> {
         let mut playlists = super::playlist_sync::sync_playlists(&library, share, &folder, &me, &name, ahead)?;
         playlists.changed.extend(super::cover_sync::sync_covers(&library, share, &folder, &me, ahead)?);
         let settings = super::settings_sync::sync_settings(&library, share)?;
+        // Bug reports: to the share, and those waiting there sent from here when signed in (report/saved.rs).
+        if let Err(e) = crate::report::saved::sync(app, share) {
+            eprintln!("melue: bug reports on the share: {e}");
+        }
         Ok((data, playlists, settings))
     })?;
     // Settings another device changed: the app sets them here.

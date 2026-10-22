@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.5.20"
+version = "0.5.21"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -37,6 +37,10 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 ureq = { version = "3", features = ["json"] }
 # Sorting and grouping names without their accents (Ólafur with the O's).
 unicode-normalization = "0.1"
+# Bug reports (report.rs): finding what's personal in a report (paths, addresses: regex) and the library's names in
+# it, thousands at once (aho-corasick).
+regex = "1"
+aho-corasick = "1"
 smb2 = "0.11"
 # Playback on every platform (its `mobile` and `desktop` features, both on by default).
 tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }
@@ -63,6 +67,10 @@ keyring = { version = "3", features = ["windows-native"] }
 # Melue's printed messages to its log file too (logging.rs), and network drives' addresses (library/network.rs).
 # Tauri uses it already.
 windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_NetworkManagement_WNet"] }
+# A bug report's screenshot (report/screenshot.rs): the web view's own capture, through the WebView2 bindings and the
+# Windows crate Tauri uses (the same versions, so their types fit).
+webview2-com = "0.39"
+windows = { version = "0.62", features = ["Win32_UI_Shell", "Win32_System_Com", "Win32_Storage_FileSystem"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
 [target.'cfg(target_os = "linux")'.dependencies]

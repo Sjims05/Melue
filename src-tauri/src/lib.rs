@@ -1,8 +1,10 @@
 #[cfg(desktop)]
 mod desktop;
+mod github;
 mod library;
 mod logging;
 mod phone_update;
+mod report;
 mod share;
 mod startup;
 mod sync;
@@ -146,6 +148,8 @@ pub fn run() {
             library::online_lyrics::start(app.handle());
             // Syncing with the share by itself (start-up, coming back, the share's changes; see sync/schedule.rs).
             sync::scheduler::start(app.handle());
+            // Bug reports waiting to be sent: tried a while after start (then at each library sync).
+            report::saved::start(app.handle());
             // Synced playback: what plays here goes to the share; another device's is offered (see sync/handoff.rs).
             app.manage(sync::shared::OpenShare::default());
             // The car with Melue closed finds the library here (sync/car.rs).
@@ -220,6 +224,18 @@ pub fn run() {
             phone_update::update_install_downloaded,
             logging::log_show,
             app_is_dev,
+            github::github_sign_in_start,
+            github::github_sign_in_wait,
+            github::github_sign_in_cancel,
+            github::github_account,
+            github::github_sign_out,
+            github::github_create_issue,
+            report::scrub::report_scrub,
+            report::scrub::report_log,
+            report::saved::report_save,
+            report::saved::report_discard,
+            report::saved::reports_list,
+            report::screenshot::report_screenshot,
             smb_connect,
             smb_list_dir,
             smb_copy_file,

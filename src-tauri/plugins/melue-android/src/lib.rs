@@ -169,6 +169,14 @@ mod android {
                 .map_err(|e| e.to_string())
         }
 
+        /// A bug report's screenshot: the window's pixels, as a PNG at `path` (kept on the phone and the share only).
+        pub fn screenshot(&self, path: &str) -> Result<(), String> {
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("screenshot", serde_json::json!({ "path": path }))
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+
         /// How many songs Android's music index has.
         pub fn count_music(&self) -> Result<u64, String> {
             self.0.run_mobile_plugin::<Count>("countMusic", ()).map(|c| c.count).map_err(|e| e.to_string())

@@ -218,6 +218,12 @@ export const SETTINGS: Record<string, SettingInfo> = {
     help: 'Started with Windows, Melue waits in the tray (no window), or opens its window too.',
     perDevice: true,
   },
+  'reports.screenshot': {
+    title: 'Keep a screenshot with reports',
+    default: 'Off',
+    help: 'When you report a bug, Melue takes a picture of the window as it was and keeps it with the report on your share (and on this device until it gets there), for you to look at. It is never sent: the public report describes the screen in words instead.',
+    perDevice: true,
+  },
   'updates.ask': {
     title: 'Ask when an update is found',
     default: 'On',

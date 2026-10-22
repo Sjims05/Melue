@@ -14,6 +14,7 @@ import AboutSettings from './AboutSettings.vue'
 import AcrossDevices from './AcrossDevices.vue'
 import AndroidSource from './AndroidSource.vue'
 import AudioSettings from './AudioSettings.vue'
+import ConnectionsSettings from './ConnectionsSettings.vue'
 import DisplaySettings from './DisplaySettings.vue'
 import LibraryStatus from './LibraryStatus.vue'
 import MobileData from './MobileData.vue'
@@ -115,6 +116,8 @@ const toShare = () => shareSection.value?.scrollIntoView({ behavior: 'smooth', b
         <div ref="shareSection" class="scroll-mt-16" />
         <ShareSetup />
         <PlaylistSettings />
+
+        <ConnectionsSettings />
 
         <DisplaySettings />
         <StorageSettings />

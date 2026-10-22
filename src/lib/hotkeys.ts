@@ -12,6 +12,7 @@ import { reactive } from 'vue'
 import { router, MAIN_PAGES } from '@/router'
 import { current, cycleRepeat, like, next, nowPlaying, position, previous, seek, setVolume, toggleShuffle, togglePlay } from '@/player/nowPlaying'
 import { upNextOpen } from '@/player/upNext'
+import { openReport } from '@/lib/report/report'
 
 /** The shortcuts, as the list shows them (`keys`: each a key, or keys pressed together). */
 export const SHORTCUTS: { group: string; items: { keys: string[][]; what: string }[] }[] = [
@@ -38,6 +39,7 @@ export const SHORTCUTS: { group: string; items: { keys: string[][]; what: string
       { keys: [['Y']], what: 'Lyrics full size (again: closed)' },
       { keys: [['Esc']], what: 'Close, or back' },
       { keys: [['?']], what: 'These shortcuts' },
+      { keys: [['Ctrl', 'Shift', 'B']], what: 'Report a bug' },
     ],
   },
   {
@@ -146,7 +148,8 @@ function onKey(e: KeyboardEvent) {
     return
   }
   if (ctrl) {
-    if (key === 'ArrowLeft') act(previous)
+    if (e.shiftKey && key.toLowerCase() === 'b') act(openReport)
+    else if (key === 'ArrowLeft') act(previous)
     else if (key === 'ArrowRight') act(next)
     return
   }
@@ -304,14 +307,25 @@ let started = false
 export function startHotkeys() {
   if (started) return
   started = true
-  window.addEventListener('keydown', tabKey)
-  window.addEventListener('keydown', listKey)
-  window.addEventListener('keydown', gridKey)
-  window.addEventListener('keydown', onKey)
+  for (const listener of LISTENERS) window.addEventListener('keydown', listener)
   // A page switch: the focus back at the page's top (the next Tab starts there; nothing on the old page keeps it).
-  router.afterEach((to, from) => {
+  stopAfterEach = router.afterEach((to, from) => {
     if (to.path === from.path) return
     const active = document.activeElement as HTMLElement | null
     if (active && active !== document.body && !active.closest('[role=dialog]')) active.blur()
+  })
+}
+
+const LISTENERS = [tabKey, listKey, gridKey, onKey]
+let stopAfterEach: (() => void) | undefined
+
+// Development: a changed file reloads this module (or one it uses); the keys move to the new one. Left alone, the old
+// listeners would stay, acting on the old modules (Ctrl+Shift+B opening a report no dialog shows).
+if (import.meta.hot) {
+  if (import.meta.hot.data.started) startHotkeys()
+  import.meta.hot.dispose((data) => {
+    data.started = started
+    for (const listener of LISTENERS) window.removeEventListener('keydown', listener)
+    stopAfterEach?.()
   })
 }

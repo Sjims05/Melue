@@ -3011,8 +3011,9 @@ dependencies = [
 
 [[package]]
 name = "melue"
-version = "0.5.20"
+version = "0.5.21"
 dependencies = [
+ "aho-corasick",
  "fs4",
  "futures-executor",
  "image",
@@ -3020,6 +3021,7 @@ dependencies = [
  "keyring",
  "libc",
  "lofty",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3042,6 +3044,8 @@ dependencies = [
  "trash",
  "unicode-normalization",
  "ureq",
+ "webview2-com",
+ "windows 0.62.2",
  "windows-sys 0.61.2",
  "xxhash-rust",
 ]

@@ -3,6 +3,22 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.5.21 (2026-10-22)
+
+Report a bug from Melue.
+
+- Report a bug (About, or Ctrl+Shift+B): say what happened, then see the whole report before it's sent. It adds what
+  helps find the problem: the version and device, the last steps, the screen described in words, errors, the sync
+  and the library, and the log's last lines. Each part can be left out.
+- Nothing personal goes out: song titles, artists, albums, playlists, folders, paths, the share's address and login,
+  device names, addresses and links are replaced by placeholders like [song 1]; the review shows what each stands for
+  (only to you).
+- Reports are public issues on Melue's GitHub, sent from your own account: Settings has a new Connections section to
+  sign in to GitHub. Not signed in, or offline: Send later keeps it, and it's sent by this device or another of yours
+  that's signed in, through the share. About lists your reports.
+- Keep a screenshot with reports (off unless switched on): kept with the report on your share, never sent.
+- The player bar's song gives up its width gradually as the window narrows, before everything moves closer together.
+
 ## 0.5.20 (2026-10-22)
 
 The keyboard everywhere, and smoother changes.

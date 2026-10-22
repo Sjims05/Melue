@@ -27,6 +27,7 @@ import MobileTopBar from './MobileTopBar.vue'
 import { usePullToClose } from './pullToClose'
 import { READY, usePullToRefresh } from './pullToRefresh'
 import MenuDrawer from './MenuDrawer.vue'
+import ReportDialog from '@/components/report/ReportDialog.vue'
 
 const route = useRoute()
 // What's playing; the song menus' Add to playlist; which songs are only on this device.
@@ -133,6 +134,8 @@ const refresh = usePullToRefresh(scroller)
     </Transition>
     <!-- Menus: up from the bottom (⋯, a long press). -->
     <MenuDrawer />
+    <!-- Report a bug (About). -->
+    <ReportDialog />
     <ConfirmHost />
   </div>
 </template>

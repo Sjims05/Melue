@@ -13,6 +13,7 @@ import { syncNowPlaying } from "./player/nowPlaying";
 import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
+import { startTrail } from "./lib/report/trail";
 import { appearance } from "./lib/appearance";
 import { offerCopy } from "./lib/copyMenu";
 import { startHoverTips } from "./lib/hoverTips";
@@ -65,6 +66,8 @@ async function start(shell = isMobile ? MobileShell : DesktopShell) {
   }
   // Updating itself from the newest published release (lib/updates.ts).
   if (isTauri()) import("./lib/updates").then(({ followUpdates }) => followUpdates()).catch(() => {});
+  // What a bug report says was done before it: the last steps and errors (lib/report/trail.ts).
+  startTrail();
   // Whether a share is set up (sync buttons show only then), kept live.
   startSync().catch((e) => console.error("melue: sync status failed", e));
 }

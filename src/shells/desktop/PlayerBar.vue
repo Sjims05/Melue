@@ -30,12 +30,16 @@ const OFF = 'pointer-events-none opacity-40'
 </script>
 
 <template>
-  <!-- Narrower windows (under 1280 px): a narrower song and less room between the parts, so the progress keeps its room. -->
+  <!--
+    The parts, with the room between them as columns of their own. As the window narrows, the song gives up its
+    width first (360 px down to 200), while the progress keeps at least 240; under 1140 px, when that's used up,
+    everything moves closer together.
+  -->
   <footer
-    class="grid h-[92px] flex-none grid-cols-[minmax(0,200px)_auto_minmax(0,1fr)_auto] items-center gap-x-4 border-t px-4 transition-[grid-template-columns,column-gap,padding] duration-300 ease-out xl:grid-cols-[minmax(0,360px)_auto_minmax(0,1fr)_auto] xl:gap-x-12 xl:px-12"
+    class="grid h-[92px] flex-none grid-cols-[minmax(0,200px)_16px_auto_16px_minmax(0,1fr)_16px_auto] items-center border-t px-4 transition-[grid-template-columns,padding] duration-300 ease-out min-[1140px]:grid-cols-[minmax(200px,360px)_48px_auto_48px_minmax(240px,1fr)_48px_auto] min-[1140px]:px-12"
   >
-    <!-- The song. A set width, so the controls stay put: a long title is cut off (the grid's gap keeps it off them). -->
-    <RouterLink v-if="current && state" to="/now-playing" class="flex min-w-0 items-center gap-4">
+    <!-- The song. A set width, so the controls stay put: a long title is cut off (the room after it keeps it off them). -->
+    <RouterLink v-if="current && state" to="/now-playing" class="col-start-1 flex min-w-0 items-center gap-4">
       <span class="relative size-[52px] flex-none overflow-hidden rounded-md bg-well">
         <Transition name="fade">
           <img v-if="current.cover" :key="current.cover" :src="current.cover" alt="" class="absolute inset-0 size-full object-cover" draggable="false" />
@@ -49,7 +53,7 @@ const OFF = 'pointer-events-none opacity-40'
       </Transition>
       <PlayingBars :paused="!state.isPlaying" class="ml-1 flex-none scale-150" />
     </RouterLink>
-    <div v-else class="flex min-w-0 items-center gap-4">
+    <div v-else class="col-start-1 flex min-w-0 items-center gap-4">
       <span class="grid size-[52px] flex-none place-items-center rounded-md bg-well text-muted-foreground"><Music class="size-5" /></span>
       <span class="flex min-w-0 flex-col">
         <span class="truncate text-[15px] font-semibold">Nothing playing</span>
@@ -58,7 +62,7 @@ const OFF = 'pointer-events-none opacity-40'
     </div>
 
     <!-- The controls. -->
-    <div class="flex items-center gap-1 transition-[gap] duration-300 ease-out xl:gap-3">
+    <div class="col-start-3 flex items-center gap-1 transition-[gap] duration-300 ease-out min-[1140px]:gap-3">
       <button type="button" :class="[ICON, tone(!!state?.shuffle)]" :aria-pressed="!!state?.shuffle" aria-label="Shuffle" @click="toggleShuffle">
         <Shuffle />
         <span v-if="state?.shuffle" class="absolute bottom-0.5 size-1 rounded-full bg-current" />
@@ -89,14 +93,14 @@ const OFF = 'pointer-events-none opacity-40'
     </div>
 
     <!-- Where it is. -->
-    <div class="flex min-w-0 items-center gap-3 text-sm text-muted-foreground tabular-nums transition-[gap] duration-300 ease-out xl:gap-4" :class="empty && OFF" :inert="empty || undefined">
+    <div class="col-start-5 flex min-w-0 items-center gap-3 text-sm text-muted-foreground tabular-nums transition-[gap] duration-300 ease-out min-[1140px]:gap-4" :class="empty && OFF" :inert="empty || undefined">
       <span class="w-10 text-right">{{ time(empty ? 0 : position) }}</span>
       <Slider class="flex-1" :value="empty ? 0 : position" :max="state?.duration || 1" label="Seek" @change="seek" />
       <span class="w-10">{{ time(empty ? 0 : (state?.duration ?? 0)) }}</span>
     </div>
 
     <!-- The rest. -->
-    <div class="flex items-center gap-0.5 transition-[gap] duration-300 ease-out xl:gap-2">
+    <div class="col-start-7 flex items-center gap-0.5 transition-[gap] duration-300 ease-out min-[1140px]:gap-2">
       <button
         type="button"
         :class="[ICON, tone(!!current?.liked), empty && OFF]"

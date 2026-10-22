@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
+import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
@@ -16,6 +17,7 @@ import android.content.pm.PackageManager
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.provider.MediaStore
+import android.view.PixelCopy
 import android.webkit.WebView
 import app.tauri.PermissionState
 import app.tauri.annotation.Command
@@ -223,6 +225,46 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.resolve()
         } catch (e: Exception) {
             invoke.reject("Can't install it: ${e.message}")
+        }
+    }
+
+    @InvokeArg
+    class ScreenshotArgs {
+        var path: String = ""
+    }
+
+    /**
+     * A bug report's screenshot (only when the person keeps them; never sent): the window's pixels, as Android shows
+     * them, saved as a PNG at `path`.
+     */
+    @Command
+    fun screenshot(invoke: Invoke) {
+        val args = invoke.parseArgs(ScreenshotArgs::class.java)
+        activity.runOnUiThread {
+            val view = activity.window.decorView
+            if (view.width == 0 || view.height == 0) {
+                invoke.reject("The window isn't shown")
+                return@runOnUiThread
+            }
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            PixelCopy.request(activity.window, bitmap, { result ->
+                if (result != PixelCopy.SUCCESS) {
+                    bitmap.recycle()
+                    invoke.reject("Android couldn't copy the screen ($result)")
+                    return@request
+                }
+                // Saving takes a moment: not on the UI's thread.
+                Thread {
+                    try {
+                        java.io.FileOutputStream(args.path).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        invoke.resolve()
+                    } catch (e: Exception) {
+                        invoke.reject("Can't save the screenshot: ${e.message}")
+                    } finally {
+                        bitmap.recycle()
+                    }
+                }.start()
+            }, Handler(Looper.getMainLooper()))
         }
     }
 

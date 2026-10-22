@@ -113,6 +113,7 @@ const press = useLongPress(() => {
         <span class="settings-row-text flex flex-col gap-0.5">
           <span
             class="text-sm [overflow-wrap:anywhere]"
+            data-row-title
             :class="[detail ? 'font-medium text-soft' : 'font-semibold', dim && 'text-muted-foreground']"
           >
             <slot name="title">{{ title }}</slot>

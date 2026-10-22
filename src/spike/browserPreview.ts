@@ -290,6 +290,28 @@ export function installBrowserPreview() {
         case 'playback_sync_settings': return playback
         case 'playback_sync_set_settings': playback = a.settings as PlaybackSettings; return playback
         case 'plugin:app|version': return '0.5.1'
+        // Bug reports: the sample library's names replaced as report.rs would (a few, by hand).
+        case 'app_is_dev': return true
+        case 'github_account': return 'someone'
+        case 'github_create_issue': await wait(900); return 'https://github.com/Sjims05/Melue/issues/1'
+        case 'report_screenshot': return false
+        case 'report_save': case 'report_discard': return null
+        case 'reports_list': return [
+          { id: 'b', madeMs: Date.now() - 3_600_000, title: 'The album page stayed empty after adding a folder', body: '', sentUrl: null },
+          { id: 'a', madeMs: Date.now() - 2 * 86_400_000, sentMs: Date.now() - 86_400_000, title: 'Lyrics jumped back a line', body: '', sentUrl: 'https://github.com/Sjims05/Melue/issues/1' },
+        ]
+        case 'report_log': return '2026-10-22 18:02:11 melue: sync: copied D:/Music/Amara Sol/Golden hour.flac\n2026-10-22 18:02:12 melue: share 192.168.1.20 answered'
+        case 'report_scrub': {
+          const names: [string, string][] = [['D:/Music/Amara Sol/Golden hour.flac', '[path 1].flac'], ['Golden hour', '[song 1]'], ['Amara Sol', '[artist 1]'], ['192.168.1.20', '[address 1]']]
+          let text = a.text as string
+          const replaced: { placeholder: string; original: string }[] = []
+          for (const [original, placeholder] of names) {
+            if (!text.toLowerCase().includes(original.toLowerCase())) continue
+            replaced.push({ placeholder, original })
+            text = text.split(original).join(placeholder).split(original.toLowerCase()).join(placeholder)
+          }
+          return { text, replaced }
+        }
         case 'share_set_up': {
           const setup = a.setup as ShareSetup
           await wait(900)
