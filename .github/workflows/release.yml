@@ -8,7 +8,16 @@ name: Release
 on:
   push:
     tags: ['v*.*.0']
+  # By hand (Actions → Release → Run workflow): the tag to build (an existing one, say v0.6.0).
   workflow_dispatch:
+    inputs:
+      tag:
+        description: The version tag to build (v0.6.0)
+        required: true
+
+# The tag built: the pushed one, or the one asked for.
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   windows:
@@ -19,6 +28,7 @@ jobs:
       # Melue, and its player plugin beside it (as on the development PC: ../tauri-plugin-native-audio).
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.TAG }}
           path: melue
       - uses: actions/checkout@v4
         with:
@@ -38,16 +48,21 @@ jobs:
         id: notes
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           {
             echo 'text<<END_OF_NOTES'
             awk -v v="$version" '/^## /{ p = index($0, "## " v " ") == 1; next } p' melue/CHANGELOG.md
             echo 'END_OF_NOTES'
           } >> "$GITHUB_OUTPUT"
 
+      # Without the private test-build helper (tauri-dev-scripts: installing on a phone over USB), which a release
+      # doesn't need and this machine can't fetch.
       - name: Install packages
         working-directory: melue
-        run: npm ci
+        shell: bash
+        run: |
+          npm pkg delete devDependencies.tauri-dev-scripts
+          npm install --no-audit --no-fund
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -56,8 +71,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: melue
-          tagName: ${{ github.ref_name }}
-          releaseName: Melue ${{ github.ref_name }}
+          tagName: ${{ env.TAG }}
+          releaseName: Melue ${{ env.TAG }}
           releaseBody: ${{ steps.notes.outputs.text }}
           releaseDraft: true
           includeUpdaterJson: true
@@ -73,6 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.TAG }}
           path: melue
       - uses: actions/checkout@v4
         with:
@@ -111,7 +127,10 @@ jobs:
 
       - name: Install packages
         working-directory: melue
-        run: npm ci
+        shell: bash
+        run: |
+          npm pkg delete devDependencies.tauri-dev-scripts
+          npm install --no-audit --no-fund
 
       - name: Build the APK
         working-directory: melue
@@ -126,6 +145,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "Melue_${version}_android.apk"
-          gh release upload "$GITHUB_REF_NAME" "Melue_${version}_android.apk" --clobber
+          gh release upload "$TAG" "Melue_${version}_android.apk" --clobber
