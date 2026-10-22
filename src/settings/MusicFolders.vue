@@ -207,8 +207,12 @@ function confirm() {
       <Button size="sm" variant="secondary" @click="asking = { what: 'remove', folder }">Remove from your folders</Button>
     </template>
   </SettingsTip>
-  <SettingsTip v-if="adding.result && !adding.error" kind="ok" class="mt-3">Added songs: {{ adding.result }}</SettingsTip>
-  <SettingsTip v-if="error || adding.error" kind="bad" class="mt-3">{{ error || adding.error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="adding.result && !adding.error" kind="ok" class="mt-3">Added songs: {{ adding.result }}</SettingsTip>
+  </Transition>
+  <Transition name="drop">
+    <SettingsTip v-if="error || adding.error" kind="bad" class="mt-3">{{ error || adding.error }}</SettingsTip>
+  </Transition>
 
   <ConfirmDialog
     v-if="ask"

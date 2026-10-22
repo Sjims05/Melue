@@ -115,7 +115,9 @@ const PERMISSION: Record<MusicAccess['permission'], string> = {
       <Switch :model-value="otherApps" @update:model-value="setOtherApps" />
     </SettingsRow>
   </SettingsCard>
-  <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  </Transition>
 
   <ConfirmDialog
     v-model:open="asking"

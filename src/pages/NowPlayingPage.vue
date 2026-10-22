@@ -21,6 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { appearance, primaryArea } from '@/lib/appearance'
 import { isDesktop } from '@/platform/platform'
 import { followLyrics } from '@/player/lyrics'
+import { upNextOpen } from '@/player/upNext'
 import { songAction } from '@/player/songs'
 import {
   clearUpNext,
@@ -65,7 +66,9 @@ const openLyrics = () => router.push({ query: { ...route.query, lyrics: '1' } })
 const closeLyrics = () => router.back()
 useEventListener('keydown', (e: KeyboardEvent) => lyricsFull.value && e.key === 'Escape' && closeLyrics())
 
-const open = ref(route.query.queue === 'open')
+// Open or not: shared (player/upNext.ts), so the Q key can toggle it from anywhere.
+const open = upNextOpen
+if (route.query.queue === 'open') open.value = true
 const upNextPanel = ref<HTMLElement>()
 const SCROLL_MS = 600
 const ROOM = 16
@@ -283,6 +286,7 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
     <!-- Up next. -->
     <section
       v-if="current"
+      id="up-next"
       ref="upNextPanel"
       class="mx-auto mt-12 max-w-[1008px] scroll-mt-6 rounded-xl"
       :class="appearance.upNextPrimary ? primaryArea : 'bg-card text-card-foreground'"

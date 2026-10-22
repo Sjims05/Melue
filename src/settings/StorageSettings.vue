@@ -51,5 +51,7 @@ const line = () => {
       <Button variant="outline" size="sm" :disabled="cleaning" @click="cleanUp">{{ cleaning ? 'Cleaning up…' : 'Clean up' }}</Button>
     </SettingsRow>
   </SettingsCard>
-  <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  </Transition>
 </template>

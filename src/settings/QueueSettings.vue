@@ -152,5 +152,7 @@ const summary = computed(() => (follow.value ? followSummary(follow.value) : '')
       <Switch :model-value="playerSettings.value.repeatAddedTracks" @update:model-value="(repeatAddedTracks) => savePlayerSettings({ repeatAddedTracks })" />
     </SettingsRow>
   </SettingsCard>
-  <SettingsTip v-if="error || playerSettings.error" kind="bad" class="mt-3">{{ error || playerSettings.error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error || playerSettings.error" kind="bad" class="mt-3">{{ error || playerSettings.error }}</SettingsTip>
+  </Transition>
 </template>

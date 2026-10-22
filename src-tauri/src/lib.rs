@@ -9,6 +9,21 @@ mod sync;
 
 use std::sync::{Arc, Mutex};
 
+/// Who this Melue is (its data folders, its log, its saved passwords): the official app, or a development build as
+/// "Melue Dev", which keeps its own (never the installed app's library or settings). Android test builds are their own
+/// app too (com.simon.melue.dev; build.gradle.kts).
+pub const IDENTITY: &str = if cfg!(debug_assertions) { "com.simon.melue.dev" } else { "com.simon.melue" };
+
+/// Whether this is Melue Dev (a development build, or an Android test build): it never updates itself (lib/updates.ts
+/// goes through the steps without installing anything).
+#[tauri::command]
+fn app_is_dev() -> bool {
+    #[cfg(target_os = "android")]
+    return logging::android_package().ends_with(".dev");
+    #[cfg(not(target_os = "android"))]
+    cfg!(debug_assertions)
+}
+
 use share::smb::{SmbConfig, SmbShare};
 use share::{Entry, Share};
 
@@ -204,6 +219,7 @@ pub fn run() {
             phone_update::update_install_apk,
             phone_update::update_install_downloaded,
             logging::log_show,
+            app_is_dev,
             smb_connect,
             smb_list_dir,
             smb_copy_file,
@@ -314,6 +330,22 @@ pub fn run() {
             library::library_folder_covers,
             library::library_set_folder_covers,
         ])
-        .run(tauri::generate_context!())
+        .run(context())
         .expect("error while running tauri application");
+}
+
+/// tauri.conf.json's app; a development build on a computer is Melue Dev (see [`IDENTITY`]).
+fn context() -> tauri::Context {
+    #[allow(unused_mut)]
+    let mut context = tauri::generate_context!();
+    #[cfg(all(desktop, debug_assertions))]
+    {
+        context.config_mut().identifier = IDENTITY.to_string();
+        context.config_mut().product_name = Some("Melue Dev".to_string());
+        context.package_info_mut().name = "Melue Dev".to_string();
+        for window in &mut context.config_mut().app.windows {
+            window.title = "Melue Dev".to_string();
+        }
+    }
+    context
 }

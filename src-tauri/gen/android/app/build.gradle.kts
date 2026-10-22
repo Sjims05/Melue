@@ -8,6 +8,11 @@ plugins {
     id("rust")
 }
 
+// The official app (com.simon.melue, "Melue": the release workflow sets MELUE_RELEASE=1), else a test build: an app
+// of its own beside it (com.simon.melue.dev, "Melue Dev", its own data), never replacing the one in everyday use.
+val official = System.getenv("MELUE_RELEASE") == "1"
+val appName = if (official) "Melue" else "Melue Dev"
+
 val tauriProperties = Properties().apply {
     val propFile = file("tauri.properties")
     if (propFile.exists()) {
@@ -24,6 +29,9 @@ android {
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.simon.melue"
+        if (!official) applicationIdSuffix = ".dev"
+        resValue("string", "app_name", appName)
+        resValue("string", "main_activity_title", appName)
         minSdk = 26
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
@@ -74,6 +82,7 @@ android {
     }
     buildFeatures {
         buildConfig = true
+        resValues = true
     }
 }
 

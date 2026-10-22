@@ -74,9 +74,11 @@ const reset = computed(() => ({ setting: 'output.device', reset: resetTo(() => o
 <template>
   <template v-if="outputs && outputs.devices.length > 0">
     <SettingsLabel mark="This device">Output device</SettingsLabel>
-    <SettingsTip v-if="missing" :icon="Unplug" class="mb-3">
-      {{ missing.name }} not connected: <b>playing on System default</b><template v-if="systemDefault"> ({{ systemDefault.name }})</template> until it’s back
-    </SettingsTip>
+    <Transition name="drop">
+      <SettingsTip v-if="missing" :icon="Unplug" class="mb-3">
+        {{ missing.name }} not connected: <b>playing on System default</b><template v-if="systemDefault"> ({{ systemDefault.name }})</template> until it’s back
+      </SettingsTip>
+    </Transition>
     <SettingsCard>
       <SettingsRow
         as="button"
@@ -95,5 +97,7 @@ const reset = computed(() => ({ setting: 'output.device', reset: resetTo(() => o
       </SettingsRow>
     </SettingsCard>
   </template>
-  <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  </Transition>
 </template>

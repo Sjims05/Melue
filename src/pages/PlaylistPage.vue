@@ -174,12 +174,14 @@ const choosing = ref(false)
         <template #line>Playlist · {{ playlistLine(playlist) }}{{ onlyInMelue ? ` · ${onlyInMelue} only in Melue` : '' }}</template>
       </ListHeader>
 
-      <SettingsTip v-if="conflict" kind="bad" class="mb-6">
-        <span class="flex flex-wrap items-center justify-between gap-2">
-          It changed on this device and on {{ conflict.deviceName }} in ways that don’t agree.
-          <Button size="sm" variant="outline" @click="choosing = true">Choose…</Button>
-        </span>
-      </SettingsTip>
+      <Transition name="drop">
+        <SettingsTip v-if="conflict" kind="bad" class="mb-6">
+          <span class="flex flex-wrap items-center justify-between gap-2">
+            It changed on this device and on {{ conflict.deviceName }} in ways that don’t agree.
+            <Button size="sm" variant="outline" @click="choosing = true">Choose…</Button>
+          </span>
+        </SettingsTip>
+      </Transition>
 
       <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
       <Transition name="part" mode="out-in">

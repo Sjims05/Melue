@@ -203,6 +203,9 @@ function moved(index: number): string | undefined {
   if (d.to <= index && index < d.from) return `0 ${d.height}px`
   return undefined
 }
+
+// The keyboard: one row at a time takes Tab (the one last moved to); the keys within: lib/hotkeys.ts (listKey).
+const focused = ref<number | null>(null)
 </script>
 
 <template>
@@ -213,7 +216,7 @@ function moved(index: number): string | undefined {
            look is off, the pointer still reaches them, so the one under it lights up as soon as placing is done). -->
       <div
         role="listitem"
-        class="relative rounded-lg"
+        class="relative rounded-lg outline-none"
         :class="[
           lifted !== null && lifted !== (song.key ?? song.id) && 'song-quiet',
           drag?.from === index
@@ -222,6 +225,8 @@ function moved(index: number): string | undefined {
         ]"
         :style="{ translate: moved(index), scale: drag?.from === index ? LIFT : undefined }"
         :data-song="song.key ?? song.id"
+        :tabindex="index === (focused ?? 0) ? 0 : -1"
+        @focus="focused = index"
         @pointerdown="grab($event, index)"
         @pointermove="follow"
         @pointerup="letGo"

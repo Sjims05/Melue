@@ -14,6 +14,7 @@ import { library } from '@/library'
 import { describeSyncFailure, moving } from '@/library/sync'
 import { isMobile } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
+import TextSwap from '@/components/page/TextSwap.vue'
 import { ago, size, when, whereOriginalsGo } from './format'
 import { lastScan, libraryState, refreshLibrary, startLibraryState } from './libraryState'
 
@@ -78,9 +79,7 @@ const copies = computed(() => libraryState.copies?.songs ?? 0)
       <SettingsRow :title="plural(libraryState.status.tracks, 'song')" wide>
         <template #lead><StatusDot :kind="libraryState.scanning ? 'busy' : 'ok'" /></template>
         <template #description>
-          <Transition name="swap" mode="out-in">
-            <span :key="libraryState.scanning ? 'scanning' : 'counts'">{{ libraryState.scanning?.line ?? counts }}</span>
-          </Transition>
+          <TextSwap :text="libraryState.scanning?.line ?? counts" />
         </template>
         <template v-if="!libraryState.scanning">
           <span class="text-[13px] text-muted-foreground">{{ scanned }}</span>
@@ -123,7 +122,9 @@ const copies = computed(() => libraryState.copies?.songs ?? 0)
       </Reveal>
     </template>
   </SettingsCard>
-  <SettingsTip v-if="error || libraryState.error" kind="bad" class="mt-3">{{ error || libraryState.error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error || libraryState.error" kind="bad" class="mt-3">{{ error || libraryState.error }}</SettingsTip>
+  </Transition>
 
   <ConfirmDialog
     :open="asking === 'move'"

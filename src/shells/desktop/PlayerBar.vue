@@ -30,7 +30,10 @@ const OFF = 'pointer-events-none opacity-40'
 </script>
 
 <template>
-  <footer class="grid h-[92px] flex-none grid-cols-[360px_auto_minmax(0,1fr)_auto] items-center gap-x-12 border-t px-12">
+  <!-- Narrower windows (under 1280 px): a narrower song and less room between the parts, so the progress keeps its room. -->
+  <footer
+    class="grid h-[92px] flex-none grid-cols-[minmax(0,200px)_auto_minmax(0,1fr)_auto] items-center gap-x-4 border-t px-4 transition-[grid-template-columns,column-gap,padding] duration-300 ease-out xl:grid-cols-[minmax(0,360px)_auto_minmax(0,1fr)_auto] xl:gap-x-12 xl:px-12"
+  >
     <!-- The song. A set width, so the controls stay put: a long title is cut off (the grid's gap keeps it off them). -->
     <RouterLink v-if="current && state" to="/now-playing" class="flex min-w-0 items-center gap-4">
       <span class="relative size-[52px] flex-none overflow-hidden rounded-md bg-well">
@@ -55,7 +58,7 @@ const OFF = 'pointer-events-none opacity-40'
     </div>
 
     <!-- The controls. -->
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1 transition-[gap] duration-300 ease-out xl:gap-3">
       <button type="button" :class="[ICON, tone(!!state?.shuffle)]" :aria-pressed="!!state?.shuffle" aria-label="Shuffle" @click="toggleShuffle">
         <Shuffle />
         <span v-if="state?.shuffle" class="absolute bottom-0.5 size-1 rounded-full bg-current" />
@@ -86,14 +89,14 @@ const OFF = 'pointer-events-none opacity-40'
     </div>
 
     <!-- Where it is. -->
-    <div class="flex min-w-0 items-center gap-4 text-sm text-muted-foreground tabular-nums" :class="empty && OFF" :inert="empty || undefined">
+    <div class="flex min-w-0 items-center gap-3 text-sm text-muted-foreground tabular-nums transition-[gap] duration-300 ease-out xl:gap-4" :class="empty && OFF" :inert="empty || undefined">
       <span class="w-10 text-right">{{ time(empty ? 0 : position) }}</span>
       <Slider class="flex-1" :value="empty ? 0 : position" :max="state?.duration || 1" label="Seek" @change="seek" />
       <span class="w-10">{{ time(empty ? 0 : (state?.duration ?? 0)) }}</span>
     </div>
 
     <!-- The rest. -->
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-0.5 transition-[gap] duration-300 ease-out xl:gap-2">
       <button
         type="button"
         :class="[ICON, tone(!!current?.liked), empty && OFF]"

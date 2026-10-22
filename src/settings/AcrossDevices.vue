@@ -96,6 +96,8 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
         />
       </Reveal>
     </SettingsCard>
-    <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+    <Transition name="drop">
+      <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+    </Transition>
   </template>
 </template>

@@ -112,5 +112,7 @@ const didWords = (r: ReorganiseResult) =>
       </Reveal>
     </SettingsCard>
   </template>
-  <SettingsTip v-if="syncSettings.error || error" kind="bad" class="mt-3">{{ error || syncSettings.error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="syncSettings.error || error" kind="bad" class="mt-3">{{ error || syncSettings.error }}</SettingsTip>
+  </Transition>
 </template>

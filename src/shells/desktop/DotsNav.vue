@@ -17,7 +17,12 @@ watch(() => route.path, (path) => route.meta.main && (mainPath.value = path))
 const current = computed(() => MAIN_PAGES.findIndex((p) => p.path === mainPath.value))
 
 function step(e: KeyboardEvent, by: number) {
-  if (!route.meta.main || (e.target as HTMLElement).closest('input, textarea, [contenteditable], [role=menu], [role=listbox]')) return
+  // Not with other keys held (Windows+↑ is the window's), not while a dialog or menu is open, and not where the arrows
+  // move within something (a song list, cards, segments, a menu, a field, a button opening a menu: ↓ opens it).
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+  if (document.querySelector('[role=dialog], [role=alertdialog], [role=menu]')) return
+  const own = 'input, textarea, [contenteditable], [role=menu], [role=listbox], [role=list], [role=radiogroup], [role=slider], .cover-grid, [aria-haspopup], [data-own-keys]'
+  if (!route.meta.main || (e.target as HTMLElement).closest(own)) return
   const next = MAIN_PAGES[current.value + by]
   if (!next) return
   e.preventDefault()

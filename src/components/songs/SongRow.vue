@@ -114,12 +114,14 @@ function playOrPause() {
 }
 
 // Text that dims on a plain row and turns light on a highlighted one (light mode's dark highlight).
-const MUTED = 'text-muted-foreground group-hover/song:text-song-highlight-muted group-data-[highlight]/song:text-song-highlight-muted'
+// A row with the keyboard's focus (its list item: SongList.vue) looks like one under the pointer (in-focus-visible).
+const MUTED =
+  'text-muted-foreground group-hover/song:text-song-highlight-muted group-data-[highlight]/song:text-song-highlight-muted in-focus-visible:text-song-highlight-muted group-has-focus-visible/song:text-song-highlight-muted'
 // The row's small buttons: a square in the page's colour under the pointer, or while its menu is open.
 const BUTTON =
   'grid size-8 flex-none place-items-center rounded-md outline-none transition-[background-color] hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-background data-[state=open]:text-foreground [&_svg]:size-4'
 // Shown on a highlighted row only.
-const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-data-[highlight]/song:visible'
+const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-data-[highlight]/song:visible in-focus-visible:visible group-has-focus-visible/song:visible'
 </script>
 
 <template>
@@ -135,11 +137,12 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
               ? '[&>*:not(.song-keep)]:opacity-50'
               : [
                   fading && 'transition-[background-color] duration-300',
-                  'group/song hover:bg-song-highlight hover:text-song-highlight-foreground data-[highlight]:bg-song-highlight data-[highlight]:text-song-highlight-foreground',
+                  'group/song hover:bg-song-highlight hover:text-song-highlight-foreground data-[highlight]:bg-song-highlight data-[highlight]:text-song-highlight-foreground in-focus-visible:bg-song-highlight in-focus-visible:text-song-highlight-foreground has-focus-visible:bg-song-highlight has-focus-visible:text-song-highlight-foreground',
                 ]
         "
         :data-highlight="highlighted && !greyed ? '' : undefined"
         :aria-current="current || undefined"
+        data-song-row
         @dblclick="playOnDoubleClick"
         @click="tap"
       >
@@ -160,7 +163,9 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
           <span class="flex min-w-0 items-center gap-2">
             <PlayingBars v-if="current" :paused="!playing" class="flex-none" />
             <span class="truncate text-[15px] font-medium">{{ song.title }}</span>
-            <SettingsBadge v-if="localOnly || song.localOnly" class="flex-none" title="Only on this device, not on your share">This device</SettingsBadge>
+            <Transition name="fade">
+              <SettingsBadge v-if="localOnly || song.localOnly" class="flex-none" title="Only on this device, not on your share">This device</SettingsBadge>
+            </Transition>
             <Transition name="drop">
               <span v-if="note" class="flex-none text-xs" :class="MUTED">{{ note }}</span>
             </Transition>

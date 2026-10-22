@@ -15,6 +15,7 @@ import { onPageLoad } from '@/components/page/pageLoading'
 import { ago } from './format'
 import WhatsNew from './WhatsNew.vue'
 import { troubleshootingDetails } from './troubleshooting'
+import { shortcuts } from '@/lib/hotkeys'
 import { checkForUpdate, installUpdate, setAskForUpdates, updates } from '@/lib/updates'
 import { Switch } from '@/components/ui/switch'
 
@@ -102,10 +103,15 @@ async function copy() {
     >
       <Switch :model-value="updates.ask" @update:model-value="setAskForUpdates" />
     </SettingsRow>
+    <SettingsRow v-if="!isMobile" title="Keyboard shortcuts" description="The player and the pages from the keyboard (or press ?)">
+      <Button variant="outline" size="sm" @click="shortcuts.open = true">Show</Button>
+    </SettingsRow>
     <SettingsRow :title="isMobile ? 'Share the log' : 'Melue’s log'" description="What Melue did in the last days, as a file">
       <Button variant="outline" size="sm" @click="showLog">{{ isMobile ? 'Share' : 'Show' }}</Button>
     </SettingsRow>
   </SettingsCard>
-  <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  </Transition>
   <WhatsNew v-model:open="whatsNew" :current="version" />
 </template>

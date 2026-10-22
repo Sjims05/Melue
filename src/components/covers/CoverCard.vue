@@ -107,7 +107,7 @@ function finish(save: boolean) {
             ref="playButton"
             type="button"
             class="absolute right-2.5 bottom-2.5 grid size-11 place-items-center rounded-full bg-primary text-primary-foreground shadow-md transition-[opacity,translate,scale] duration-200 ease-out outline-none hover:scale-105 active:scale-95 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-5"
-            :class="song.current ? 'opacity-100' : 'translate-y-1 opacity-0 group-hover/cover:translate-y-0 group-hover/cover:opacity-100'"
+            :class="song.current ? 'opacity-100' : 'translate-y-1 opacity-0 group-hover/cover:translate-y-0 group-hover/cover:opacity-100 group-focus-visible/cover:translate-y-0 group-focus-visible/cover:opacity-100'"
             :aria-label="song.current && song.playing ? 'Pause' : 'Play'"
             @click.stop="emit('play')"
             @dblclick.stop

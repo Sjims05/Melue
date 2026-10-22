@@ -89,7 +89,7 @@ const MENU = coverMenu({ kind: 'list' })
             <RouterLink
               v-if="current"
               to="/now-playing"
-              class="flex min-w-0 items-center gap-4 rounded-xl p-4 transition-opacity hover:opacity-90"
+              class="flex min-w-0 items-center gap-4 rounded-xl p-4 transition-opacity outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset"
               :class="cardClass"
             >
               <span class="w-16 flex-none [&>div]:rounded-md"><Cover :image="current.cover" /></span>

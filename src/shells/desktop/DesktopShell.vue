@@ -23,6 +23,8 @@ import ConfirmHost from '../ConfirmHost.vue'
 import DropSongs from '@/settings/DropSongs.vue'
 import UpdateDialog from './UpdateDialog.vue'
 import CopyMenu from './CopyMenu.vue'
+import KeyboardShortcuts from './KeyboardShortcuts.vue'
+import { startHotkeys } from '@/lib/hotkeys'
 import DotsNav from './DotsNav.vue'
 import PlayerBar from './PlayerBar.vue'
 import Toasts from '../Toasts.vue'
@@ -40,6 +42,8 @@ provide(PLAYLIST_PICKER, playlistPicker)
 // The main page shown, the switches' way, each main page's scroll, and the layers (usePages, shared with the phone).
 const scroller = ref<HTMLElement>()
 const { main, from, onTop, layerKey, motion } = usePages(scroller)
+// The keyboard shortcuts (lib/hotkeys.ts).
+startHotkeys()
 // Escape: back from a page on top (a field handles its own Escape first).
 onKeyStroke('Escape', (e) => {
   if (onTop.value && !(e.target as HTMLElement).closest('input, textarea, [role=dialog], [role=menu]')) goBack()
@@ -101,6 +105,8 @@ onKeyStroke('Escape', (e) => {
       <UpdateDialog />
       <!-- Copy, for selected text or an error tip (lib/copyMenu.ts). -->
       <CopyMenu />
+      <!-- Keyboard shortcuts (lib/hotkeys.ts) and their list (?). -->
+      <KeyboardShortcuts />
       <!-- Questions asked from anywhere (lib/confirm.ts: a song's Move to sync). -->
       <ConfirmHost />
     </div>

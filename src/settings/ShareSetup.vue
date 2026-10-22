@@ -151,9 +151,11 @@ function toggleDetails(event: Event) {
   <template v-if="info">
     <!-- Not set up: the form. -->
     <template v-if="!settings">
-      <SettingsTip v-if="isDesktop" class="mb-3">
-        Have your NAS as a drive in Windows (like Z:)? Add it as a music folder to stream straight from it, or set it up below to sync it.
-      </SettingsTip>
+      <Transition name="drop">
+        <SettingsTip v-if="isDesktop" class="mb-3">
+          Have your NAS as a drive in Windows (like Z:)? Add it as a music folder to stream straight from it, or set it up below to sync it.
+        </SettingsTip>
+      </Transition>
       <SettingsLabel mark="This device">Your share</SettingsLabel>
       <SettingsCard>
         <div class="settings-row grid gap-3" data-row>
@@ -198,16 +200,20 @@ function toggleDetails(event: Event) {
           <Button :disabled="connecting" @click="connect">{{ connecting ? 'Connecting…' : 'Connect to share' }}</Button>
         </div>
       </SettingsCard>
-      <SettingsTip v-if="errors.general" kind="bad" class="mt-3">{{ errors.general }}</SettingsTip>
+      <Transition name="drop">
+        <SettingsTip v-if="errors.general" kind="bad" class="mt-3">{{ errors.general }}</SettingsTip>
+      </Transition>
     </template>
 
     <!-- Set up: the share and where its music goes. -->
     <template v-else>
       <SettingsLabel mark="This device">Your share</SettingsLabel>
-      <SettingsTip v-if="connected" kind="ok" class="mb-3">
-        Connected to {{ shareName(settings) }}
-        <template #action><Button size="sm" @click="startSync">Start sync</Button></template>
-      </SettingsTip>
+      <Transition name="drop">
+        <SettingsTip v-if="connected" kind="ok" class="mb-3">
+          Connected to {{ shareName(settings) }}
+          <template #action><Button size="sm" @click="startSync">Start sync</Button></template>
+        </SettingsTip>
+      </Transition>
       <SettingsCard>
         <SettingsRow
           :description="info.syncFolder ? middle(readablePath(info.syncFolder.location), 44) : undefined"
@@ -249,7 +255,9 @@ function toggleDetails(event: Event) {
       </SettingsCard>
     </template>
   </template>
-  <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  </Transition>
 
   <ConfirmDialog
     v-model:open="removing"

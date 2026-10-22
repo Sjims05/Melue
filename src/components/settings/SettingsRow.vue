@@ -21,6 +21,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import ConfirmDialog from './ConfirmDialog.vue'
+import TextSwap from '@/components/page/TextSwap.vue'
 import SettingsBadge from './SettingsBadge.vue'
 import { keepReset } from './rowResets'
 import { ROW_TITLE, SETTING_MENU } from './settingMenu'
@@ -115,13 +116,15 @@ const press = useLongPress(() => {
             :class="[detail ? 'font-medium text-soft' : 'font-semibold', dim && 'text-muted-foreground']"
           >
             <slot name="title">{{ title }}</slot>
-            <SettingsBadge v-if="deviceOnly" class="ml-1.5">This device</SettingsBadge>
+            <Transition name="drop">
+              <SettingsBadge v-if="deviceOnly" class="ml-1.5">This device</SettingsBadge>
+            </Transition>
             <Transition name="drop">
               <SettingsBadge v-if="menu && setting && menu.copied === setting" class="ml-1.5">Link copied</SettingsBadge>
             </Transition>
           </span>
           <span v-if="description || $slots.description" class="text-[13.5px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
-            <slot name="description">{{ description }}</slot>
+            <slot name="description"><TextSwap :text="description ?? ''" /></slot>
           </span>
         </span>
         <span v-if="$slots.default" class="settings-row-controls ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2">

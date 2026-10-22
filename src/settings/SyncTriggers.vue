@@ -19,10 +19,12 @@ onPageLoad(loadSyncSettings)
 </script>
 
 <template>
-  <SettingsTip v-if="!sync.available">
-    No share set up yet: these settings start working once you set one up.
-    <template #action><button type="button" class="text-[13px] font-medium underline underline-offset-3" @click="emit('setUp')">Set one up</button></template>
-  </SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="!sync.available">
+      No share set up yet: these settings start working once you set one up.
+      <template #action><button type="button" class="text-[13px] font-medium underline underline-offset-3" @click="emit('setUp')">Set one up</button></template>
+    </SettingsTip>
+  </Transition>
   <SettingsLabel>When it syncs</SettingsLabel>
   <SettingsCard v-if="syncSettings.value">
     <SettingsRow title="Sync when Melue starts" description="Gets new music as soon as you open it" v-bind="resetSync('atStart')">

@@ -1,21 +1,35 @@
 //! Melue's log: everything it prints (the sync, the car, playback, start-up, and Rust panics) also goes to a small
 //! rolling file (1 MB, then `melue.log.1`), which can be read days later.
 //!
-//! Android: `Android/data/com.simon.melue/files/melue.log` (over adb, or shared from About), and Android's own log
-//! (tag "Melue", which only keeps a few hours). Windows: `%LOCALAPPDATA%\com.simon.melue\logs\melue.log` (About opens
-//! its folder), and the console still shows it (`tauri dev`).
+//! Android: `Android/data/<the app's package>/files/melue.log` (over adb, or shared from About), and Android's own log
+//! (tag "Melue", which only keeps a few hours). Windows: `%LOCALAPPDATA%\<the app's identity>\logs\melue.log` (About
+//! opens its folder), and the console still shows it (`tauri dev`). The official app is com.simon.melue; a development
+//! or test build com.simon.melue.dev ("Melue Dev": its own data, tauri.dev.conf.json).
 
 use std::path::PathBuf;
 
 /// The log file's folder (None where Melue keeps no log file).
 pub fn dir() -> Option<PathBuf> {
+    // The app's own folder on shared storage: its package (the official app's, or Melue Dev's), as the process is named.
     #[cfg(target_os = "android")]
-    return Some(PathBuf::from("/storage/emulated/0/Android/data/com.simon.melue/files"));
-    // Tauri's app_log_dir on Windows (it needs the app, which isn't there yet when the log starts).
+    return Some(PathBuf::from(format!("/storage/emulated/0/Android/data/{}/files", android_package())));
+    // Tauri's app_log_dir on Windows (it needs the app, which isn't there yet when the log starts): a development build
+    // is Melue Dev (debug builds are; tauri.dev.conf.json).
     #[cfg(windows)]
-    return std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join("com.simon.melue").join("logs"));
+    return std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join(crate::IDENTITY).join("logs"));
     #[allow(unreachable_code)]
     None
+}
+
+/// The Android app's package (com.simon.melue, or com.simon.melue.dev for a test build): the process's name.
+#[cfg(target_os = "android")]
+pub fn android_package() -> String {
+    std::fs::read("/proc/self/cmdline")
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes.split(|&b| b == 0).next()?.to_vec()).ok())
+        .map(|name| name.split(':').next().unwrap_or_default().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "com.simon.melue".to_string())
 }
 
 /// The log file (None where Melue keeps none).

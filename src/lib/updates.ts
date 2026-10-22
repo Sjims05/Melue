@@ -9,7 +9,7 @@
  * and installs it (only when it's signed like the installed app); the first time, Android wants Melue allowed to install
  * apps (its screen opens; then Update again). The question is a drawer there.
  *
- * A development build goes through all of it without updating: the look finds a made-up next version, the download
+ * Melue Dev (a development build, or a phone's test build) goes through all of it without updating: the look finds a made-up next version, the download
  * and the install only seem to happen, and instead of starting again it shows the note a new version would.
  */
 import { invoke } from '@tauri-apps/api/core'
@@ -24,8 +24,8 @@ import { toast } from './toast'
 
 type Update = NonNullable<Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>>>
 
-/** A development build pretends (see above). */
-const pretend = import.meta.env.DEV
+/** Melue Dev pretends (see above): known once followUpdates has asked. */
+let pretend = true
 const ASK_SETTING = 'update_ask'
 
 export const updates = reactive({
@@ -104,6 +104,8 @@ export async function checkForUpdate(quiet = false) {
       if (!quiet) toast('Melue is up to date')
     }
   } catch (e) {
+    // A look by itself that failed (offline for a moment) doesn't drop an update already found.
+    if (quiet && (found || apk) && updates.version) return void (updates.state = 'available')
     updates.state = 'failed'
     // No latest.json to read: offline, or no release published yet.
     updates.error = /valid release json|fetch/i.test(String(e)) ? 'Melue’s releases can’t be reached (offline, or none published yet)' : String(e)
@@ -207,6 +209,7 @@ let started = false
 export async function followUpdates() {
   if (started) return
   started = true
+  pretend = await invoke<boolean>('app_is_dev').catch(() => true)
   updates.ask = (await library.setting(ASK_SETTING).catch(() => null)) !== '0'
   setTimeout(() => {
     checkForUpdate(true)

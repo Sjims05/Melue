@@ -90,6 +90,11 @@ const virtualizer = useVirtualizer(
     scrollMargin: margin.value,
   })),
 )
+
+// The keyboard: one row at a time takes Tab (the one last moved to, else the first song); the keys within:
+// lib/hotkeys.ts (listKey, which scrolls on to draw the rows past the end).
+const focused = ref<number | null>(null)
+const firstSong = computed(() => items.value.findIndex((i) => 'song' in i))
 </script>
 
 <template>
@@ -97,9 +102,11 @@ const virtualizer = useVirtualizer(
     <div
       v-for="row in virtualizer.getVirtualItems()"
       :key="row.key as string | number"
-      class="absolute inset-x-0 top-0"
+      class="absolute inset-x-0 top-0 rounded-lg outline-none"
       :style="{ height: `${row.size}px`, transform: `translateY(${row.start - margin}px)` }"
       :role="'song' in items[row.index] ? 'listitem' : undefined"
+      :tabindex="'song' in items[row.index] ? (row.index === (focused ?? firstSong) ? 0 : -1) : undefined"
+      @focus="focused = row.index"
     >
       <template v-for="item in [items[row.index]]" :key="item.key">
         <div v-if="'heading' in item" class="flex h-full items-end px-2 pb-1 text-sm font-semibold text-muted-foreground">{{ item.heading }}</div>

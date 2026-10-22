@@ -3,6 +3,20 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.5.20 (2026-10-22)
+
+The keyboard everywhere, and smoother changes.
+
+- Keyboard shortcuts (computers; ? lists them): play / pause, seeking, songs, volume (shown in the player bar), like,
+  shuffle, repeat, the pages, Search, Up next (Q, and back where you were), the lyrics full size (Y). They work
+  from anywhere except while typing; a menu or dialog closes first, and a question keeps the keys to itself.
+- Tab goes through the page only (round from its end to its start), scrolling smoothly; a page switch starts at the
+  top. In lists: arrows from song to song or card to card, Enter plays or opens, Shift+F10 the menu.
+- Ctrl+↑ / ↓ scroll smoothly, in a page or a dialog.
+- Smoother changes: tips, counts and a setting's line fade or slide as they change; the phone's tab marker slides;
+  the player bar's spacing eases when the window narrows, and the progress keeps its room.
+- Development and test builds are an app of their own, Melue Dev, with their own library and settings.
+
 ## 0.5.19 (2026-10-22)
 
 Melue updates itself on phones too.

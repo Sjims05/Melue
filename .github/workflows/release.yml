@@ -137,6 +137,8 @@ jobs:
         shell: bash
         run: |
           export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          # The official app (not the test build, Melue Dev: build.gradle.kts).
+          export MELUE_RELEASE=1
           npx tauri android build --apk --target aarch64
 
       - name: Add it to the release

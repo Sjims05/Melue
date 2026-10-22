@@ -107,5 +107,7 @@ const setTopSize = (size: number) => act(() => Promise.all(top.value.map((p) => 
       </SettingsCard>
     </template>
   </template>
-  <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  <Transition name="drop">
+    <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
+  </Transition>
 </template>

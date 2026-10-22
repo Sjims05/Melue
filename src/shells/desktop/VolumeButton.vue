@@ -3,11 +3,12 @@
  * The player bar's volume: a button whose icon shows the level. Under the pointer (or focused), a small card rises
  * above it with the volume standing up; it stays while the slider is dragged, and goes a moment after the pointer
  * leaves both. A click mutes (and a second one brings the volume back); the mouse wheel over either turns it up or
- * down. With the keyboard: focused, the card shows, and Up / Down turn it up or down. The card is placed over the
- * page (the player bar clips what goes past it).
+ * down. With the keyboard: focused, the card shows, and Up / Down turn it up or down; the + and − keys (lib/hotkeys.ts)
+ * show it a moment too. The card is placed over the page (the player bar clips what goes past it).
  */
 import { Volume1, Volume2, VolumeX } from '@lucide/vue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { volumeFlash } from '@/lib/hotkeys'
 import Slider from '@/components/player/Slider.vue'
 import { nowPlaying, setVolume } from '@/player/nowPlaying'
 
@@ -49,6 +50,15 @@ function enter() {
 function leave() {
   leaving = setTimeout(() => (over.value = false), 200)
 }
+// The volume keys: the card a moment, showing the new level.
+watch(
+  () => volumeFlash.at,
+  () => {
+    if (!button.value?.isConnected || !button.value.offsetParent) return
+    enter()
+    leaving = setTimeout(() => (over.value = false), 1200)
+  },
+)
 </script>
 
 <template>
