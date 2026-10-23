@@ -13,6 +13,7 @@ import LyricsPanel from '@/components/player/LyricsPanel.vue'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player/icons'
 import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onActivated, ref, watch } from 'vue'
+import { volumeFlash } from '@/lib/hotkeys'
 import { useRoute, useRouter } from 'vue-router'
 import Slider from '@/components/player/Slider.vue'
 import { AddToPlaylist, songMenu, SongList, SongMenuArea, type SongAction } from '@/components/songs'
@@ -104,7 +105,17 @@ onActivated(showQueue)
 const volume = ref<number | null>(null)
 const shownVolume = computed(() => volume.value ?? state.value?.volume ?? 1)
 const VolumeIcon = computed(() => (shownVolume.value === 0 ? VolumeX : shownVolume.value < 0.5 ? Volume1 : Volume2))
+// The level beside the slider a moment, while it changes: with the mouse, or the + and − keys (lib/hotkeys.ts).
+const volumeShown = ref(false)
+let volumeHiding: ReturnType<typeof setTimeout> | undefined
+function showVolume() {
+  volumeShown.value = true
+  clearTimeout(volumeHiding)
+  volumeHiding = setTimeout(() => (volumeShown.value = false), 1200)
+}
+watch(() => volumeFlash.at, showVolume)
 function changeVolume(v: number) {
+  showVolume()
   volume.value = v
   setVolume(v).finally(() => (volume.value = null))
 }
@@ -188,6 +199,9 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
           </Transition>
           <!-- Not on a phone: its own volume buttons. -->
           <div class="absolute right-0 bottom-0 flex h-7 items-center gap-3 phone:hidden">
+            <Transition name="fade">
+              <span v-if="volumeShown" class="w-8 text-right text-sm text-muted-foreground tabular-nums">{{ Math.round(shownVolume * 100) }}</span>
+            </Transition>
             <Slider class="w-44" :value="shownVolume" :max="1" :step="0.05" label="Volume" @live="changeVolume" @change="changeVolume" />
             <component :is="VolumeIcon" class="size-5 text-muted-foreground" />
           </div>

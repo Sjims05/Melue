@@ -4,7 +4,8 @@
  * above it with the volume standing up; it stays while the slider is dragged, and goes a moment after the pointer
  * leaves both. A click mutes (and a second one brings the volume back); the mouse wheel over either turns it up or
  * down. With the keyboard: focused, the card shows, and Up / Down turn it up or down; the + and − keys (lib/hotkeys.ts)
- * show it a moment too. The card is placed over the page (the player bar clips what goes past it).
+ * show it a moment too (not while the player bar is away, on Now playing: the page shows it). The card is placed over
+ * the page (the player bar clips what goes past it).
  */
 import { Volume1, Volume2, VolumeX } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
@@ -54,7 +55,8 @@ function leave() {
 watch(
   () => volumeFlash.at,
   () => {
-    if (!button.value?.isConnected || !button.value.offsetParent) return
+    // The bar slid away (Now playing): its button is below the window's edge, and the page shows the volume itself.
+    if (!button.value?.isConnected || !button.value.offsetParent || button.value.getBoundingClientRect().top >= innerHeight) return
     enter()
     leaving = setTimeout(() => (over.value = false), 1200)
   },

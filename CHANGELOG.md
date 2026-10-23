@@ -3,6 +3,13 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.1 (2026-10-23)
+
+The volume on Now playing.
+
+- On Now playing (computers), the volume's level shows beside its slider while it changes: with the mouse, or the
+  + and − keys (which no longer show the player bar's volume at the window's edge, the bar being away there).
+
 ## 0.6.0 (2026-10-23)
 
 Melue's first release: your own music on every device.
