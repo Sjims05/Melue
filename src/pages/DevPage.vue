@@ -19,7 +19,7 @@ import { openReport } from '@/lib/report/report'
 import { toast } from '@/lib/toast'
 import { checkForUpdate } from '@/lib/updates'
 import { router } from '@/router'
-import { remote } from '@/library/remote'
+import { remote, type RemoteState } from '@/library/remote'
 
 const version = ref('')
 /** What the last tool did, or why it couldn't. */
@@ -98,6 +98,38 @@ const TOOLS: { title: string; description: string; run: () => Promise<unknown> |
         ),
       )
       return lines.join(' · ')
+    },
+  },
+  {
+    title: 'Play this on another device',
+    description: 'Your first online device that lets others play: what plays here goes there, and this one pauses',
+    run: async () => {
+      const there = (await remote.devices()).find((d) => !d.this && d.online && d.allow === 'on')
+      if (!there) return 'No other device online that lets others play'
+      let last: RemoteState | null = null
+      let failed = ''
+      const stops = await Promise.all([remote.onState((s) => (last = s)), remote.onError((e) => (failed = e))])
+      try {
+        const connected = await remote.connect(there.id)
+        await remote.sendPlaying()
+        await (await import('@/platform')).player.pause()
+        await new Promise((done) => setTimeout(done, 3000))
+        if (failed) return `${there.name}: ${failed}`
+        const s = last as RemoteState | null
+        const song = s && s.index >= 0 ? s.queue[s.index] : null
+        return `${connected.name} (at ${connected.address}): ${s?.playing ? 'playing' : 'paused'} “${song?.title ?? 'nothing'}” at ${Math.round(s?.position ?? 0)} s, ${s?.queue.length ?? 0} songs in its queue`
+      } finally {
+        stops.forEach((stop) => stop())
+      }
+    },
+  },
+  {
+    title: 'Stop playing on the other device',
+    description: 'Pauses it there and closes the connection',
+    run: async () => {
+      await remote.command({ cmd: 'pause' }).catch(() => {})
+      await remote.disconnect()
+      return 'Paused there, and disconnected'
     },
   },
   { title: 'Melue’s log', description: 'Shown in its folder, or shared from a phone', run: () => invoke('log_show') },

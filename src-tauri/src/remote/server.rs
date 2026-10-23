@@ -1,9 +1,12 @@
 //! This device's small server for your other devices (they find its addresses and port in its presence file): every
 //! request proves it comes from one of your devices (key.rs). On a computer, Windows asks once whether Melue may take
-//! connections. For now: who's there (`/ping`); playing on it comes next.
+//! connections. Who's there (`/ping`), and playing on it (`/control`, control.rs). [`AppHost`] is this device as the
+//! server sees it: its key, its player and its library.
 
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::State;
@@ -13,10 +16,12 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+use super::control::{self, Command, Host, RemoteSong, RemoteState};
 use super::presence::{self, Device};
 use super::{key, Allow};
 use crate::library::{now_ms, Library};
-use crate::sync::handoff;
+use crate::sync::handoff::{self, Playback};
+use tauri_plugin_native_audio::NativeAudioExt;
 
 /// The port tried first (the same each time, so a firewall rule keeps working); another one when it's taken.
 const PORT: u16 = 47821;
@@ -40,22 +45,91 @@ pub struct Hello {
     pub allow: Allow,
 }
 
-/// The device a request comes from, when its proof is good.
-fn from_your_device(app: &AppHandle, headers: &HeaderMap, request: &str) -> Result<String, StatusCode> {
-    let key = key::key(app).map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+async fn ping(State(host): State<Arc<dyn Host>>, headers: HeaderMap) -> Result<Json<Hello>, StatusCode> {
+    let key = host.key().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     let proof = headers.get(PROOF).and_then(|v| v.to_str().ok()).ok_or(StatusCode::UNAUTHORIZED)?;
-    key::check(&key, proof, request, now_ms()).ok_or(StatusCode::UNAUTHORIZED)
+    key::check(&key, proof, "GET /ping", now_ms()).ok_or(StatusCode::UNAUTHORIZED)?;
+    host.hello().map(Json).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-async fn ping(State(app): State<AppHandle>, headers: HeaderMap) -> Result<Json<Hello>, StatusCode> {
-    from_your_device(&app, &headers, "GET /ping")?;
-    let library = app.state::<Library>();
-    Ok(Json(Hello {
-        device_id: handoff::device_id(&library).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-        name: handoff::settings(&app).ok().and_then(|s| s.device_name).unwrap_or_default(),
-        version: app.package_info().version.to_string(),
-        allow: super::settings(&app).map(|s| s.allow).unwrap_or_default(),
-    }))
+/// The server's routes, for `host`.
+pub fn routes(host: Arc<dyn Host>) -> Router {
+    Router::new().route("/ping", get(ping)).route("/control", get(control::control)).with_state(host)
+}
+
+/// This device, as its server sees it.
+pub struct AppHost(pub AppHandle);
+
+impl AppHost {
+    /// The synced folder's songs: by id, their path on the share.
+    fn paths(&self) -> Result<HashMap<i64, String>, String> {
+        let library = self.0.state::<Library>();
+        let folder = library.synced_folder()?.ok_or("no share is set up")?;
+        Ok(library.synced_songs(&folder)?.into_iter().collect())
+    }
+}
+
+impl Host for AppHost {
+    fn key(&self) -> Result<Vec<u8>, String> {
+        key::key(&self.0)
+    }
+
+    fn hello(&self) -> Result<Hello, String> {
+        Ok(Hello {
+            device_id: handoff::device_id(&self.0.state::<Library>())?,
+            name: handoff::settings(&self.0)?.device_name.unwrap_or_default(),
+            version: self.0.package_info().version.to_string(),
+            allow: super::settings(&self.0)?.allow,
+        })
+    }
+
+    fn state(&self) -> Result<RemoteState, String> {
+        let player = self.0.native_audio();
+        let state = player.get_state()?;
+        let queue = player.get_queue()?;
+        let paths = self.paths().unwrap_or_default();
+        Ok(RemoteState {
+            playing: state.is_playing,
+            position: state.current_time,
+            duration: state.duration,
+            volume: state.volume,
+            shuffle: state.shuffle,
+            repeat: state.repeat_mode,
+            index: queue.current_index,
+            queue: queue
+                .items
+                .into_iter()
+                .map(|item| RemoteSong { path: item.id.and_then(|id| paths.get(&id).cloned()), title: item.title, artist: item.artist })
+                .collect(),
+        })
+    }
+
+    fn apply(&self, command: Command) -> Result<(), String> {
+        let player = self.0.native_audio();
+        match command {
+            Command::Play => player.play(),
+            Command::Pause => player.pause(),
+            Command::Next => player.next(),
+            Command::Previous => player.previous(),
+            Command::Seek { position } => player.seek_to(position),
+            Command::Volume { volume } => player.set_volume(volume.clamp(0.0, 1.0)),
+            Command::Shuffle { on } => player.set_shuffle(on),
+            Command::Repeat { mode } => player.set_repeat_mode(&mode),
+            Command::SkipTo { index } => player.skip_to(index),
+            Command::Load { queue, index, position, playing } => {
+                // The songs here, by their paths on the share (as Continue does).
+                let library = self.0.state::<Library>();
+                let folder = library.synced_folder()?.ok_or("no share is set up here")?;
+                let wanted = Playback { queue, index, position_s: position, playing, repeat: "off".into(), ..Default::default() };
+                let (items, index) = handoff::queue_here(&library, &folder, &wanted)?.ok_or("that song isn’t on this device (not synced yet?)")?;
+                player.set_queue(items, index, position, None)?;
+                if playing {
+                    player.play()?;
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 /// Starts the server (setup), on all of this device's networks.
@@ -74,7 +148,7 @@ pub fn start(app: &AppHandle) {
         eprintln!("melue: remote: taking connections from your devices on port {port}");
         // The others hear where to find it.
         presence::announce_soon();
-        let routes = Router::new().route("/ping", get(ping)).with_state(app);
+        let routes = routes(Arc::new(AppHost(app)));
         if let Err(e) = axum::serve(listener, routes).await {
             eprintln!("melue: remote: stopped taking connections: {e}");
         }

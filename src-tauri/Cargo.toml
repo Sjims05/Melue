@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.6.2"
+version = "0.6.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -44,7 +44,10 @@ aho-corasick = "1"
 # Remote playback (remote/): each device's small server for your other devices (axum), where it can be reached (its
 # network addresses: if-addrs), and the proof a request comes from one of your devices (HMAC-SHA256 with the key on
 # the share; these crates come with Tauri already).
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
+# The controller's end of playing on another device (remote/control.rs): a WebSocket client, and its stream helpers.
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
 if-addrs = "0.13"
 hmac = "0.12"
 sha2 = "0.10"
@@ -53,7 +56,7 @@ hex = "0.4"
 smb2 = "0.11"
 # Playback on every platform (its `mobile` and `desktop` features, both on by default).
 tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }
-tokio = { version = "1", features = ["fs", "io-util", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "rt-multi-thread", "sync", "time", "net", "macros"] }
 # Waiting for the SMB share's answers from any thread, Tauri's async ones included (see share/smb.rs).
 futures-executor = "0.3"
 # Free space on this device, before a sync copies (sync/run.rs).

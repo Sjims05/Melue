@@ -344,7 +344,7 @@ pub fn network_changed(app: &AppHandle) {
 type PlayingHere = (Playback, (Option<String>, Option<String>));
 
 /// What plays here now (None: nothing, or a song that isn't on the share).
-fn playing_here(app: &AppHandle, library: &Library, folder: &Folder) -> Result<Option<PlayingHere>> {
+pub(crate) fn playing_here(app: &AppHandle, library: &Library, folder: &Folder) -> Result<Option<PlayingHere>> {
     let player = app.native_audio();
     let state = player.get_state()?;
     if state.queue_index < 0 {

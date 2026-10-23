@@ -6,7 +6,9 @@
 //! "Let other devices play here" (this device's own): On (the default: your devices just play here), Ask first
 //! (someone here says yes), or Off.
 
+pub mod control;
 pub mod key;
+pub mod link;
 pub mod presence;
 pub mod server;
 

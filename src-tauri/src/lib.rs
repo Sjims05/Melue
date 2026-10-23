@@ -92,6 +92,7 @@ pub fn run() {
             report::saved::start(app.handle());
             // Synced playback: what plays here goes to the share; another device's is offered (see sync/handoff.rs).
             app.manage(sync::shared::OpenShare::default());
+            app.manage(remote::link::Remote::default());
             // Remote playback (after the share's state above, which it uses): this device says it's online every 20 s
             // (remote/presence.rs), and takes connections from your other devices (remote/server.rs).
             remote::presence::start(app.handle());
@@ -174,6 +175,10 @@ pub fn run() {
             remote::remote_set_settings,
             remote::presence::remote_devices,
             remote::server::remote_reach,
+            remote::link::remote_connect,
+            remote::link::remote_command,
+            remote::link::remote_disconnect,
+            remote::link::remote_send_playing,
             dev::dev_share_sample,
             github::github_sign_in_start,
             github::github_sign_in_wait,

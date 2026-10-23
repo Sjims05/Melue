@@ -3,6 +3,14 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.3 (2026-10-23)
+
+One device playing on another, under the hood.
+
+- Your devices can play on each other: one sends the other what to play (its queue, the song and where in it) and
+  controls it (play, pause, next, previous, seek, volume, shuffle, repeat), and sees what it plays as it changes.
+  Each plays its own copies of the songs. Connect device, to use it, comes next.
+
 ## 0.6.2 (2026-10-23)
 
 Your devices, and the first steps toward playing on them from each other.
