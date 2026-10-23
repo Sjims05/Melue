@@ -58,7 +58,12 @@ pub struct RemoteState {
     /// Seconds into the song, when this was sent (the controller counts on while it plays).
     pub position: f64,
     pub duration: f64,
+    /// 0 to 1. With `volume_levels`, that many levels' worth (a phone's media volume).
     pub volume: f64,
+    /// A phone: how many levels its media volume has (the controller's slider steps through them: "Volume steps on a
+    /// phone"). 0: smooth (a computer).
+    #[serde(default)]
+    pub volume_levels: u32,
     pub shuffle: bool,
     pub repeat: String,
     /// The song in `queue` (-1: nothing loaded).

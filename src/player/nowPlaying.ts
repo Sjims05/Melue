@@ -301,7 +301,31 @@ export const togglePlay = () =>
 export const next = () => control({ cmd: 'next' }, () => player.next())
 export const previous = () => control({ cmd: 'previous' }, () => player.previous())
 export const seek = (seconds: number) => control({ cmd: 'seek', position: seconds }, () => player.seekTo(seconds))
-export const setVolume = (volume: number) => control({ cmd: 'volume', volume }, () => player.setVolume(volume))
+export const setVolume = (volume: number) => {
+  volume = snapVolume(volume)
+  return control({ cmd: 'volume', volume }, () => player.setVolume(volume))
+}
+
+// ---- The volume's steps
+
+/**
+ * Playing on a phone: the steps its media volume moves in (the slider's, the wheel's, the keys'). "Volume steps on a
+ * phone" levels a step; a phone with 30 levels or fewer steps through each (they're already like its buttons). 0: smooth.
+ */
+export const volumeSteps = computed(() => {
+  const levels = (playingOn.device && playingOn.state?.volumeLevels) || 0
+  return levels > 30 ? Math.max(1, Math.round(levels / Math.max(1, playingOn.phoneStep))) : levels
+})
+/** How far the volume keys and the wheel move it: a phone's step, else 5%. */
+export const volumeStep = () => (volumeSteps.value ? 1 / volumeSteps.value : 0.05)
+/** A volume (0 to 1) on the nearest step, with steps. */
+export const snapVolume = (volume: number) => {
+  const clamped = Math.min(1, Math.max(0, volume))
+  return volumeSteps.value ? Math.round(clamped * volumeSteps.value) / volumeSteps.value : clamped
+}
+/** The volume as shown beside its slider: the step ("8/15") with steps, else the percentage. */
+export const volumeLabel = (volume: number) =>
+  volumeSteps.value ? `${Math.round(volume * volumeSteps.value)}/${volumeSteps.value}` : String(Math.round(volume * 100))
 export const toggleShuffle = () => setShuffle(!nowPlaying.state?.shuffle)
 export const setShuffle = (on: boolean) => control({ cmd: 'shuffle', on }, () => player.setShuffle(on))
 const REPEAT_NEXT: Record<RepeatMode, RepeatMode> = { off: 'all', all: 'one', one: 'off' }

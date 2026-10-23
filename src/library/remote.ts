@@ -10,6 +10,10 @@ export type Allow = 'on' | 'ask' | 'off'
 
 export interface RemoteSettings {
   allow: Allow
+  /** "Volume steps on a phone": the levels one step moves a phone's volume (phones with more than 30). */
+  phoneStep: number
+  /** "Volume buttons on another device": the % one press of a phone's buttons moves a computer's volume. */
+  buttonStep: number
 }
 
 export interface Device {
@@ -43,6 +47,8 @@ export interface RemoteState {
   position: number
   duration: number
   volume: number
+  /** A phone: how many levels its media volume has (0: smooth, a computer). */
+  volumeLevels: number
   shuffle: boolean
   repeat: 'off' | 'all' | 'one'
   index: number

@@ -224,6 +224,18 @@ export const SETTINGS: Record<string, SettingInfo> = {
     help: 'Your other devices running Melue can play their music on this one (Connect device) and control it from there. Ask first: someone at this device says yes each time. Off: this device can still play on the others, but they can’t play on it.',
     perDevice: true,
   },
+  'remote.phoneStep': {
+    title: 'Volume steps on a phone',
+    default: '10 levels',
+    help: 'Playing on a phone (Connect device), how far one step of the volume slider, the mouse wheel or the + and − keys moves its volume, in its levels. Some phones have many fine levels (160, say) while their buttons move 10 at a time; this makes the slider step like the buttons. Phones with 30 levels or fewer step through each one.',
+    perDevice: true,
+  },
+  'remote.buttonStep': {
+    title: 'Volume buttons on another device',
+    default: '5%',
+    help: 'Playing on a computer from this phone (Connect device), how much one press of the phone’s volume buttons changes the computer’s volume. The phone’s own volume stays as it is.',
+    perDevice: true,
+  },
   'reports.screenshot': {
     title: 'Keep a screenshot with reports',
     default: 'Off',

@@ -121,6 +121,8 @@ export async function startRemotePlayback() {
     })
     .catch(() => {})
   await remote.onPlayedFrom((names) => (playingOn.playedFrom = names)).catch(() => {})
+  const settings = await remote.settings().catch(() => null)
+  if (settings) playingOn.phoneStep = settings.phoneStep
   playingOn.playedFrom = await remote.playedFrom().catch(() => [])
   const now = await remote.status().catch(() => null)
   if (now) {

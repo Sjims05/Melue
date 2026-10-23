@@ -44,6 +44,10 @@ import {
   removeFromUpNext,
   seek,
   setVolume,
+  snapVolume,
+  volumeLabel,
+  volumeStep,
+  volumeSteps,
   toggleShuffle,
   togglePlay,
   upNext,
@@ -119,7 +123,7 @@ function showVolume() {
 watch(() => volumeFlash.at, showVolume)
 function changeVolume(v: number) {
   showVolume()
-  volume.value = v
+  volume.value = snapVolume(v)
   setVolume(v).finally(() => (volume.value = null))
 }
 
@@ -206,9 +210,9 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
           <!-- Not on a phone: its own volume buttons. -->
           <div class="absolute right-0 bottom-0 flex h-7 items-center gap-3 phone:hidden">
             <Transition name="fade">
-              <span v-if="volumeShown" class="w-8 text-right text-sm text-muted-foreground tabular-nums">{{ Math.round(shownVolume * 100) }}</span>
+              <span v-if="volumeShown" class="min-w-8 text-right text-sm text-muted-foreground tabular-nums">{{ volumeLabel(shownVolume) }}</span>
             </Transition>
-            <Slider class="w-44" :value="shownVolume" :max="1" :step="0.05" label="Volume" @live="changeVolume" @change="changeVolume" />
+            <Slider class="w-44" :value="shownVolume" :max="1" :step="volumeStep()" :ticks="volumeSteps" label="Volume" @live="changeVolume" @change="changeVolume" />
             <component :is="VolumeIcon" class="size-5 text-muted-foreground" />
           </div>
         </div>

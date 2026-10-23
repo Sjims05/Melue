@@ -115,6 +115,17 @@ mod android {
     }
 
     #[derive(Deserialize)]
+    struct MediaVolume {
+        step: u32,
+        max: u32,
+    }
+
+    #[derive(Serialize)]
+    struct Step {
+        step: u32,
+    }
+
+    #[derive(Deserialize)]
     struct Metered {
         metered: bool,
     }
@@ -241,6 +252,16 @@ mod android {
         /// The phone's name, as set in its settings, or its model.
         pub fn device_name(&self) -> Result<String, String> {
             self.0.run_mobile_plugin::<DeviceName>("deviceName", ()).map(|d| d.name).map_err(|e| e.to_string())
+        }
+
+        /// The phone's media volume (what its volume buttons change): the step it's at, and how many there are.
+        pub fn media_volume(&self) -> Result<(u32, u32), String> {
+            self.0.run_mobile_plugin::<MediaVolume>("mediaVolume", ()).map(|v| (v.step, v.max)).map_err(|e| e.to_string())
+        }
+
+        /// Sets the phone's media volume to `step` (0 to its max), without showing Android's volume panel.
+        pub fn set_media_volume(&self, step: u32) -> Result<(), String> {
+            self.0.run_mobile_plugin::<serde_json::Value>("setMediaVolume", Step { step }).map(|_| ()).map_err(|e| e.to_string())
         }
 
         /// Whether the connection is metered (mobile data, a phone's hotspot).

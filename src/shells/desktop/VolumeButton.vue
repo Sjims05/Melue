@@ -5,13 +5,14 @@
  * leaves both. A click mutes (and a second one brings the volume back); the mouse wheel over either turns it up or
  * down. With the keyboard: focused, the card shows, and Up / Down turn it up or down; the + and − keys (lib/hotkeys.ts)
  * show it a moment too (not while the player bar is away, on Now playing: the page shows it). The card is placed over
- * the page (the player bar clips what goes past it).
+ * the page (the player bar clips what goes past it). Playing on a phone, it moves by the phone's volume steps, marked on
+ * the slider, and the number is the step ("8/15").
  */
 import { Volume1, Volume2, VolumeX } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 import { volumeFlash } from '@/lib/hotkeys'
 import Slider from '@/components/player/Slider.vue'
-import { nowPlaying, setVolume } from '@/player/nowPlaying'
+import { nowPlaying, setVolume, snapVolume, volumeLabel, volumeStep, volumeSteps } from '@/player/nowPlaying'
 
 defineProps<{ iconClass: string }>()
 
@@ -20,7 +21,7 @@ const moving = ref<number | null>(null)
 const volume = computed(() => moving.value ?? nowPlaying.state?.volume ?? 1)
 const Icon = computed(() => (volume.value === 0 ? VolumeX : volume.value < 0.5 ? Volume1 : Volume2))
 function change(v: number) {
-  moving.value = Math.min(1, Math.max(0, v))
+  moving.value = snapVolume(v)
   setVolume(moving.value).finally(() => (moving.value = null))
 }
 // Muting remembers the volume it had, for the next click.
@@ -31,7 +32,7 @@ function toggleMute() {
     change(0)
   } else change(before || 1)
 }
-const wheel = (e: WheelEvent) => change(volume.value - Math.sign(e.deltaY) * 0.05)
+const wheel = (e: WheelEvent) => change(volume.value - Math.sign(e.deltaY) * volumeStep())
 
 // The card: open while the pointer is on the button or the card, while dragging, or while focused in.
 const button = ref<HTMLElement>()
@@ -70,10 +71,10 @@ watch(
       type="button"
       :class="iconClass"
       :aria-label="volume === 0 ? 'Unmute' : 'Mute'"
-      :title="`Volume ${Math.round(volume * 100)}%`"
+      :title="volumeSteps ? `Volume ${volumeLabel(volume)}` : `Volume ${volumeLabel(volume)}%`"
       @click="toggleMute"
-      @keydown.up.prevent="change(volume + 0.05)"
-      @keydown.down.prevent="change(volume - 0.05)"
+      @keydown.up.prevent="change(volume + volumeStep())"
+      @keydown.down.prevent="change(volume - volumeStep())"
     >
       <component :is="Icon" />
     </button>
@@ -87,8 +88,8 @@ watch(
           @pointerleave="leave"
           @wheel.prevent="wheel"
         >
-          <Slider class="min-h-0 flex-1" vertical :value="volume" :max="1" :step="0.05" label="Volume" @live="change" @change="change" @dragging="(on) => (dragging = on)" />
-          <span class="text-[11px] text-muted-foreground tabular-nums">{{ Math.round(volume * 100) }}</span>
+          <Slider class="min-h-0 flex-1" vertical :value="volume" :max="1" :step="volumeStep()" :ticks="volumeSteps" label="Volume" @live="change" @change="change" @dragging="(on) => (dragging = on)" />
+          <span class="text-[11px] text-muted-foreground tabular-nums">{{ volumeLabel(volume) }}</span>
         </div>
       </Transition>
     </Teleport>

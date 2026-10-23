@@ -3,6 +3,18 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.5 (2026-10-23)
+
+The volume, across your devices.
+
+- Playing on a phone, the volume is the phone's own media volume (what its buttons change). The slider, the mouse
+  wheel and the + and − keys move it in steps, marked on the slider, and the number shows the step ("8/16"). The
+  phone's own buttons show on the other device as you press them.
+- Settings, Across devices: "Volume steps on a phone" (how many of a phone's levels a step moves; 10 by default, like
+  the buttons on phones with fine volume) and, on a phone, "Volume buttons on another device" (how much a press moves
+  a computer's volume, for the volume buttons to come).
+- The volume set from another device stays when you disconnect.
+
 ## 0.6.4 (2026-10-23)
 
 Connect device: play on your other devices.

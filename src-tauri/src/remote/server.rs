@@ -141,11 +141,14 @@ impl Host for AppHost {
         let state = player.get_state()?;
         let queue = player.get_queue()?;
         let paths = self.paths().unwrap_or_default();
+        // A phone's media volume, in its steps; a computer's: Melue's own (smooth).
+        let (volume, volume_levels) = self.phone_volume().unwrap_or((state.volume, 0));
         Ok(RemoteState {
             playing: state.is_playing,
             position: state.current_time,
             duration: state.duration,
-            volume: state.volume,
+            volume,
+            volume_levels,
             shuffle: state.shuffle,
             repeat: state.repeat_mode,
             index: queue.current_index,
@@ -192,6 +195,31 @@ impl Host for AppHost {
 }
 
 impl AppHost {
+    /// On a phone, the volume another device sees and sets is its media volume (what its buttons change; Melue's own
+    /// volume there stays as it is): 0 to 1, and its levels. None elsewhere.
+    fn phone_volume(&self) -> Option<(f64, u32)> {
+        #[cfg(target_os = "android")]
+        {
+            use tauri_plugin_melue_android::MelueAndroidExt;
+            let (step, max) = self.0.melue_android().media_volume().ok()?;
+            Some((if max == 0 { 0.0 } else { f64::from(step) / f64::from(max) }, max))
+        }
+        #[cfg(not(target_os = "android"))]
+        None
+    }
+
+    fn set_volume(&self, volume: f64) -> Result<(), String> {
+        #[cfg(target_os = "android")]
+        {
+            use tauri_plugin_melue_android::MelueAndroidExt;
+            let android = self.0.melue_android();
+            let (_, max) = android.media_volume()?;
+            android.set_media_volume((volume * f64::from(max)).round() as u32)
+        }
+        #[cfg(not(target_os = "android"))]
+        self.0.native_audio().set_volume(volume)
+    }
+
     fn apply_here(&self, command: Command) -> Result<(), String> {
         let player = self.0.native_audio();
         match command {
@@ -200,7 +228,7 @@ impl AppHost {
             Command::Next => player.next(),
             Command::Previous => player.previous(),
             Command::Seek { position } => player.seek_to(position),
-            Command::Volume { volume } => player.set_volume(volume.clamp(0.0, 1.0)),
+            Command::Volume { volume } => self.set_volume(volume.clamp(0.0, 1.0)),
             Command::Shuffle { on } => player.set_shuffle(on),
             Command::Repeat { mode } => player.set_repeat_mode(&mode),
             Command::SkipTo { index } => player.skip_to(index),

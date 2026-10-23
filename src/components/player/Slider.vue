@@ -2,16 +2,18 @@
 /**
  * A slider (Melue's design): a thin track, the part up to the value filled, a round handle under the pointer or while
  * dragging. Seeking (`change` when let go; `live` also while dragging, for volume). Arrow keys move it by `step`.
- * `vertical`: standing up, filled from the bottom (the player bar's volume); it takes the height it's given.
+ * `vertical`: standing up, filled from the bottom (the player bar's volume); it takes the height it's given. `ticks`: a
+ * value in that many steps (a phone's volume), each marked on the track when there's room for the marks.
  *
  * Let go, it stays where you put it until the value catches up (the player's answer), not back at the old value in
  * between. On a touch screen a sideways drag moves it and a tap puts it there; an up or down drag is the page
  * scrolling, not the slider (the browser takes it, and nothing is changed).
  */
+import { useElementSize } from '@vueuse/core'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useSlide } from './slide'
 
-const props = withDefaults(defineProps<{ value: number; max: number; step?: number; label: string; vertical?: boolean }>(), { step: 5 })
+const props = withDefaults(defineProps<{ value: number; max: number; step?: number; label: string; vertical?: boolean; ticks?: number }>(), { step: 5 })
 const emit = defineEmits<{ change: [value: number]; live: [value: number]; dragging: [on: boolean] }>()
 
 const track = ref<HTMLElement>()
@@ -32,6 +34,13 @@ watch(
   },
 )
 onBeforeUnmount(() => clearTimeout(letGo))
+// The steps' marks (between the ends), when they're at least 4 px apart.
+const size = useElementSize(track)
+const marks = computed(() => {
+  const n = props.ticks ?? 0
+  const length = props.vertical ? size.height.value : size.width.value
+  return n > 1 && length / n >= 4 ? Array.from({ length: n - 1 }, (_, i) => (i + 1) / n) : []
+})
 const shown = computed(() => (dragging.value ?? held.value ?? props.value) / (props.max || 1))
 // A jump (not a frame's move, not a drag): it slides there. Not just after you moved it (the drag, a click, the arrow
 // keys): it's already where you put it, and the player's answer coming in would make it slide back and forth.
@@ -47,7 +56,9 @@ const SLIDES = 'transition-[width,height,left,bottom] duration-300 ease-[cubic-b
 function at(e: PointerEvent) {
   const box = track.value!.getBoundingClientRect()
   const part = props.vertical ? (box.bottom - e.clientY) / box.height : (e.clientX - box.left) / box.width
-  return Math.min(1, Math.max(0, part)) * props.max
+  const clamped = Math.min(1, Math.max(0, part))
+  // In steps: the nearest one (the handle jumps from step to step).
+  return (props.ticks ? Math.round(clamped * props.ticks) / props.ticks : clamped) * props.max
 }
 // A finger down, not yet moved: a tap, a sideways drag (the slider's) or the page scrolling (not the slider's).
 let touch: { x: number; y: number } | null = null
@@ -134,6 +145,14 @@ function key(e: KeyboardEvent) {
         class="absolute rounded-full bg-foreground"
         :class="[vertical ? 'inset-x-0 bottom-0' : 'inset-y-0 left-0', sliding && SLIDES]"
         :style="vertical ? { height: `${shown * 100}%` } : { width: `${shown * 100}%` }"
+      />
+      <!-- Notches in the track, one per step. -->
+      <span
+        v-for="mark in marks"
+        :key="mark"
+        class="absolute bg-background"
+        :class="vertical ? 'inset-x-0 h-px' : 'inset-y-0 w-px'"
+        :style="vertical ? { bottom: `${mark * 100}%` } : { left: `${mark * 100}%` }"
       />
     </div>
     <span

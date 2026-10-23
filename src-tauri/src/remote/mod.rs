@@ -4,7 +4,8 @@
 //! copy of the songs.
 //!
 //! "Let other devices play here" (this device's own): On (the default: your devices just play here), Ask first
-//! (someone here says yes), or Off.
+//! (someone here says yes), or Off. And the volume's steps when playing on another device: a phone's (levels a step)
+//! and, from a phone's volume buttons, a computer's (% a press).
 
 pub mod control;
 pub mod key;
@@ -19,6 +20,12 @@ use crate::library::Library;
 
 /// The library setting for "Let other devices play here".
 const ALLOW_SETTING: &str = "remote_allow";
+/// "Volume steps on a phone": the levels one step moves a phone's volume (phones with more than 30).
+const PHONE_STEP_SETTING: &str = "remote_phone_step";
+/// "Volume buttons on another device": the % one press of a phone's buttons moves a computer's volume.
+const BUTTON_STEP_SETTING: &str = "remote_button_step";
+const PHONE_STEP_DEFAULT: u32 = 10;
+const BUTTON_STEP_DEFAULT: u32 = 5;
 
 /// Whether the other devices may play here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -35,6 +42,8 @@ pub enum Allow {
 #[serde(rename_all = "camelCase")]
 pub struct RemoteSettings {
     pub allow: Allow,
+    pub phone_step: u32,
+    pub button_step: u32,
 }
 
 pub fn settings(app: &AppHandle) -> Result<RemoteSettings, String> {
@@ -43,7 +52,9 @@ pub fn settings(app: &AppHandle) -> Result<RemoteSettings, String> {
         Some("off") => Allow::Off,
         _ => Allow::On,
     };
-    Ok(RemoteSettings { allow })
+    let library = app.state::<Library>();
+    let number = |key: &str, default: u32| Ok::<_, String>(library.setting(key)?.and_then(|v| v.parse().ok()).filter(|n| *n > 0).unwrap_or(default));
+    Ok(RemoteSettings { allow, phone_step: number(PHONE_STEP_SETTING, PHONE_STEP_DEFAULT)?, button_step: number(BUTTON_STEP_SETTING, BUTTON_STEP_DEFAULT)? })
 }
 
 #[tauri::command(async)]
@@ -58,7 +69,10 @@ pub fn remote_set_settings(app: AppHandle, settings: RemoteSettings) -> Result<R
         Allow::Ask => "ask",
         Allow::Off => "off",
     };
-    app.state::<Library>().set_setting(ALLOW_SETTING, value)?;
+    let library = app.state::<Library>();
+    library.set_setting(ALLOW_SETTING, value)?;
+    library.set_setting(PHONE_STEP_SETTING, &settings.phone_step.max(1).to_string())?;
+    library.set_setting(BUTTON_STEP_SETTING, &settings.button_step.max(1).to_string())?;
     // The others hear of it at once (not at the next heartbeat).
     presence::announce_soon();
     self::settings(&app)

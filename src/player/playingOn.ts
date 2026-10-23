@@ -15,6 +15,8 @@ export const playingOn = reactive({
   connecting: null as string | null,
   /** The other way round: the devices playing on this one now (their names). */
   playedFrom: [] as string[],
+  /** "Volume steps on a phone" (the setting): the levels one step moves a phone's volume. */
+  phoneStep: 10,
 })
 
 /** The device at the other end of the connection, by name (null: no connection). */

@@ -2,14 +2,17 @@
 /**
  * Across devices: continuing what another device was playing (Ask / Follow / Off), when Ask may continue without
  * asking, and this device's name (what the others call it: "Continue from TROLLGANG"). Saves as you change it. Then
- * your devices (library/remote.ts): which are online now, and whether the others may play on this one.
+ * your devices (library/remote.ts): which are online now, whether the others may play on this one, and the volume's
+ * steps when playing on another (a phone's; on a phone, its buttons' on a computer).
  *
  * Melue's playback sync settings (library/sync.ts: playbackSync). An empty name goes back to the system's name. Only
  * with a share: it all goes through the share.
  */
 import { Monitor, Smartphone } from '@lucide/vue'
 import { onBeforeUnmount, ref } from 'vue'
-import { Chevron, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot } from '@/components/settings'
+import { Chevron, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot, Stepper } from '@/components/settings'
+import { usePhone } from '@/lib/phone'
+import { playingOn } from '@/player/playingOn'
 import { remote, type Allow, type Device, type RemoteSettings } from '@/library/remote'
 import { ago } from './format'
 import { playbackSync, sync, type PlaybackMode, type PlaybackSettings } from '@/library/sync'
@@ -47,14 +50,21 @@ const deviceLine = (d: Device) =>
     .filter(Boolean)
     .join(' · ')
 
-async function setAllow(allow: Allow) {
+const phone = usePhone()
+const PHONE_STEPS = [1, 2, 5, 10, 20] as const
+const BUTTON_STEPS = [1, 2, 5, 10] as const
+
+async function setRemote(change: Partial<RemoteSettings>) {
+  if (!remoteSettings.value) return
   try {
-    remoteSettings.value = await remote.setSettings({ allow })
-    await loadDevices()
+    remoteSettings.value = await remote.setSettings({ ...remoteSettings.value, ...change })
+    playingOn.phoneStep = remoteSettings.value.phoneStep
+    if (change.allow) await loadDevices()
   } catch (e) {
     error.value = `Not saved: ${e}`
   }
 }
+const setAllow = (allow: Allow) => setRemote({ allow })
 
 onPageLoad(async () => {
   try {
@@ -136,6 +146,26 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
         :is-default="remoteSettings.allow === 'on'"
       >
         <Segmented :model-value="remoteSettings.allow" :options="ALLOWS" @update:model-value="setAllow" />
+      </SettingsRow>
+      <SettingsRow
+        v-if="remoteSettings"
+        title="Volume steps on a phone"
+        :description="`Playing on a phone, each step moves its volume ${remoteSettings.phoneStep === 1 ? '1 level' : `${remoteSettings.phoneStep} levels`}`"
+        setting="remote.phoneStep"
+        :reset="() => setRemote({ phoneStep: 10 })"
+        :is-default="remoteSettings.phoneStep === 10"
+      >
+        <Stepper :model-value="remoteSettings.phoneStep" :steps="[...PHONE_STEPS]" @update:model-value="(phoneStep) => setRemote({ phoneStep })" />
+      </SettingsRow>
+      <SettingsRow
+        v-if="remoteSettings && phone"
+        title="Volume buttons on another device"
+        :description="`Playing on a computer, each press moves its volume ${remoteSettings.buttonStep}%`"
+        setting="remote.buttonStep"
+        :reset="() => setRemote({ buttonStep: 5 })"
+        :is-default="remoteSettings.buttonStep === 5"
+      >
+        <Stepper :model-value="remoteSettings.buttonStep" :steps="[...BUTTON_STEPS]" @update:model-value="(buttonStep) => setRemote({ buttonStep })" />
       </SettingsRow>
     </SettingsCard>
     <!-- A device that turns up drops in; one coming online moves up to the others. -->

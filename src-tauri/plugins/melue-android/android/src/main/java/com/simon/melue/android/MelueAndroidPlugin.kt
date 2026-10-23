@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
+import android.media.AudioManager
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
 import android.net.Network
@@ -467,6 +468,34 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     fun deviceName(invoke: Invoke) {
         val name = Settings.Global.getString(activity.contentResolver, Settings.Global.DEVICE_NAME)
         invoke.resolve(JSObject().put("name", if (name.isNullOrBlank()) Build.MODEL else name))
+    }
+
+    /**
+     * The phone's media volume (what its volume buttons change): the step it's at, of how many (`max`; phones have
+     * 15 to 30 or so). Another device playing here reads it and sets it (remote/server.rs).
+     */
+    @Command
+    fun mediaVolume(invoke: Invoke) {
+        val audio = activity.getSystemService(AudioManager::class.java)
+        invoke.resolve(
+            JSObject()
+                .put("step", audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+                .put("max", audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC))
+        )
+    }
+
+    @InvokeArg
+    class MediaVolumeArgs {
+        var step: Int = 0
+    }
+
+    /** Sets the phone's media volume to `step` (0 to its max), quietly: no volume panel on the phone. */
+    @Command
+    fun setMediaVolume(invoke: Invoke) {
+        val step = invoke.parseArgs(MediaVolumeArgs::class.java).step
+        val audio = activity.getSystemService(AudioManager::class.java)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, step.coerceIn(0, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)), 0)
+        invoke.resolve()
     }
 
     /** Whether the connection is metered (mobile data, a phone's hotspot): Android's own answer. */

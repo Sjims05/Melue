@@ -10,7 +10,7 @@
  */
 import { reactive } from 'vue'
 import { router, MAIN_PAGES } from '@/router'
-import { current, cycleRepeat, like, next, nowPlaying, position, previous, seek, setVolume, toggleShuffle, togglePlay } from '@/player/nowPlaying'
+import { current, cycleRepeat, like, next, nowPlaying, position, previous, seek, setVolume, toggleShuffle, togglePlay, volumeStep } from '@/player/nowPlaying'
 import { upNextOpen } from '@/player/upNext'
 import { openReport } from '@/lib/report/report'
 
@@ -58,8 +58,6 @@ export const SHORTCUTS: { group: string; items: { keys: string[][]; what: string
 export const shortcuts = reactive({ open: false })
 /** The volume keys were used (when): the player bar shows the volume a moment (VolumeButton.vue). */
 export const volumeFlash = reactive({ at: 0 })
-
-const VOLUME_STEP = 0.05
 
 /** Where the arrows, Space and Enter belong to something else: a list, a slider, segments, a menu, a dialog. */
 function ownsArrows(target: EventTarget | null): boolean {
@@ -161,7 +159,7 @@ function onKey(e: KeyboardEvent) {
       if (!state) return
       return act(() => {
         const up = key !== '-'
-        setVolume(Math.min(1, Math.max(0, (state.volume ?? 1) + (up ? VOLUME_STEP : -VOLUME_STEP))))
+        setVolume((state.volume ?? 1) + (up ? volumeStep() : -volumeStep()))
         volumeFlash.at = Date.now()
       })
     case 'l':
