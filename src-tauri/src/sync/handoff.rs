@@ -454,7 +454,8 @@ fn look(app: &AppHandle) -> Result<()> {
     }
     let Some(other) = newest_other(files, &me, answered_ms(&library)) else { return Ok(()) };
     // Never interrupt: playing here wins (and soon saves, which makes it the newest).
-    if app.native_audio().get_state()?.is_playing {
+    let before = app.native_audio().get_state()?;
+    if before.is_playing {
         return Ok(());
     }
     // A song that isn't here yet (not synced) can't be continued.
@@ -464,6 +465,11 @@ fn look(app: &AppHandle) -> Result<()> {
     }
     let handoff = app.state::<Handoff>();
     if continues_by_itself(&settings, other.share_ms, now_on_share) {
+        // Not if play was pressed (or another song picked) while this looked: loading would stop it.
+        let now = app.native_audio().get_state()?;
+        if now.is_playing || (now.current_id, now.queue_index) != (before.current_id, before.queue_index) {
+            return Ok(());
+        }
         load(app, &other)?;
         *handoff.offer.lock().unwrap() = None;
         let _ = app.emit(FOLLOWED_EVENT, &other);

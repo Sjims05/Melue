@@ -3,6 +3,19 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.7 (2026-10-23)
+
+The phone's own controls, for the device it plays on.
+
+- Playing on another device from the phone, the notification, the lock screen and the media card show what plays
+  there ("Playing on …"), and their buttons control it: play, pause, previous, next, seeking, shuffle and repeat. The
+  heart likes the song playing there.
+- The phone's volume buttons move the other device's volume (in its steps: "Volume steps on a phone", or "Volume
+  buttons on another device" for a computer), not the phone's own. Android gives them over while it plays.
+- While connected, a like or unlike on either device shows on the other at once.
+- Fixed: on the phone, the lyrics stayed on one song after Now playing had been closed.
+- Fixed: pressing play just after Melue started could be undone by Continue loading another device's playback.
+
 ## 0.6.6 (2026-10-23)
 
 Connections that come back.

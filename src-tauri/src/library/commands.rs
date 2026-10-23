@@ -562,6 +562,8 @@ pub fn library_set_auto_playlist(
 pub fn library_set_liked(app: AppHandle, library: State<'_, Library>, id: i64, liked: bool) -> Result<()> {
     library.set_liked(id, liked)?;
     changes::emit(&app, LibraryChange::liked(id));
+    // Playing on another device (or played from one): it's liked there at once too.
+    crate::remote::likes::liked_here(&app, id, liked);
     Ok(())
 }
 

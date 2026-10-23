@@ -97,6 +97,8 @@ pub fn run() {
             // (remote/presence.rs), and takes connections from your other devices (remote/server.rs).
             remote::presence::start(app.handle());
             remote::server::start(app.handle());
+            // Playing on another device, the phone's lock screen, notification and volume buttons control it.
+            remote::media::start(app.handle());
             // The car with Melue closed finds the library here (sync/car.rs).
             #[cfg(target_os = "android")]
             {

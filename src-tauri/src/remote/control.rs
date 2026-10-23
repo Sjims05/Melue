@@ -39,6 +39,17 @@ pub enum Command {
     SkipTo { index: usize },
     /// A queue to play there: the songs' paths on the share, the song to start on, seconds into it, playing or paused.
     Load { queue: Vec<String>, index: usize, position: f64, playing: bool },
+    /// A song was liked or unliked on the controller: the same there at once (remote/likes.rs).
+    Like(Like),
+}
+
+/// A song liked or unliked (`liked`) on one device, for the other: by its path on the share, and when (ms).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Like {
+    pub path: String,
+    pub liked: bool,
+    pub at: i64,
 }
 
 /// A song in the playing device's queue: its path on the share (to find it on the controller too), and what it is.
@@ -80,6 +91,8 @@ pub struct RemoteState {
 pub enum Outgoing {
     State(RemoteState),
     Error(String),
+    /// A song was liked or unliked on the playing device (remote/likes.rs).
+    Liked(Like),
 }
 
 /// The device playing, as its server sees it.
@@ -120,8 +133,16 @@ fn coming_back(from: &str) -> bool {
     was_lost || SESSIONS.lock().unwrap().iter().any(|(_, id, _)| id == from)
 }
 
-/// The controllers connected here now: each one's device, and a way to end its connection (with why).
-static SESSIONS: std::sync::Mutex<Vec<(u64, String, tokio::sync::mpsc::UnboundedSender<String>)>> = std::sync::Mutex::new(Vec::new());
+/// For a controller's connection, from elsewhere on this device.
+enum ToSession {
+    /// End it, telling the controller why.
+    End(String),
+    /// Tell the controller (a like here).
+    Tell(Outgoing),
+}
+
+/// The controllers connected here now: each one's device, and a way to reach its connection.
+static SESSIONS: std::sync::Mutex<Vec<(u64, String, tokio::sync::mpsc::UnboundedSender<ToSession>)>> = std::sync::Mutex::new(Vec::new());
 static NEXT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// The devices controlling this one now (their ids).
@@ -137,7 +158,14 @@ pub fn end_sessions(why: &str) {
 /// Ends every controller's connection from here, telling each one (by its device id) why.
 pub fn end_sessions_saying(why: impl Fn(&str) -> String) {
     for (_, from, end) in SESSIONS.lock().unwrap().iter() {
-        let _ = end.send(why(from));
+        let _ = end.send(ToSession::End(why(from)));
+    }
+}
+
+/// Tells every controller connected here `message` (a like here).
+pub fn tell_controllers(message: Outgoing) {
+    for (_, _, to) in SESSIONS.lock().unwrap().iter() {
+        let _ = to.send(ToSession::Tell(message.clone()));
     }
 }
 
@@ -193,12 +221,12 @@ impl Drop for Open {
 
 async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
     let id = NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let (end, mut ended) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (end, mut told) = tokio::sync::mpsc::unbounded_channel::<ToSession>();
     {
         let mut sessions = SESSIONS.lock().unwrap();
         // The same device again (it lost its connection, and this one hadn't noticed yet): the old one goes.
         for (_, _, old) in sessions.iter().filter(|(_, other, _)| *other == from) {
-            let _ = old.send("connected again".into());
+            let _ = old.send(ToSession::End("connected again".into()));
         }
         sessions.push((id, from.clone(), end));
     }
@@ -215,12 +243,22 @@ async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
     loop {
         let send_now = tokio::select! {
             _ = look.tick() => false,
-            // Ended from here (Disconnect on this device): the controller is told why.
-            why = ended.recv() => {
-                let close = axum::extract::ws::CloseFrame { code: axum::extract::ws::close_code::NORMAL, reason: why.unwrap_or_default().into() };
-                let _ = out.send(Message::Close(Some(close))).await;
-                break;
-            }
+            told = told.recv() => match told {
+                // Ended from here (Disconnect on this device): the controller is told why.
+                Some(ToSession::End(why)) => {
+                    let close = axum::extract::ws::CloseFrame { code: axum::extract::ws::close_code::NORMAL, reason: why.into() };
+                    let _ = out.send(Message::Close(Some(close))).await;
+                    break;
+                }
+                Some(ToSession::Tell(message)) => {
+                    if out.send(Message::Text(serde_json::to_string(&message).unwrap_or_default().into())).await.is_err() {
+                        lost = true;
+                        break;
+                    }
+                    false
+                }
+                None => false,
+            },
             // The controller still there? (It answers a ping by itself; nothing heard for a while: it's gone.)
             _ = check.tick() => {
                 if heard.elapsed() > SILENT_AT_MOST || out.send(Message::Ping(Vec::new().into())).await.is_err() {
@@ -407,6 +445,8 @@ mod tests {
                 Command::Seek { position } => s.position = position,
                 Command::Volume { volume } => s.volume = volume,
                 Command::Next => s.index += 1,
+                // A like: as the app does, it's the library's; here it's kept to look at.
+                Command::Like(like) => s.queue.push(RemoteSong { path: Some(format!("liked:{}:{}", like.path, like.liked)), ..Default::default() }),
                 _ => {}
             }
             Ok(())
@@ -500,6 +540,20 @@ mod tests {
         assert!(err.contains("said no"), "{err}");
         let yes = serve(TestHost { says_yes: true, ..host(&key, Allow::Ask) }).await;
         assert!(phone(yes, &key).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_like_goes_both_ways_over_the_connection() {
+        let key = [3u8; 32];
+        let port = serve(host(&key, Allow::On)).await;
+        let (link, seen) = phone(port, &key).await.unwrap();
+        until(&seen, |m| matches!(m, Outgoing::State(_))).await;
+        // Liked on the controller: there at once.
+        link.send(Command::Like(Like { path: "Song.mp3".into(), liked: true, at: 5 })).unwrap();
+        until(&seen, |m| matches!(m, Outgoing::State(s) if s.queue.iter().any(|q| q.path.as_deref() == Some("liked:Song.mp3:true")))).await;
+        // Liked on the playing device: the controllers hear of it.
+        tell_controllers(Outgoing::Liked(Like { path: "Other.mp3".into(), liked: false, at: 6 }));
+        until(&seen, |m| matches!(m, Outgoing::Liked(l) if l.path == "Other.mp3" && !l.liked)).await;
     }
 
     #[test]

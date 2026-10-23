@@ -187,6 +187,10 @@ impl Host for AppHost {
     }
 
     fn apply(&self, command: Command) -> Result<(), String> {
+        // A like on the controller: the library's, not the player's (the app hears of it as of any like).
+        if let Command::Like(like) = &command {
+            return super::likes::apply(&self.0, like);
+        }
         let applied = self.apply_here(command);
         // This device's own views follow (they hear of their own controls, not of these).
         let _ = self.0.emit(CHANGED_EVENT, ());
@@ -232,6 +236,7 @@ impl AppHost {
             Command::Shuffle { on } => player.set_shuffle(on),
             Command::Repeat { mode } => player.set_repeat_mode(&mode),
             Command::SkipTo { index } => player.skip_to(index),
+            Command::Like(_) => Ok(()),
             Command::Load { queue, index, position, playing } => {
                 // The songs here, by their paths on the share (as Continue does).
                 let library = self.0.state::<Library>();

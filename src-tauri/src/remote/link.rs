@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use super::control::{self, Closed, Command, Link, Outgoing, RemoteState};
 use super::presence::Device;
-use super::{key, presence, server};
+use super::{key, media, presence, server};
 use crate::library::Library;
 use crate::sync::handoff::{self, Playback};
 use tauri_plugin_native_audio::NativeAudioExt;
@@ -102,9 +102,21 @@ async fn open(app: &AppHandle, id: &str, serial: u64) -> Result<(Connected, Link
             let _ = match message {
                 Outgoing::State(state) => {
                     *to_app.state::<Remote>().1.lock().unwrap() = Some((keep.clone(), state.clone()));
+                    // The phone's lock screen, notification and volume buttons follow it (Android).
+                    media::show(&to_app, &keep, &state);
                     to_app.emit(STATE_EVENT, state)
                 }
                 Outgoing::Error(error) => to_app.emit(ERROR_EVENT, error),
+                // A like on the device played on: the same here.
+                Outgoing::Liked(like) => {
+                    let app = to_app.clone();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        if let Err(e) = super::likes::apply(&app, &like) {
+                            eprintln!("melue: a like from the other device: {e}");
+                        }
+                    });
+                    Ok(())
+                }
             };
         },
         move |how| closed(&closing, serial, how),
@@ -149,7 +161,13 @@ fn end(app: &AppHandle, why: Option<String>) {
     }
     remote.1.lock().unwrap().take();
     remote.2.lock().unwrap().take();
+    media::hide(app);
     let _ = app.emit(CLOSED_EVENT, why);
+}
+
+/// Whether this device plays on another now (connected, or reconnecting).
+pub fn connected(app: &AppHandle) -> bool {
+    app.state::<Remote>().0.lock().unwrap().is_some()
 }
 
 /// Connection `serial` to device `id` was lost (a network change, the other device's network): tried again every few
@@ -332,4 +350,5 @@ pub fn remote_disconnect(app: AppHandle) {
     }
     remote.1.lock().unwrap().take();
     remote.2.lock().unwrap().take();
+    media::hide(&app);
 }

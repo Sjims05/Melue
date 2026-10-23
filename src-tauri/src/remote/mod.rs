@@ -9,7 +9,9 @@
 
 pub mod control;
 pub mod key;
+pub mod likes;
 pub mod link;
+pub mod media;
 pub mod presence;
 pub mod server;
 

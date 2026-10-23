@@ -4,7 +4,7 @@
  * player itself only says where it is now and then).
  */
 import { invoke } from '@tauri-apps/api/core'
-import { onActivated, onBeforeUnmount, onDeactivated, ref, shallowRef, watch } from 'vue'
+import { effectScope, onActivated, onBeforeUnmount, onDeactivated, ref, shallowRef, watch } from 'vue'
 import { current, nowPlaying } from './nowPlaying'
 
 export interface Lyrics {
@@ -56,11 +56,14 @@ export const lyrics = shallowRef<Lyrics | null | undefined>(undefined)
 const read = new Map<number, Lyrics | null>()
 let started = false
 
-/** Once (Now playing): reads the lyrics of each song that plays. */
+/**
+ * Once (Now playing): reads the lyrics of each song that plays. The app's, not the page's: on a phone Now playing is
+ * taken away when it closes, and a watch of its own would stop with it (the lyrics stuck on that song).
+ */
 export function followLyrics() {
   if (started) return
   started = true
-  watch(
+  effectScope(true).run(() => watch(
     () => Number(current.value?.id) || null,
     async (id) => {
       if (!id) return void (lyrics.value = null)
@@ -72,7 +75,7 @@ export function followLyrics() {
       if (Number(current.value?.id) === id) lyrics.value = found
     },
     { immediate: true },
-  )
+  ))
 }
 
 /**
