@@ -47,6 +47,8 @@ export interface RemoteState {
   repeat: 'off' | 'all' | 'one'
   index: number
   queue: { path: string | null; title: string | null; artist: string | null }[]
+  /** The order the queue plays in (places in `queue`). */
+  playOrder: number[]
 }
 
 export const remote = {
@@ -61,6 +63,26 @@ export const remote = {
   /** What plays here, to the device connected to. */
   sendPlaying: () => invoke<void>('remote_send_playing'),
   disconnect: () => invoke<void>('remote_disconnect'),
+  /** The other device's songs (their paths on the share): their ids here, or null. */
+  songIds: (paths: (string | null)[]) => invoke<(number | null)[]>('remote_song_ids', { paths }),
+  /** Songs from here (their ids) to play on the device connected to, from song `index`. */
+  load: (ids: number[], index: number, playing = true) => invoke<void>('remote_load', { ids, index, playing }),
+  /** Connect device: what plays here plays there, and pauses here. */
+  playOn: (id: string) => invoke<{ id: string; name: string; address: string }>('remote_play_on', { id }),
+  /** "This device": what plays there plays here, and pauses there. */
+  bringBack: () => invoke<void>('remote_bring_back'),
+  /** Playing on another device now: which, and its state as it last said. */
+  status: () => invoke<[{ id: string; name: string; address: string }, RemoteState | null] | null>('remote_status'),
+  /** The devices playing on this one now (their names), and when that changes. */
+  playedFrom: () => invoke<string[]>('remote_controlled_by'),
+  onPlayedFrom: (listener: (names: string[]) => void) => listen<string[]>('remote-controlled', (e) => listener(e.payload)),
+  /** Disconnects the devices playing on this one: what plays here goes on. */
+  endPlayedFrom: () => invoke<void>('remote_end_control'),
+  /** "Ask first": the answer to another device asking to play here. */
+  answer: (id: number, yes: boolean) => invoke<void>('remote_answer', { id, yes }),
+  /** Another device asks to play here (this one asks first). */
+  onAsk: (listener: (asking: { id: number; from: string; seconds: number }) => void) =>
+    listen<{ id: number; from: string; seconds: number }>('remote-ask', (e) => listener(e.payload)),
   onState: (listener: (state: RemoteState) => void) => listen<RemoteState>('remote-state', (e) => listener(e.payload)),
   onError: (listener: (error: string) => void) => listen<string>('remote-error', (e) => listener(e.payload)),
   /** The connection ended (`why`; null when this device closed it). */

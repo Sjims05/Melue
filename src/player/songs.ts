@@ -17,6 +17,8 @@ import { count } from '@/lib/format'
 import { whereOriginalsGo } from '@/settings/format'
 import { listPlay } from '@/lib/listPlay'
 import { toast } from '@/lib/toast'
+import { remote } from '@/library/remote'
+import { playingOn } from './playingOn'
 import { isMobile, player } from '@/platform'
 import { router } from '@/router'
 import { current, like, next, nowPlaying, refreshQueue, setShuffle, takeOutOfQueue, togglePlay } from './nowPlaying'
@@ -68,6 +70,8 @@ export async function exportList(source: Source, name: string): Promise<string |
  */
 export async function playOne(id: number) {
   if (id === current.value?.id) return togglePlay()
+  // Playing on another device: the song plays there (on its own).
+  if (playingOn.device) return remote.load([id], 0).catch((e) => toast(`${playingOn.device?.name}: ${e}`))
   const items = await library.queueItemsFor([id])
   if (!current.value) {
     await player.setQueue(items, { startIndex: 0 })
@@ -92,7 +96,7 @@ export const playSong = (song: Song, via: 'button' | 'doubleClick' = 'button') =
 /** One song (a double-click): to the end of Up next; nothing playing: it plays. */
 export async function queueOne(id: number) {
   if (id === current.value?.id) return togglePlay()
-  if (!current.value) return playOne(id)
+  if (!current.value || playingOn.device) return playOne(id)
   await addItems(await library.queueItemsFor([id]), false)
   await refreshQueue()
 }
@@ -103,6 +107,7 @@ export async function queueOne(id: number) {
  */
 async function addItems(items: QueueItem[], playNext: boolean, note = true) {
   if (!items.length) return
+  if (playingOn.device) return void toast(`Up next is changed on ${playingOn.device.name} itself while playing there`)
   // Where they go in the queue's list, for Undo.
   const before = await player.getQueue().catch(() => null)
   const at = playNext ? (before?.currentIndex ?? -1) + 1 : (before?.items.length ?? 0)

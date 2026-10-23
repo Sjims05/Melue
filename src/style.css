@@ -309,3 +309,11 @@ input[type='search']::-webkit-search-cancel-button {
   color: var(--foreground);
 }
 
+
+/* A connection's pill where toasts show (components/player/RemotePill.vue): pages get its room at their end, so their
+   last row scrolls clear of it. */
+body:has([data-connection-note]) [data-scroller]::after {
+  content: '';
+  display: block;
+  height: 3.5rem;
+}

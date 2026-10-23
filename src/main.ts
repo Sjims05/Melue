@@ -75,6 +75,8 @@ async function start(shell = isMobile ? MobileShell : DesktopShell) {
   if (isTauri()) import("./lib/updates").then(({ followUpdates }) => followUpdates()).catch(() => {});
   // What a bug report says was done before it: the last steps and errors (lib/report/trail.ts).
   startTrail();
+  // Connect device: playing on another of your devices (player/remotePlayback.ts).
+  if (isTauri()) import("./player/remotePlayback").then(({ startRemotePlayback }) => startRemotePlayback()).catch(() => {});
   // Whether a share is set up (sync buttons show only then), kept live.
   startSync().catch((e) => console.error("melue: sync status failed", e));
 }

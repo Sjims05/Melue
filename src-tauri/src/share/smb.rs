@@ -403,11 +403,19 @@ impl Share for SmbShare {
                             return Err(smb2::Error::Cancelled);
                         }
                         writer.finish().await?;
-                        // Put in place: what was there goes first (a rename doesn't replace on every server).
-                        if c.client.stat(&mut c.tree, &full).await.is_ok() {
-                            c.client.delete_file(&mut c.tree, &full).await?;
+                        // Put in place: what was there goes first (a rename doesn't replace on every server). Another
+                        // device writing the same file at the same moment can put its own there in between: then again.
+                        let mut tries = 0;
+                        loop {
+                            if c.client.stat(&mut c.tree, &full).await.is_ok() {
+                                let _ = c.client.delete_file(&mut c.tree, &full).await;
+                            }
+                            match c.client.rename(&mut c.tree, &part, &full).await {
+                                Ok(()) => break,
+                                Err(e) if tries < 2 && e.to_string().contains("COLLISION") => tries += 1,
+                                Err(e) => return Err(e),
+                            }
                         }
-                        c.client.rename(&mut c.tree, &part, &full).await?;
                         Ok(total)
                     })
                 })

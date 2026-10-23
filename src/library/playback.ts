@@ -18,6 +18,8 @@ import {
 import { invoke } from '@tauri-apps/api/core'
 import { isMobile, player, trackedLists } from '@/platform'
 import { library, type PlaybackOutcome, type PlayerSettings, type Source } from '.'
+import { remote } from './remote'
+import { playingOn } from '@/player/playingOn'
 
 const LIKE_BUTTON = 'like'
 /** The lists played (albums, playlists, artists), most recent first: Android Auto's "Recently played" tab. */
@@ -33,6 +35,8 @@ export async function playSource(source: Source, options: { startAt?: number } =
   const picked = items.findIndex((item) => item.id === options.startAt)
   const shuffled = picked < 0 && (await player.getState().catch(() => null))?.shuffle
   const startIndex = picked >= 0 ? picked : shuffled ? Math.floor(Math.random() * items.length) : 0
+  // Playing on another device (Connect device): the list plays there.
+  if (playingOn.device) return remote.load(items.map((i) => i.id), startIndex)
   await player.setQueue(items, { sourceId: source, startIndex })
   await player.play()
 }

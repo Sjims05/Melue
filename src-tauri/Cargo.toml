@@ -97,6 +97,9 @@ tauri-plugin-android-fs = "29.0.0"
 # Melue's own Android code: the music permission and Android's music index.
 tauri-plugin-melue-android = { path = "plugins/melue-android" }
 
+[dev-dependencies]
+# Tests with a paused clock (remote/control.rs: a device that stops answering, without waiting for real).
+tokio = { version = "1", features = ["test-util"] }
 
 # Dev builds: optimize the dependencies (the audio decoding and resampling in native-audio would
 # be too slow to play smoothly otherwise). Only Melue's own code stays unoptimized, so rebuilds stay fast.

@@ -5,7 +5,8 @@
 
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,9 +15,9 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
-use super::control::{self, Command, Host, RemoteSong, RemoteState};
+use super::control::{self, Command, Host, RemoteSong, RemoteState, ASK_WAIT};
 use super::presence::{self, Device};
 use super::{key, Allow};
 use crate::library::{now_ms, Library};
@@ -55,6 +56,58 @@ async fn ping(State(host): State<Arc<dyn Host>>, headers: HeaderMap) -> Result<J
 /// The server's routes, for `host`.
 pub fn routes(host: Arc<dyn Host>) -> Router {
     Router::new().route("/ping", get(ping)).route("/control", get(control::control)).with_state(host)
+}
+
+/// Who plays on this device changed: the app gets them (their names).
+pub const CONTROLLED_EVENT: &str = "remote-controlled";
+
+/// The devices playing on this one now, by name.
+fn controlled_by(app: &AppHandle) -> Vec<String> {
+    let ids = control::controllers();
+    if ids.is_empty() {
+        return Vec::new();
+    }
+    let names = presence::all(app).unwrap_or_default();
+    ids.iter().map(|id| names.iter().find(|d| d.id == *id).map_or_else(|| "another of your devices".into(), |d| d.name.clone())).collect()
+}
+
+/// The devices playing on this one now (Connect device shows them, to disconnect).
+#[tauri::command(async)]
+pub fn remote_controlled_by(app: AppHandle) -> Vec<String> {
+    controlled_by(&app)
+}
+
+/// Disconnects the devices playing on this one: what plays here goes on, and they're told this device ended it.
+#[tauri::command(async)]
+pub fn remote_end_control(app: AppHandle) {
+    let name = handoff::settings(&app).ok().and_then(|s| s.device_name).unwrap_or_else(|| "The other device".into());
+    control::end_sessions(&format!("{name} ended the connection"));
+}
+
+/// A command from another device changed the player here: the app reads it again (its views follow).
+pub const CHANGED_EVENT: &str = "remote-changed-here";
+
+/// "Ask first": the question to the app (`remote-ask`, with its id and who asks), answered with `remote_answer`.
+pub const ASK_EVENT: &str = "remote-ask";
+static ASKS: Mutex<Option<HashMap<u64, std::sync::mpsc::Sender<bool>>>> = Mutex::new(None);
+static NEXT_ASK: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Asking {
+    pub id: u64,
+    /// The device that wants to play here (its name).
+    pub from: String,
+    /// How long the question stays (seconds).
+    pub seconds: u64,
+}
+
+/// The answer to an "Ask first" question.
+#[tauri::command]
+pub fn remote_answer(id: u64, yes: bool) {
+    if let Some(answer) = ASKS.lock().unwrap().get_or_insert_with(HashMap::new).remove(&id) {
+        let _ = answer.send(yes);
+    }
 }
 
 /// This device, as its server sees it.
@@ -96,6 +149,7 @@ impl Host for AppHost {
             shuffle: state.shuffle,
             repeat: state.repeat_mode,
             index: queue.current_index,
+            play_order: queue.play_order,
             queue: queue
                 .items
                 .into_iter()
@@ -104,7 +158,41 @@ impl Host for AppHost {
         })
     }
 
+    fn connection(&self, from: &str, open: bool) {
+        // Synced playback rests while another device plays here.
+        if open {
+            // One way at a time: this device stops playing on another.
+            let name = presence::device(&self.0, from).ok().flatten().map_or_else(|| "Another of your devices".to_string(), |d| d.name);
+            super::link::give_way(&self.0, &name);
+            handoff::connection_began()
+        } else {
+            handoff::connection_ended()
+        }
+        // The app shows who plays here (Connect device: Disconnect it).
+        let _ = self.0.emit(CONTROLLED_EVENT, controlled_by(&self.0));
+    }
+
+    fn ask(&self, from: &str) -> bool {
+        let name = presence::device(&self.0, from).ok().flatten().map_or_else(|| "Another of your devices".to_string(), |d| d.name);
+        let id = NEXT_ASK.fetch_add(1, Ordering::SeqCst);
+        let (answer, answered) = std::sync::mpsc::channel();
+        ASKS.lock().unwrap().get_or_insert_with(HashMap::new).insert(id, answer);
+        let _ = self.0.emit(ASK_EVENT, Asking { id, from: name, seconds: ASK_WAIT.as_secs() });
+        let yes = answered.recv_timeout(ASK_WAIT).unwrap_or(false);
+        ASKS.lock().unwrap().get_or_insert_with(HashMap::new).remove(&id);
+        yes
+    }
+
     fn apply(&self, command: Command) -> Result<(), String> {
+        let applied = self.apply_here(command);
+        // This device's own views follow (they hear of their own controls, not of these).
+        let _ = self.0.emit(CHANGED_EVENT, ());
+        applied
+    }
+}
+
+impl AppHost {
+    fn apply_here(&self, command: Command) -> Result<(), String> {
         let player = self.0.native_audio();
         match command {
             Command::Play => player.play(),

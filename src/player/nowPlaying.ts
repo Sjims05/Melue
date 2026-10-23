@@ -4,17 +4,24 @@
  * from in words, and the position, moving smoothly between the player's updates. And the controls.
  *
  * Up next is the queue after the playing song, in the order it plays.
+ *
+ * Playing on another device (Connect device: playingOn.ts): all of it is that device's, its state as it says it (its
+ * songs this device has get their details from the library here), and the controls go to it. Changing Up next itself
+ * (moving, taking out, adding) is done on that device for now.
  */
-import { CircleAlert } from '@lucide/vue'
-import { computed, reactive } from 'vue'
+import { CircleAlert, MonitorSpeaker } from '@lucide/vue'
+import { computed, reactive, watch } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { artistParts, type Song } from '@/components/songs'
+import { listen } from '@tauri-apps/api/event'
 import { coverUrl, library, type Track } from '@/library'
 import { onlyHere } from '@/library/onlyHere'
 import { setLiked } from '@/library/playback'
 import { toast } from '@/lib/toast'
 import { playbackSync } from '@/library/sync'
 import { player, type PlayerQueue, type PlayerState, type PlayerTrack, type RepeatMode } from '@/platform'
+import { remote, type RemoteCommand, type RemoteState } from '@/library/remote'
+import { playingOn } from './playingOn'
 
 export const nowPlaying = reactive({
   state: null as PlayerState | null,
@@ -51,12 +58,21 @@ export async function startNowPlaying() {
   requestAnimationFrame(frame)
   // Another device's playback loaded here (synced playback, following it): what's playing now.
   playbackSync.onFollowed(() => syncNowPlaying().catch(() => {})).catch(() => {})
+  // Another device playing here changed the player (Connect device): read again, at once and once it has settled (a
+  // queue just loaded takes a moment to start).
+  listen('remote-changed-here', () => {
+    const read = () => syncNowPlaying().then(refreshQueue).catch(() => {})
+    read()
+    setTimeout(read, 700)
+  }).catch(() => {})
   // Back from the background (the phone woken, the window shown): what's playing, at once.
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && syncNowPlaying().catch(() => {}))
 }
 
 /** The player's state, from its updates or a control's answer. */
 function applyState(state: PlayerState) {
+  // Playing on another device: its state is what's shown (this device's player is paused).
+  if (playingOn.device) return
   // The same song with no length for a moment (Android's player getting ready again, when the queue changes during a
   // sync): its length as known, or the progress bar would show it played to the end until the length is back.
   const before = nowPlaying.state
@@ -86,7 +102,65 @@ function applyState(state: PlayerState) {
 
 /** Reads the player again: after it has resumed the last queue at start (a queue resumed paused sends nothing). */
 export async function syncNowPlaying() {
+  if (playingOn.device) return
   applyState(await player.getState())
+}
+
+// ---- Playing on another device
+
+/** The other device's songs: their ids here, by path on the share (asked once per song). */
+const idsHere = new Map<string, number | null>()
+
+/** The other device's state, as this device's views show a player: its songs that are here as themselves. */
+async function applyRemote(s: RemoteState) {
+  const unknown = [...new Set(s.queue.map((q) => q.path).filter((p): p is string => !!p && !idsHere.has(p)))]
+  if (unknown.length) {
+    const ids = await remote.songIds(unknown).catch(() => unknown.map(() => null))
+    unknown.forEach((path, i) => idsHere.set(path, ids[i] ?? null))
+  }
+  // A song that isn't here: a stand-in id (negative), with what the other device says it is.
+  const items: PlayerTrack[] = s.queue.map((q, i) => ({ id: (q.path && idsHere.get(q.path)) || -(i + 1), src: '', title: q.title ?? undefined, artist: q.artist ?? undefined }))
+  const missing = [...new Set(items.map((i) => i.id))].filter((id) => id > 0 && !nowPlaying.tracks.has(id))
+  if (missing.length) for (const t of await library.tracksByIds(missing).catch(() => [])) nowPlaying.tracks.set(t.id, t)
+  if (!playingOn.device) return
+  nowPlaying.queue = { items, currentIndex: s.index, playOrder: s.playOrder.length ? s.playOrder : items.map((_, i) => i), sourceId: null }
+  nowPlaying.state = {
+    status: s.index < 0 ? 'idle' : s.playing ? 'playing' : 'ended',
+    currentTime: s.position,
+    duration: s.duration,
+    isPlaying: s.playing,
+    queueIndex: s.index,
+    queueLength: s.queue.length,
+    currentId: items[s.index]?.id,
+    shuffle: s.shuffle,
+    repeatMode: s.repeat,
+    sleepTimerEndsAtMs: null,
+    sleepTimerEndOfTrack: false,
+    volume: s.volume,
+  }
+  nowPlaying.stateAt = performance.now()
+  nowPlaying.from = ''
+}
+watch(
+  () => playingOn.state,
+  (s) => {
+    if (s && playingOn.device) applyRemote(s)
+    // Back to this device: its own player again.
+    else if (!playingOn.device) syncNowPlaying().catch(() => {})
+  },
+)
+
+/** A control: to the other device while playing there, else this device's player. */
+function control(command: RemoteCommand, here: () => Promise<PlayerState>): Promise<unknown> {
+  if (!playingOn.device) return shown(here())
+  return remote.command(command).catch((e) => toast(`${playingOn.device?.name ?? 'The other device'}: ${e}`, MonitorSpeaker))
+}
+
+/** Up next can't be changed from here while playing on another device: said so (true), or false. */
+function notHere(): boolean {
+  if (!playingOn.device) return false
+  toast(`Up next is changed on ${playingOn.device.name} itself while playing there`, MonitorSpeaker)
+  return true
 }
 
 let holding = 0
@@ -222,15 +296,19 @@ function keyed<T extends { song: Song }>(rows: T[]): T[] {
 // Each control's answer is the player's new state: shown at once (a button lights up as it's pressed), not only when
 // the player's next update comes.
 const shown = (answer: Promise<PlayerState>) => answer.then(applyState)
-export const togglePlay = () => shown(nowPlaying.state?.isPlaying ? player.pause() : player.play())
-export const next = () => shown(player.next())
-export const previous = () => shown(player.previous())
-export const seek = (seconds: number) => shown(player.seekTo(seconds))
-export const setVolume = (volume: number) => shown(player.setVolume(volume))
-export const toggleShuffle = () => shown(player.setShuffle(!nowPlaying.state?.shuffle))
-export const setShuffle = (on: boolean) => shown(player.setShuffle(on))
+export const togglePlay = () =>
+  nowPlaying.state?.isPlaying ? control({ cmd: 'pause' }, () => player.pause()) : control({ cmd: 'play' }, () => player.play())
+export const next = () => control({ cmd: 'next' }, () => player.next())
+export const previous = () => control({ cmd: 'previous' }, () => player.previous())
+export const seek = (seconds: number) => control({ cmd: 'seek', position: seconds }, () => player.seekTo(seconds))
+export const setVolume = (volume: number) => control({ cmd: 'volume', volume }, () => player.setVolume(volume))
+export const toggleShuffle = () => setShuffle(!nowPlaying.state?.shuffle)
+export const setShuffle = (on: boolean) => control({ cmd: 'shuffle', on }, () => player.setShuffle(on))
 const REPEAT_NEXT: Record<RepeatMode, RepeatMode> = { off: 'all', all: 'one', one: 'off' }
-export const cycleRepeat = () => shown(player.setRepeatMode(REPEAT_NEXT[nowPlaying.state?.repeatMode ?? 'off']))
+export const cycleRepeat = () => {
+  const mode = REPEAT_NEXT[nowPlaying.state?.repeatMode ?? 'off']
+  return control({ cmd: 'repeat', mode }, () => player.setRepeatMode(mode))
+}
 /** The player bar's ✕: stops and empties the player (the bar stays, empty). */
 export async function clearPlayer() {
   await player.dispose()
@@ -248,6 +326,8 @@ export async function like(id: number, liked: boolean) {
  * the songs before it behind, and with shuffle on, shuffle everything after it again.)
  */
 export async function playFromUpNext(index: number) {
+  // On another device: it plays that song of its queue.
+  if (playingOn.device) return control({ cmd: 'skipTo', index }, () => player.skipTo(index))
   const at = upNext.value.findIndex((u) => u.index === index)
   if (at < 0) return
   if (at > 0) await moveInUpNext(at, 0)
@@ -256,6 +336,7 @@ export async function playFromUpNext(index: number) {
 }
 /** Up next: move a song (places in Up next: in the play order, so it works with shuffle too), take one out, or empty it. */
 export async function moveInUpNext(from: number, to: number) {
+  if (notHere()) return
   const q = nowPlaying.queue
   if (!q) return
   const order = q.playOrder.length ? q.playOrder : q.items.map((_, i) => i)
@@ -274,6 +355,7 @@ export async function moveInUpNext(from: number, to: number) {
   await refreshQueue()
 }
 export async function removeFromUpNext(at: number) {
+  if (notHere()) return
   const { index } = upNext.value[at]
   takeOut([index])
   await player.removeFromQueue(index)
@@ -281,13 +363,14 @@ export async function removeFromUpNext(at: number) {
 }
 /** Takes these queue items out (by their place in the queue's list), shown at once and read back once at the end. */
 export async function takeOutOfQueue(indexes: number[]) {
-  if (!indexes.length) return
+  if (!indexes.length || notHere()) return
   takeOut(indexes)
   await holdingQueue(async () => {
     for (const index of [...indexes].sort((a, b) => b - a)) await player.removeFromQueue(index)
   })
 }
 export async function clearUpNext() {
+  if (notHere()) return
   const indexes = upNext.value.map((u) => u.index)
   takeOut(indexes)
   // From the end, so the indexes before stay right.

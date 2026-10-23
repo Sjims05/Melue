@@ -28,6 +28,7 @@ import { usePullToClose } from './pullToClose'
 import { READY, usePullToRefresh } from './pullToRefresh'
 import MenuDrawer from './MenuDrawer.vue'
 import ReportDialog from '@/components/report/ReportDialog.vue'
+import RemoteAsk from '@/components/player/RemoteAsk.vue'
 
 const route = useRoute()
 // What's playing; the song menus' Add to playlist; which songs are only on this device.
@@ -136,6 +137,8 @@ const refresh = usePullToRefresh(scroller)
     <MenuDrawer />
     <!-- Report a bug (About). -->
     <ReportDialog />
+    <!-- Another device asking to play here (Let other devices play here: Ask first). -->
+    <RemoteAsk />
     <ConfirmHost />
   </div>
 </template>

@@ -3,6 +3,23 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.4 (2026-10-23)
+
+Connect device: play on your other devices.
+
+- Connect device (the player bar's speaker button, Now playing's Connect device, a drawer on the phone): pick one of
+  your devices, and what plays here carries on there, from where it was; this device pauses and becomes the remote.
+  Its controls, the song, the seek bar and Up next show what plays there. Playing a song or a list plays it there.
+- "This device" brings it back, with the queue it had; Disconnect leaves it playing there. The device played on can
+  disconnect too, and goes on playing.
+- A pill where toasts show says where the music is ("Playing on …" or "Played from …"); tapping it opens Connect
+  device. Toasts come above it.
+- "Ask first" asks on the device before another plays on it.
+- One way at a time: a device played on that starts playing elsewhere disconnects the one playing on it first.
+- A device that crashes or leaves the network is noticed within 15 seconds, and the connection ends.
+- While connected, Continue (playback across devices) rests on both, and doesn't offer what was just played there.
+- Two devices writing the same file on the share at once no longer pause the share's syncing.
+
 ## 0.6.3 (2026-10-23)
 
 One device playing on another, under the hood.

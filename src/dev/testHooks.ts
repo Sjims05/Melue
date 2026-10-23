@@ -13,8 +13,9 @@ import * as songs from '@/player/songs'
 import * as theme from '@/lib/theme'
 import { appearance } from '@/lib/appearance'
 import * as sharedSettings from '@/settings/sharedSettings'
+import * as remotePlayback from '@/player/remotePlayback'
 import * as testPass from './testPass'
 
 export function installTestHooks() {
-  Object.assign(window, { melue: { router, library, sync, player, nowPlaying, playerSettings, listPlay, songs, theme, appearance, sharedSettings, testPass } })
+  Object.assign(window, { melue: { router, library, sync, player, nowPlaying, playerSettings, listPlay, songs, theme, appearance, sharedSettings, remotePlayback, testPass } })
 }

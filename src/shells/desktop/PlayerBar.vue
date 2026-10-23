@@ -3,11 +3,13 @@
  * The player bar, at the bottom of every page but Now playing (Melue's design): the song (its cover and words open Now
  * playing) with the playing bars; then, well apart, shuffle, previous, play / pause, next, repeat (on: white with a dot
  * under it; repeat one: a "1"; the player's own icons, components/player/icons.ts); the seek bar with both times; then
- * the heart, devices (planned: Phase 4), the queue (Now playing with Up next open) and ✕ (stops and empties the
+ * the heart, Connect device (with a connection, its pill just above the bar: shells/Toasts.vue), the queue (Now playing with Up next open) and ✕ (stops and empties the
  * player). Always there: with nothing in the queue it's empty ("Nothing playing", the note icon for a cover, as a
  * song that can't play has), only shuffle and repeat on (they're for what's played next).
  */
 import LikeHeart from '@/components/player/LikeHeart.vue'
+import DevicesMenu from '@/components/player/DevicesMenu.vue'
+import { connectedTo, connectionText } from '@/player/playingOn'
 import { ListMusic, MonitorSpeaker, Music, Repeat, Shuffle, X } from '@lucide/vue'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player/icons'
 import { computed } from 'vue'
@@ -110,9 +112,16 @@ const OFF = 'pointer-events-none opacity-40'
       >
         <LikeHeart :liked="!!current?.liked" />
       </button>
-      <button type="button" :class="[ICON, tone(false), 'cursor-default opacity-40 hover:text-muted-foreground']" title="Planned: play on another device (Phase 4)" disabled>
-        <MonitorSpeaker />
-      </button>
+      <DevicesMenu>
+        <button
+          type="button"
+          :class="[ICON, connectedTo() ? 'text-primary' : tone(false)]"
+          :aria-label="connectionText() ?? 'Play on another device'"
+          :title="connectionText() ?? 'Play on another device'"
+        >
+          <MonitorSpeaker />
+        </button>
+      </DevicesMenu>
       <VolumeButton :icon-class="[ICON, tone(false)].join(' ')" />
       <button
         type="button"

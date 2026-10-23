@@ -40,8 +40,11 @@ pub fn with_share<T>(app: &AppHandle, work: impl FnOnce(&dyn Share) -> Result<T>
         }
     }
     let result = work(share.as_deref().expect("opened"));
-    *open.failed_at.lock().unwrap() = if result.is_err() { Some(Instant::now()) } else { None };
-    if result.is_err() {
+    // Only a share that can't be reached is closed and rested (another error, e.g. a file two devices wrote at once,
+    // is the work's: the connection's fine).
+    let unreachable = result.as_ref().err().is_some_and(|e| e.contains("can't reach the share"));
+    *open.failed_at.lock().unwrap() = unreachable.then(Instant::now);
+    if unreachable {
         *share = None;
     }
     result

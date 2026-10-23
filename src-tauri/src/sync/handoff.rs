@@ -246,6 +246,36 @@ pub fn stored_settings(library: &Library) -> Result<PlaybackSettings> {
 }
 
 /// The time on the share of the newest other device's playback answered (Continue, Not now, or loaded).
+/// Connections of remote playback (remote/: this device playing on another, or another playing on this one): while
+/// there's one, synced playback is off here (nothing saved, nothing offered); it's back when they end.
+static CONNECTIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A connection began (remote playback): synced playback rests until it ends ([`connection_ended`]).
+pub fn connection_began() {
+    CONNECTIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn connection_ended() {
+    let _ = CONNECTIONS.fetch_update(std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst, |n| n.checked_sub(1));
+}
+
+fn resting() -> bool {
+    CONNECTIONS.load(std::sync::atomic::Ordering::SeqCst) > 0
+}
+
+/// A device whose playback isn't offered or followed here, until a time (this device's clock): the one this device
+/// plays on (Connect device, remote/link.rs), and a minute after, so the move itself isn't offered back.
+static IGNORED: Mutex<Option<(String, i64)>> = Mutex::new(None);
+
+/// Ignores device `id`'s playback until `until_ms` (`i64::MAX`: until said otherwise).
+pub fn ignore(id: &str, until_ms: i64) {
+    *IGNORED.lock().unwrap() = Some((id.to_string(), until_ms));
+}
+
+fn ignored() -> Option<String> {
+    IGNORED.lock().unwrap().as_ref().filter(|(_, until)| now_ms() < *until).map(|(id, _)| id.clone())
+}
+
 pub fn answered_ms(library: &Library) -> i64 {
     library.setting(ANSWERED).ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0)
 }
@@ -415,9 +445,13 @@ fn look(app: &AppHandle) -> Result<()> {
     if settings.mode == Mode::Off || !library.sync_available()? {
         return Ok(());
     }
-    let files = read_all(app)?;
+    let mut files = read_all(app)?;
     let me = device_id(&library)?;
     let now_on_share = now_ms() + share_clock_ahead(&files, &me);
+    // The device this one plays on: its playback is this device's own, in a way (not offered back).
+    if let Some(ignored) = ignored() {
+        files.retain(|f| f.device_id != ignored);
+    }
     let Some(other) = newest_other(files, &me, answered_ms(&library)) else { return Ok(()) };
     // Never interrupt: playing here wins (and soon saves, which makes it the newest).
     if app.native_audio().get_state()?.is_playing {
@@ -504,8 +538,8 @@ pub fn start(app: &AppHandle) {
             std::thread::sleep(Duration::from_secs(3));
             let _ = sender.send(());
             loop {
-                // Mobile data, "Nothing": synced playback waits for Wi-Fi too.
-                let waiting = app.state::<Library>().sync_settings().is_ok_and(|s| super::mobile::waits_for_wifi(&app, &s));
+                // Mobile data, "Nothing": synced playback waits for Wi-Fi too; and it rests during remote playback.
+                let waiting = resting() || app.state::<Library>().sync_settings().is_ok_and(|s| super::mobile::waits_for_wifi(&app, &s));
                 match checks.recv_timeout(POLL) {
                     Ok(()) if waiting => while checks.try_recv().is_ok() {},
                     Ok(()) => {

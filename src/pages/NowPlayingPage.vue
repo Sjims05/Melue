@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Now playing (Melue's design): the big cover; where it plays from, the song, volume, the seek bar, the controls, and
- * Connect device (planned: Phase 4), Like, More actions (the song's menu); Lyrics (LyricsPanel.vue: following the
+ * Connect device (player/remotePlayback.ts: play on another of your devices), Like, More actions (the song's menu); Lyrics (LyricsPanel.vue: following the
  * song, in the cover's colours; full size from its button, a step in the history), beside them when there's
  * room for three columns (as in the concept at 1920 px), under them otherwise. The middle is as tall as the cover. Under it, Up next (the
  * queue after the playing song): white or like the cards (Display settings), opened with its chevron or the player
@@ -14,6 +14,9 @@ import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player
 import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { volumeFlash } from '@/lib/hotkeys'
+import DevicesMenu from '@/components/player/DevicesMenu.vue'
+import { openDevicesDrawer, playingOn } from '@/player/remotePlayback'
+import { connectedTo } from '@/player/playingOn'
 import { useRoute, useRouter } from 'vue-router'
 import Slider from '@/components/player/Slider.vue'
 import { AddToPlaylist, songMenu, SongList, SongMenuArea, type SongAction } from '@/components/songs'
@@ -187,7 +190,10 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
           <Transition name="swap" mode="out-in">
             <div :key="current.id" class="col-start-1 row-start-1 min-w-0">
               <!-- Where it plays from, and the artists: each links to its page (underlined under the pointer). -->
-              <p class="truncate text-[17px] text-muted-foreground">
+              <p v-if="playingOn.device" class="flex items-center gap-1.5 truncate text-[17px] text-muted-foreground">
+                <MonitorSpeaker class="size-4 flex-none text-primary" />Playing on <b class="font-semibold text-foreground">{{ playingOn.device.name }}</b>
+              </p>
+              <p v-else class="truncate text-[17px] text-muted-foreground">
                 Playing from
                 <RouterLink v-if="fromPage" :to="fromPage" class="font-semibold text-foreground hover:underline">{{ nowPlaying.from }}</RouterLink>
                 <b v-else class="font-semibold text-foreground">{{ nowPlaying.from }}</b>
@@ -236,7 +242,10 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
           </button>
         </div>
         <div class="flex flex-wrap justify-center gap-4">
-          <Button variant="outline" disabled title="Planned: play on another device (Phase 4)"><MonitorSpeaker />Connect device</Button>
+          <Button v-if="phone" variant="outline" @click="openDevicesDrawer"><MonitorSpeaker />{{ connectedTo() ?? 'Connect device' }}</Button>
+          <DevicesMenu v-else side="bottom" align="center">
+            <Button variant="outline"><MonitorSpeaker />{{ connectedTo() ?? 'Connect device' }}</Button>
+          </DevicesMenu>
           <Button variant="outline" @click="like(Number(current!.id), !current!.liked)">
             <LikeHeart :liked="!!current.liked" />
             <!-- Both words in one place (the button keeps its width), the one shown fading in. -->

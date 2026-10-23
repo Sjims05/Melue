@@ -64,6 +64,9 @@ pub struct RemoteState {
     /// The song in `queue` (-1: nothing loaded).
     pub index: i64,
     pub queue: Vec<RemoteSong>,
+    /// The order the queue plays in (places in `queue`; shuffled, it differs).
+    #[serde(default)]
+    pub play_order: Vec<i64>,
 }
 
 /// What the playing device sends: its state, or why a command didn't work.
@@ -80,8 +83,40 @@ pub trait Host: Send + Sync + 'static {
     fn hello(&self) -> Result<Hello, String>;
     fn state(&self) -> Result<RemoteState, String>;
     fn apply(&self, command: Command) -> Result<(), String>;
+    /// "Ask first": whether someone here lets device `from` play here (waits for the answer, a while at most).
+    fn ask(&self, from: &str) -> bool;
+    /// Device `from` connected to control this one (`open`), or its connection ended.
+    fn connection(&self, from: &str, open: bool);
 }
 
+/// The controllers connected here now: each one's device, and a way to end its connection (with why).
+static SESSIONS: std::sync::Mutex<Vec<(u64, String, tokio::sync::mpsc::UnboundedSender<String>)>> = std::sync::Mutex::new(Vec::new());
+static NEXT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// The devices controlling this one now (their ids).
+pub fn controllers() -> Vec<String> {
+    SESSIONS.lock().unwrap().iter().map(|(_, from, _)| from.clone()).collect()
+}
+
+/// Ends every controller's connection from here (`why` goes to them); what plays here goes on.
+pub fn end_sessions(why: &str) {
+    end_sessions_saying(|_| why.to_string());
+}
+
+/// Ends every controller's connection from here, telling each one (by its device id) why.
+pub fn end_sessions_saying(why: impl Fn(&str) -> String) {
+    for (_, from, end) in SESSIONS.lock().unwrap().iter() {
+        let _ = end.send(why(from));
+    }
+}
+
+/// Each end sends a check this often (a ping; the other answers by itself)...
+const CHECK_EVERY: Duration = Duration::from_secs(5);
+/// ...and takes the other as gone (crashed, off the network) after this long without hearing from it.
+const SILENT_AT_MOST: Duration = Duration::from_secs(15);
+
+/// How long a device that asks first waits for an answer.
+pub const ASK_WAIT: Duration = Duration::from_secs(30);
 /// While playing, the position goes out this often (the controller counts on in between).
 const POSITION_EVERY: Duration = Duration::from_secs(5);
 /// How often the state is looked at for changes.
@@ -96,29 +131,65 @@ fn without_position(state: &RemoteState) -> RemoteState {
 pub async fn control(State(host): State<Arc<dyn Host>>, headers: HeaderMap, upgrade: WebSocketUpgrade) -> Response {
     let Ok(key) = host.key() else { return StatusCode::SERVICE_UNAVAILABLE.into_response() };
     let proof = headers.get(PROOF).and_then(|v| v.to_str().ok()).unwrap_or_default();
-    if key::check(&key, proof, "GET /control", now_ms()).is_none() {
+    let Some(from) = key::check(&key, proof, "GET /control", now_ms()) else {
         return StatusCode::UNAUTHORIZED.into_response();
-    }
+    };
     match host.hello().map(|h| h.allow) {
         Ok(Allow::On) => {}
-        // Asking someone here comes with Connect device (until then: no).
-        Ok(Allow::Ask) => return (StatusCode::FORBIDDEN, "it asks first").into_response(),
+        // Someone there says yes first (the controller waits for it).
+        Ok(Allow::Ask) => {
+            let (asking, who) = (host.clone(), from.clone());
+            if !tokio::task::spawn_blocking(move || asking.ask(&who)).await.unwrap_or(false) {
+                return (StatusCode::FORBIDDEN, "it said no, or nobody answered there").into_response();
+            }
+        }
         Ok(Allow::Off) => return (StatusCode::FORBIDDEN, "it doesn’t let other devices play on it").into_response(),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     }
-    upgrade.on_upgrade(move |socket| session(host, socket))
+    upgrade.on_upgrade(move |socket| session(host, socket, from))
 }
 
-async fn session(host: Arc<dyn Host>, socket: WebSocket) {
+/// Ends the connection on the host's side however the session ends.
+struct Open(Arc<dyn Host>, u64, String);
+
+impl Drop for Open {
+    fn drop(&mut self) {
+        SESSIONS.lock().unwrap().retain(|(id, _, _)| *id != self.1);
+        self.0.connection(&self.2, false);
+    }
+}
+
+async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
+    let id = NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let (end, mut ended) = tokio::sync::mpsc::unbounded_channel::<String>();
+    SESSIONS.lock().unwrap().push((id, from.clone(), end));
+    host.connection(&from, true);
+    let _open = Open(host.clone(), id, from);
     let (mut out, mut incoming) = socket.split();
     let mut last: Option<RemoteState> = None;
     let mut position_sent = Instant::now();
     let mut look = tokio::time::interval(LOOK_EVERY);
+    let mut check = tokio::time::interval(CHECK_EVERY);
+    let mut heard = tokio::time::Instant::now();
     loop {
         let send_now = tokio::select! {
             _ = look.tick() => false,
+            // Ended from here (Disconnect on this device): the controller is told why.
+            why = ended.recv() => {
+                let close = axum::extract::ws::CloseFrame { code: axum::extract::ws::close_code::NORMAL, reason: why.unwrap_or_default().into() };
+                let _ = out.send(Message::Close(Some(close))).await;
+                break;
+            }
+            // The controller still there? (It answers a ping by itself; nothing heard for a while: it's gone.)
+            _ = check.tick() => {
+                if heard.elapsed() > SILENT_AT_MOST || out.send(Message::Ping(Vec::new().into())).await.is_err() {
+                    break;
+                }
+                false
+            }
             message = incoming.next() => match message {
                 Some(Ok(Message::Text(text))) => {
+                    heard = tokio::time::Instant::now();
                     let applied = match serde_json::from_str::<Command>(&text) {
                         Ok(command) => {
                             let host = host.clone();
@@ -132,7 +203,10 @@ async fn session(host: Arc<dyn Host>, socket: WebSocket) {
                     true
                 }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
-                Some(Ok(_)) => false,
+                Some(Ok(_)) => {
+                    heard = tokio::time::Instant::now();
+                    false
+                }
             },
         };
         let looked = {
@@ -178,7 +252,8 @@ pub async fn connect(
     let mut request = format!("ws://{address}:{port}/control").into_client_request().map_err(|e| e.to_string())?;
     let proof = key::proof(key, me, now_ms(), "GET /control");
     request.headers_mut().insert(PROOF, proof.parse().map_err(|_| "a bad proof".to_string())?);
-    let (socket, _) = tokio::time::timeout(Duration::from_secs(5), tokio_tungstenite::connect_async(request))
+    // Long enough for someone at a device that asks first to answer.
+    let (socket, _) = tokio::time::timeout(ASK_WAIT + Duration::from_secs(5), tokio_tungstenite::connect_async(request))
         .await
         .map_err(|_| "it took too long to answer".to_string())?
         .map_err(|e| match e {
@@ -192,8 +267,16 @@ pub async fn connect(
     let (mut out, mut incoming) = socket.split();
     let (commands, mut queued) = tokio::sync::mpsc::unbounded_channel::<Command>();
     tokio::spawn(async move {
+        let mut check = tokio::time::interval(CHECK_EVERY);
+        let mut heard = tokio::time::Instant::now();
         let why = loop {
             tokio::select! {
+                // The other device still there? (It pings every few seconds; nothing heard for a while: it's gone.)
+                _ = check.tick() => {
+                    if heard.elapsed() > SILENT_AT_MOST {
+                        break Some("the other device stopped answering".into());
+                    }
+                }
                 command = queued.recv() => match command {
                     Some(command) => {
                         let text = serde_json::to_string(&command).unwrap_or_default();
@@ -209,13 +292,18 @@ pub async fn connect(
                 },
                 message = incoming.next() => match message {
                     Some(Ok(TMessage::Text(text))) => {
+                        heard = tokio::time::Instant::now();
                         if let Ok(message) = serde_json::from_str::<Outgoing>(&text) {
                             on_message(message);
                         }
                     }
-                    Some(Ok(TMessage::Close(_))) | None => break Some("the other device closed the connection".into()),
+                    Some(Ok(TMessage::Close(frame))) => {
+                        let why = frame.map(|f| f.reason.to_string()).filter(|r| !r.is_empty());
+                        break Some(why.unwrap_or_else(|| "the other device closed the connection".into()));
+                    }
+                    None => break Some("the other device closed the connection".into()),
                     Some(Err(e)) => break Some(e.to_string()),
-                    Some(Ok(_)) => {}
+                    Some(Ok(_)) => heard = tokio::time::Instant::now(),
                 },
             }
         };
@@ -235,6 +323,8 @@ mod tests {
         key: Vec<u8>,
         allow: Allow,
         state: Mutex<RemoteState>,
+        /// What someone there answers when asked.
+        says_yes: bool,
     }
 
     impl Host for TestHost {
@@ -247,6 +337,11 @@ mod tests {
         fn state(&self) -> Result<RemoteState, String> {
             Ok(self.state.lock().unwrap().clone())
         }
+        fn ask(&self, from: &str) -> bool {
+            assert_eq!(from, "phone", "asked about the device connecting");
+            self.says_yes
+        }
+        fn connection(&self, _from: &str, _open: bool) {}
         fn apply(&self, command: Command) -> Result<(), String> {
             let mut s = self.state.lock().unwrap();
             match command {
@@ -278,7 +373,7 @@ mod tests {
     }
 
     fn host(key: &[u8], allow: Allow) -> TestHost {
-        TestHost { key: key.to_vec(), allow, state: Mutex::new(RemoteState { index: -1, repeat: "off".into(), ..Default::default() }) }
+        TestHost { key: key.to_vec(), allow, state: Mutex::new(RemoteState { index: -1, repeat: "off".into(), ..Default::default() }), says_yes: false }
     }
 
     /// Connects as the phone; what comes back is collected.
@@ -317,6 +412,26 @@ mod tests {
         until(&seen, |m| matches!(m, Outgoing::Error(e) if e.contains("isn't here"))).await;
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn a_device_that_stops_answering_is_taken_as_gone() {
+        // A "device" that accepts the connection, then says nothing at all (crashed, off the network).
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let _socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        let (closed, why) = tokio::sync::oneshot::channel();
+        let _link = connect("127.0.0.1", port, &[3u8; 32], "phone", |_| {}, move |w| {
+            let _ = closed.send(w);
+        })
+        .await
+        .unwrap();
+        let why = tokio::time::timeout(Duration::from_secs(30), why).await.expect("noticed").unwrap();
+        assert_eq!(why.as_deref(), Some("the other device stopped answering"));
+    }
+
     #[tokio::test]
     async fn only_your_devices_and_only_when_it_lets_them() {
         let key = [3u8; 32];
@@ -326,5 +441,11 @@ mod tests {
         let off = serve(host(&key, Allow::Off)).await;
         let err = phone(off, &key).await.err().unwrap();
         assert!(err.contains("doesn’t let"), "{err}");
+        // Ask first: in when someone there says yes, not when they say no.
+        let no = serve(host(&key, Allow::Ask)).await;
+        let err = phone(no, &key).await.err().unwrap();
+        assert!(err.contains("said no"), "{err}");
+        let yes = serve(TestHost { says_yes: true, ..host(&key, Allow::Ask) }).await;
+        assert!(phone(yes, &key).await.is_ok());
     }
 }
