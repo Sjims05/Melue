@@ -3,6 +3,17 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.2 (2026-10-23)
+
+Your devices, and the first steps toward playing on them from each other.
+
+- Settings, Across devices: your devices, which are online now (or when they were last seen), and "Let other
+  devices play here": On, Ask first or Off.
+- Your devices can reach each other over the network (at home or through a VPN), proving they're yours with a key
+  on the share. On a computer, Windows asks once whether Melue may use the network.
+- Other devices' changes to settings, likes and playlists arrive within seconds again: watching the share for
+  changes restarts by itself when its connection drops.
+
 ## 0.6.1 (2026-10-23)
 
 The volume on Now playing.

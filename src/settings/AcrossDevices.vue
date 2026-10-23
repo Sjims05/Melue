@@ -1,13 +1,17 @@
 <script setup lang="ts">
 /**
  * Across devices: continuing what another device was playing (Ask / Follow / Off), when Ask may continue without
- * asking, and this device's name (what the others call it: "Continue from TROLLGANG"). Saves as you change it.
+ * asking, and this device's name (what the others call it: "Continue from TROLLGANG"). Saves as you change it. Then
+ * your devices (library/remote.ts): which are online now, and whether the others may play on this one.
  *
  * Melue's playback sync settings (library/sync.ts: playbackSync). An empty name goes back to the system's name. Only
  * with a share: it all goes through the share.
  */
-import { ref } from 'vue'
-import { Chevron, DropValue, EditRow, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
+import { Monitor, Smartphone } from '@lucide/vue'
+import { onBeforeUnmount, ref } from 'vue'
+import { Chevron, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot } from '@/components/settings'
+import { remote, type Allow, type Device, type RemoteSettings } from '@/library/remote'
+import { ago } from './format'
 import { playbackSync, sync, type PlaybackMode, type PlaybackSettings } from '@/library/sync'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { PLAYBACK_DEFAULTS } from './defaults'
@@ -26,12 +30,39 @@ const editingName = ref(false)
 const error = ref('')
 const saving = ref(false)
 
+// Your devices, looked at again every 15 s while this is open (a device going offline shows within a minute or so).
+const devices = ref<Device[]>([])
+const remoteSettings = ref<RemoteSettings | null>(null)
+const loadDevices = async () => (devices.value = await remote.devices().catch(() => devices.value))
+const looking = setInterval(loadDevices, 15_000)
+onBeforeUnmount(() => clearInterval(looking))
+const ALLOWS = [['on', 'On'], ['ask', 'Ask first'], ['off', 'Off']] as const
+const ALLOW_LINE: Record<Allow, string> = {
+  on: 'Your other devices can play their music on this one',
+  ask: 'Someone here says yes first',
+  off: 'Your other devices can’t play on this one',
+}
+const deviceLine = (d: Device) =>
+  [d.online ? 'Online now' : `Last seen ${ago(d.lastSeenMs)}`, d.allow === 'off' ? 'doesn’t let others play on it' : d.allow === 'ask' ? 'asks first' : '']
+    .filter(Boolean)
+    .join(' · ')
+
+async function setAllow(allow: Allow) {
+  try {
+    remoteSettings.value = await remote.setSettings({ allow })
+    await loadDevices()
+  } catch (e) {
+    error.value = `Not saved: ${e}`
+  }
+}
+
 onPageLoad(async () => {
   try {
-    settings.value = await playbackSync.settings()
+    ;[settings.value, remoteSettings.value] = await Promise.all([playbackSync.settings(), remote.settings()])
   } catch (e) {
     error.value = `Can’t read these settings: ${e}`
   }
+  await loadDevices()
 })
 
 async function save(change: Partial<PlaybackSettings>) {
@@ -95,7 +126,34 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
           @cancel="editingName = false"
         />
       </Reveal>
+      <SettingsRow
+        v-if="remoteSettings"
+        title="Let other devices play here"
+        :description="ALLOW_LINE[remoteSettings.allow]"
+        wide
+        setting="remote.allow"
+        :reset="() => setAllow('on')"
+        :is-default="remoteSettings.allow === 'on'"
+      >
+        <Segmented :model-value="remoteSettings.allow" :options="ALLOWS" @update:model-value="setAllow" />
+      </SettingsRow>
     </SettingsCard>
+    <!-- A device that turns up drops in; one coming online moves up to the others. -->
+    <Transition name="drop">
+      <!-- The label's space above it (it has none as the first in here). -->
+      <div v-if="devices.length" class="mt-5">
+        <SettingsLabel>Your devices</SettingsLabel>
+        <SettingsCard>
+          <TransitionGroup name="drop">
+            <SettingsRow v-for="d in devices" :key="d.id" :description="deviceLine(d)">
+              <template #lead><IconTile :icon="d.kind === 'phone' ? Smartphone : Monitor" /></template>
+              <template #title>{{ d.name }} <SettingsBadge v-if="d.this" class="ml-1.5">This device</SettingsBadge></template>
+              <StatusDot :kind="d.online ? 'ok' : 'off'" />
+            </SettingsRow>
+          </TransitionGroup>
+        </SettingsCard>
+      </div>
+    </Transition>
     <Transition name="drop">
       <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
     </Transition>

@@ -331,6 +331,17 @@ fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
     }
 }
 
+/// The share's watch ended by itself (its connection dropped): watched again (when Sync on share changes is on).
+fn keep_watch_alive(app: &AppHandle) {
+    let library = app.state::<Library>();
+    let wanted = library.sync_settings().is_ok_and(|s| s.on_change) && library.sync_available().unwrap_or(false);
+    let alive = app.state::<Syncing>().watch.lock().unwrap().as_ref().is_some_and(|(_, watch)| watch.alive());
+    if wanted && !alive {
+        eprintln!("melue: sync: the share's changes weren't being watched: watching them again");
+        start_watching(app);
+    }
+}
+
 /// Starts watching the share now (the setting switched on), not only after the next sync; in the background, as
 /// opening the share can take a moment.
 pub fn start_watching(app: &AppHandle) {
@@ -449,6 +460,12 @@ pub fn start(app: &AppHandle) {
                             break;
                         }
                     }
+                }
+                // Every minute: the share's watch still there (its connection can drop: the NAS, the VPN, a network
+                // change). Without it, the other devices' changes (settings, likes, playlists) would wait for the
+                // next sync to come in.
+                if next == Trigger::Periodic {
+                    keep_watch_alive(&app);
                 }
                 // A network change only matters while the share couldn't be reached.
                 if next == Trigger::Network && app.state::<Syncing>().retry.lock().unwrap().is_none() {

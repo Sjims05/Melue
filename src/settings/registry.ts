@@ -218,6 +218,12 @@ export const SETTINGS: Record<string, SettingInfo> = {
     help: 'Started with Windows, Melue waits in the tray (no window), or opens its window too.',
     perDevice: true,
   },
+  'remote.allow': {
+    title: 'Let other devices play here',
+    default: 'On',
+    help: 'Your other devices running Melue can play their music on this one (Connect device) and control it from there. Ask first: someone at this device says yes each time. Off: this device can still play on the others, but they can’t play on it.',
+    perDevice: true,
+  },
   'reports.screenshot': {
     title: 'Keep a screenshot with reports',
     default: 'Off',

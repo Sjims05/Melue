@@ -68,6 +68,10 @@
   .drop-leave-active {
     animation: reveal-fade 150ms ease-in reverse both;
   }
+  /* In a list (<TransitionGroup name="drop">): the others slide to their new places. */
+  .drop-move {
+    transition: transform 300ms cubic-bezier(.2, .8, .2, 1);
+  }
 
   /* A text that changes (a row's grey line): <Transition name="swap" mode="out-in">, a quick cross-fade. */
   .swap-enter-active, .swap-leave-active {

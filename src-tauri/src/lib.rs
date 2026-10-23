@@ -5,6 +5,7 @@ mod github;
 mod library;
 mod logging;
 mod phone_update;
+mod remote;
 mod report;
 mod share;
 mod startup;
@@ -91,6 +92,10 @@ pub fn run() {
             report::saved::start(app.handle());
             // Synced playback: what plays here goes to the share; another device's is offered (see sync/handoff.rs).
             app.manage(sync::shared::OpenShare::default());
+            // Remote playback (after the share's state above, which it uses): this device says it's online every 20 s
+            // (remote/presence.rs), and takes connections from your other devices (remote/server.rs).
+            remote::presence::start(app.handle());
+            remote::server::start(app.handle());
             // The car with Melue closed finds the library here (sync/car.rs).
             #[cfg(target_os = "android")]
             {
@@ -151,7 +156,9 @@ pub fn run() {
                         return;
                     }
                     let _ = api;
-                    sync::handoff::save_now(window.app_handle())
+                    sync::handoff::save_now(window.app_handle());
+                    // The other devices hear at once that this one is gone.
+                    remote::presence::leave(window.app_handle());
                 }
                 _ => {}
             }
@@ -163,6 +170,10 @@ pub fn run() {
             phone_update::update_install_downloaded,
             logging::log_show,
             app_is_dev,
+            remote::remote_settings,
+            remote::remote_set_settings,
+            remote::presence::remote_devices,
+            remote::server::remote_reach,
             dev::dev_share_sample,
             github::github_sign_in_start,
             github::github_sign_in_wait,

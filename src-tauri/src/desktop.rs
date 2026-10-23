@@ -136,6 +136,8 @@ fn player(app: &AppHandle, action: &str) {
 /// Quit from the tray: where the song is now goes to the share first (like closing the window).
 fn quit(app: &AppHandle) {
     crate::sync::handoff::save_now(app);
+    // The other devices hear at once that this one is gone.
+    crate::remote::presence::leave(app);
     app.exit(0);
 }
 

@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "0.6.1"
+version = "0.6.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -41,6 +41,15 @@ unicode-normalization = "0.1"
 # it, thousands at once (aho-corasick).
 regex = "1"
 aho-corasick = "1"
+# Remote playback (remote/): each device's small server for your other devices (axum), where it can be reached (its
+# network addresses: if-addrs), and the proof a request comes from one of your devices (HMAC-SHA256 with the key on
+# the share; these crates come with Tauri already).
+axum = "0.8"
+if-addrs = "0.13"
+hmac = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
+hex = "0.4"
 smb2 = "0.11"
 # Playback on every platform (its `mobile` and `desktop` features, both on by default).
 tauri-plugin-native-audio = { path = "../../tauri-plugin-native-audio" }

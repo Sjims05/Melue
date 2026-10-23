@@ -532,11 +532,17 @@ impl Share for SmbShare {
                 }
             };
             // The watcher has its own connection: syncing goes on next to it.
-            while let Ok(events) = watcher.next_events().await {
-                for event in events {
-                    on_change(&event.filename.replace('\\', "/"));
+            let ended = loop {
+                match watcher.next_events().await {
+                    Ok(events) => {
+                        for event in events {
+                            on_change(&event.filename.replace('\\', "/"));
+                        }
+                    }
+                    Err(e) => break e,
                 }
-            }
+            };
+            eprintln!("melue: share: watching for changes stopped ({ended}); it's started again within a minute");
             still.store(false, Ordering::SeqCst);
         });
         started.recv().unwrap_or_else(|_| Err(ShareError::Other { detail: "the share's runtime stopped".into() }))?;

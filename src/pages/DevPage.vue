@@ -19,6 +19,7 @@ import { openReport } from '@/lib/report/report'
 import { toast } from '@/lib/toast'
 import { checkForUpdate } from '@/lib/updates'
 import { router } from '@/router'
+import { remote } from '@/library/remote'
 
 const version = ref('')
 /** What the last tool did, or why it couldn't. */
@@ -82,6 +83,23 @@ const TOOLS: { title: string; description: string; run: () => Promise<unknown> |
     },
   },
   { title: 'Report a bug', description: 'The report, as from About', run: () => openReport() },
+  {
+    title: 'Reach your devices',
+    description: 'Each of your other devices, directly over the network, with the key on the share',
+    run: async () => {
+      const others = (await remote.devices()).filter((d) => !d.this)
+      if (!others.length) return 'No other devices on the share yet'
+      const lines = await Promise.all(
+        others.map((d) =>
+          remote.reach(d.id).then(
+            (r) => `${d.name}: reached at ${r.address} in ${r.ms} ms (Melue ${r.hello.version}, lets others play: ${r.hello.allow})`,
+            (e) => `${d.name}: ${e}`,
+          ),
+        ),
+      )
+      return lines.join(' · ')
+    },
+  },
   { title: 'Melue’s log', description: 'Shown in its folder, or shared from a phone', run: () => invoke('log_show') },
 ]
 </script>
