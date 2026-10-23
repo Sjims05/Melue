@@ -3,6 +3,23 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.7.0 (2026-10-23)
+
+Play on your other devices: your phone on your computer's speakers, or the other way round, like Spotify Connect for
+your own music.
+
+- Connect device (the player bar's speaker button, Now playing, a drawer on the phone): what plays here carries on
+  on the device you pick, and this one becomes its remote: the song, the controls, the seek bar, Up next and the
+  volume are that device's. "This device" brings it back; either device can disconnect, and the music goes on.
+- A pill where toasts show says where the music is ("Playing on …", "Played from …"); tap it for Connect device.
+- Settings, Across devices: your devices and which are online; "Let other devices play here" (On, Ask first, Off);
+  the volume's steps on a phone and, on a phone, its volume buttons' steps on a computer.
+- Playing on a phone, the volume is the phone's own, in its steps. On the phone, the notification, the lock screen,
+  the media card and the volume buttons control the device it plays on.
+- Likes show on both devices at once while connected; a dropped connection comes back by itself within a minute.
+- Since 0.6.0: the volume shows as a number as it changes; the phone's lyrics follow every song again; pressing play
+  just after Melue starts is no longer undone by Continue.
+
 ## 0.6.7 (2026-10-23)
 
 The phone's own controls, for the device it plays on.
