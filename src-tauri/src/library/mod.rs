@@ -29,6 +29,8 @@ pub mod online_lyrics;
 #[cfg(test)]
 mod linked_tests;
 pub mod m3u;
+mod moved;
+pub mod songs_there;
 mod migrations;
 pub mod playback;
 pub mod player_settings;

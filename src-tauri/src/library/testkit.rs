@@ -79,6 +79,7 @@ impl TestLibrary {
         let this = self.library.folder(folder_id).unwrap().unwrap();
         let files = self.library.skip_nested(&this, listed).unwrap();
         let mut summary = self.library.apply_scan(folder_id, &files.songs).unwrap();
+        summary.moved += self.library.join_moved_songs().unwrap();
         summary.add(self.library.read_tags(&super::tags::open_local, &mut |_, _| {}).unwrap());
         let grouped = self.library.regroup_after(&summary).unwrap().is_some();
         let index = self.library.track_index().unwrap();

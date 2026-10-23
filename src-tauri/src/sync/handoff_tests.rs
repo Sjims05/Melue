@@ -149,3 +149,20 @@ fn recent_playback_continues_without_asking() {
     assert!(continues_by_itself(&PlaybackSettings { mode: Mode::Follow, ..always_ask.clone() }, 0, 1000 * MINUTE));
     assert!(!continues_by_itself(&PlaybackSettings { mode: Mode::Off, ..ask }, 0, 0));
 }
+
+#[test]
+fn another_devices_song_keeps_its_place_when_one_before_it_cant_play_here() {
+    use crate::library::testkit::{Tags, TestLibrary};
+    let t = TestLibrary::new("handoff-place");
+    let music = t.music_folder("Synced");
+    for name in ["A", "B", "C"] {
+        music.add(&format!("{name}.wav"), &Tags::song(name, "X", "Y", 1));
+    }
+    let synced = t.library.add_synced_folder(FolderKind::Path, music.root.to_str().unwrap(), None).unwrap();
+    t.scan(synced.id, &music);
+    // B is here, but hidden as a copy: it can't be in the queue.
+    t.library.conn().execute("UPDATE tracks SET copy_of = (SELECT id FROM tracks WHERE path = 'A.wav') WHERE path = 'B.wav'", []).unwrap();
+    let (items, index) = queue_here(&t.library, &synced, &playback(&["A.wav", "B.wav", "C.wav"], 2)).unwrap().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!((index, items[index].title.as_deref()), (1, Some("C")), "C, the song the other device plays");
+}

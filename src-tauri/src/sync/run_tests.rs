@@ -138,6 +138,26 @@ fn songs_gone_from_the_share_are_kept_or_removed_with_an_ok() {
 }
 
 #[test]
+fn folders_a_removed_or_moved_song_leaves_empty_go_too() {
+    let s = Setup::new("tidy");
+    s.share.add("Artist/Album/1.mp3", b"one");
+    s.share.add("Artist/Album/2.mp3", b"two");
+    s.share.add("Other/3.mp3", b"three");
+    s.sync();
+    // 3 moves to the top on the share; 1 and 2 are gone.
+    std::fs::rename(s.share.path("Other/3.mp3"), s.share.path("3.mp3")).unwrap();
+    std::fs::remove_dir(s.share.path("Other")).unwrap();
+    std::fs::remove_file(s.share.path("Artist/Album/1.mp3")).unwrap();
+    std::fs::remove_file(s.share.path("Artist/Album/2.mp3")).unwrap();
+    let removing = SyncSettings { remove_gone: true, ask_before_removing: 0, ..Default::default() };
+    s.sync_from(&s.share.share, &removing, true);
+    assert_eq!(s.files_here(), vec!["3.mp3"]);
+    for gone in ["Other", "Artist/Album", "Artist"] {
+        assert!(!s.here_dir.path.join(gone).exists(), "{gone} left empty: gone");
+    }
+}
+
+#[test]
 fn an_interrupted_sync_is_finished_by_the_next_one() {
     let s = Setup::new("interrupted");
     for n in 0..5 {

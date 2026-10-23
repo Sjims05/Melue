@@ -209,9 +209,17 @@ impl Library {
         self.set_setting(OFFERED, "1")
     }
 
-    /// Marks a folder as the synced one, or a normal folder again (the share removed: its songs stay).
+    /// Marks a folder as the synced one, or a normal folder again (the share removed: its songs stay). A normal
+    /// folder again loses the name the share gave it ("Synced music", "Share"): it's called after its place.
     pub fn set_folder_synced(&self, id: i64, synced: bool) -> Result<Folder> {
-        let changed = self.conn().execute("UPDATE folders SET synced = ?2 WHERE id = ?1", params![id, synced]).map_err(err)?;
+        let changed = self
+            .conn()
+            .execute(
+                "UPDATE folders SET synced = ?2, name = CASE WHEN ?2 THEN name WHEN name IN ('Synced music', 'Share') THEN NULL ELSE name END
+                 WHERE id = ?1",
+                params![id, synced],
+            )
+            .map_err(err)?;
         if changed == 0 {
             return Err(format!("no folder {id}"));
         }
@@ -437,6 +445,16 @@ impl Library {
 mod tests {
     use super::*;
     use crate::library::testkit::{TestLibrary, Tags};
+
+    #[test]
+    fn a_folder_no_longer_synced_is_called_after_its_place_again() {
+        let t = TestLibrary::new("unsynced-name");
+        let music = t.music_folder("Music");
+        let synced = t.library.add_synced_folder(FolderKind::Path, music.root.to_str().unwrap(), Some("Synced music")).unwrap();
+        assert_eq!(synced.name, "Synced music");
+        let normal = t.library.set_folder_synced(synced.id, false).unwrap();
+        assert_eq!((normal.name.as_str(), normal.synced), ("Music", false));
+    }
 
     #[test]
     fn folders_are_added_listed_renamed_and_removed() {

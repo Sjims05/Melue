@@ -233,7 +233,9 @@ pub fn sync_once(
                 s.retry_at_ms = None;
                 s.note = note;
             });
-            // The share's layout, as the share says (another device may have changed it).
+            // The share's layout, as the share says (another device may have changed it); songs a tidy found gone
+            // are looked at again.
+            super::layout::forget_gone();
             if let Err(e) = super::layout::agree(&app.state::<Library>(), share.as_ref()) {
                 eprintln!("melue: can't read the share's layout: {e}");
             }
@@ -329,6 +331,17 @@ fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
     }
 }
 
+/// Starts watching the share now (the setting switched on), not only after the next sync; in the background, as
+/// opening the share can take a moment.
+pub fn start_watching(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || match with_stores(&app, |library, stores| setup::current(library, stores, &setup::open)) {
+        Ok(Ok((_, share))) => keep_watching(&app, share),
+        Ok(Err(e)) => eprintln!("melue: can't watch the share: {e:?}"),
+        Err(e) => eprintln!("melue: can't watch the share: {e}"),
+    });
+}
+
 /// Stops watching the share (it was removed, or the setting switched off).
 pub fn stop_watching(app: &AppHandle) {
     *app.state::<Syncing>().watch.lock().unwrap() = None;
@@ -358,7 +371,7 @@ pub fn trigger(app: &AppHandle, trigger: Trigger) {
     }
 }
 
-/// Spike: shows the "Syncing music" notification for a slow pretend sync of 20 files (a second each), to look at
+/// Dev page: shows the "Syncing music" notification for a slow pretend sync of 20 files (a second each), to look at
 /// it (a real sync is often too quick). Android only.
 pub fn simulate_notification(app: &AppHandle) {
     let app = app.clone();

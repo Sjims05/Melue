@@ -43,7 +43,7 @@ pub fn sync_came_back(app: AppHandle, away_ms: i64) {
     scheduler::came_back(&app, away_ms);
 }
 
-/// Spike: shows the "Syncing music" notification for a slow pretend sync (Android).
+/// Dev page: shows the "Syncing music" notification for a slow pretend sync (Android).
 #[tauri::command]
 pub fn sync_simulate_notification(app: AppHandle) -> Result<(), String> {
     if !cfg!(target_os = "android") {
@@ -66,7 +66,8 @@ pub fn sync_settings(library: tauri::State<'_, Library>) -> Result<SyncSettings,
 
 #[tauri::command(async)]
 pub fn sync_set_settings(app: AppHandle, library: tauri::State<'_, Library>, settings: SyncSettings) -> Result<SyncSettings, String> {
-    let layout_before = library.sync_settings()?.share_layout;
+    let before = library.sync_settings()?;
+    let layout_before = before.share_layout;
     library.set_sync_settings(&settings)?;
     super::moving::moving_new_songs(&library, settings.move_new_songs)?;
     // The layout belongs to the share: changed here, changed for every device.
@@ -75,6 +76,8 @@ pub fn sync_set_settings(app: AppHandle, library: tauri::State<'_, Library>, set
     }
     if !settings.on_change {
         scheduler::stop_watching(&app);
+    } else if !before.on_change && library.sync_available()? {
+        scheduler::start_watching(&app);
     }
     library.sync_settings()
 }
@@ -109,13 +112,13 @@ pub async fn playback_not_now(app: AppHandle) -> Result<(), String> {
     on_share_thread(move || handoff::answer(&app, false)).await
 }
 
-/// Spike: looks at the other devices' playback now.
+/// Dev page: looks at the other devices' playback now.
 #[tauri::command]
 pub fn playback_check(app: AppHandle) {
     handoff::check(&app);
 }
 
-/// Spike: syncs the library data (likes, plays, playlists) with the share now.
+/// Dev page: syncs the library data (likes, plays, playlists) with the share now.
 #[tauri::command]
 pub async fn library_sync_now(app: AppHandle) -> Result<(), String> {
     on_share_thread(move || super::data::run(&app)).await
@@ -233,7 +236,7 @@ pub fn sync_keep_copies(app: AppHandle, library: tauri::State<'_, Library>) -> R
     Ok(())
 }
 
-/// Spike: looks for copies of synced songs now, and says what it found (near misses too).
+/// Dev page: looks for copies of synced songs now, and says what it found (near misses too).
 #[tauri::command]
 pub async fn sync_check_copies(app: AppHandle) -> Result<CopyCheck, String> {
     on_share_thread(move || moving::check_copies(&app)).await

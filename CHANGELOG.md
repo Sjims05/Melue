@@ -3,6 +3,22 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.5.22 (2026-10-23)
+
+A test of every setting, and what it found.
+
+- Songs that move to another music folder keep their likes, plays and playlist places (choosing a synced folder
+  inside a music folder made them look unavailable in playlists).
+- Choosing where the synced music goes: Melue says when that folder already has songs (they'd be there twice).
+- Continuing another device's playback starts on the right song when one before it can't play here.
+- Devices no longer write their settings to the share over and over when they disagree on one neither changed.
+- Phones: Melue no longer closes at start when a sync has nothing to do; putting new songs in place on the share no
+  longer repeats every few seconds.
+- Sync on share changes is shared across devices, and works again straight after switching it back on.
+- Songs gone from the share that wait for your OK are shown on the sync card, not hidden in its details.
+- The Top songs page sets the size of every Top songs list, as the setting does.
+- Folders a sync leaves empty are removed; a folder that's no longer synced gets its own name back.
+
 ## 0.5.21 (2026-10-22)
 
 Report a bug from Melue.

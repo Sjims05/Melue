@@ -12,6 +12,7 @@ import { Chevron, EditRow, Reveal, SettingsCard, SettingsRow, StatusDot } from '
 import { describeSetupError, describeSyncFailure, share, sync, syncing, type ShareInfo, type SyncFailure } from '@/library/sync'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { ago, at, didWords, lastPart, middle, shareName, size, TRIGGER, when } from './format'
+import { count } from '@/lib/format'
 import { usePhone } from '@/lib/phone'
 import { useShownSync } from './shownSync'
 
@@ -94,6 +95,9 @@ const description = computed(() => {
   }
 })
 
+/** Songs gone from the share that wait for a yes (more than Ask first allows). */
+const removalsWaiting = computed(() => status.value?.last?.result.removalsWaiting ?? 0)
+
 const dot = computed(() => ({ none: 'off', password: 'bad', syncing: 'busy', problem: 'bad', synced: 'ok' } as const)[state.value])
 const canOpen = computed(() => ['syncing', 'problem', 'synced'].includes(state.value))
 // The address at home: only for a share Melue signs in to, and only while there isn't one.
@@ -172,6 +176,16 @@ async function save(value: string) {
         <Button variant="outline" size="sm" @click="syncNow(false, true)">Copy on mobile data</Button>
       </SettingsRow>
     </Reveal>
+    <!-- Songs gone from the share, more than Melue removes without asking: the question, in sight (not in the details). -->
+    <Reveal :show="!!removalsWaiting && state !== 'syncing'">
+      <SettingsRow
+        :title="`${count(removalsWaiting, 'song')} gone from the share`"
+        :description="`More than Melue removes by itself (Ask first). Remove ${removalsWaiting === 1 ? 'it' : 'them'} here too?`"
+        detail
+      >
+        <Button variant="outline" size="sm" @click="syncNow(true)">{{ removalsWaiting === 1 ? 'Remove it' : 'Remove them' }}</Button>
+      </SettingsRow>
+    </Reveal>
     <Reveal :show="editing === 'password'">
       <EditRow
         title="The share’s password"
@@ -195,7 +209,7 @@ async function save(value: string) {
       />
     </Reveal>
 
-    <!-- The details: the last sync, what waits for an answer, notes about the connection. -->
+    <!-- The details: the last sync, notes about the connection. -->
     <Reveal :show="open && canOpen" :line="false">
       <div class="mx-4 pb-3 text-[13.5px]">
         <div class="settings-details-line mb-3" />
@@ -217,10 +231,6 @@ async function save(value: string) {
           </template>
         </div>
         <div v-else class="text-muted-foreground">Not synced yet</div>
-        <div v-if="status?.last?.result.removalsWaiting" class="mt-3 flex flex-wrap items-center gap-3">
-          <span class="flex-1">{{ status.last.result.removalsWaiting }} songs are gone from the share: remove them here too?</span>
-          <Button variant="outline" size="sm" @click="syncNow(true)">Remove them</Button>
-        </div>
         <p v-if="status?.note" class="mt-3 text-muted-foreground">{{ status.note }}</p>
         <p v-if="error && !editing" class="mt-3 text-destructive">{{ error }}</p>
       </div>

@@ -485,7 +485,7 @@ export const moving = {
    * (or handed to Android).
    */
   clearCopies: (folder: number | null = null) => invoke<number>('sync_clear_copies', { folder }),
-  /** Spike: looks for copies now, and says what it found (near misses: why a copy wasn't recognised). */
+  /** Dev page: looks for copies now, and says what it found (near misses: why a copy wasn't recognised). */
   check: () =>
     invoke<{ syncedSongs: number; otherSongs: number; hiddenNow: number; hidden: number; waiting: Copies; nearMisses: string[] }>(
       'sync_check_copies',

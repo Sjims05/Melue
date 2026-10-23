@@ -212,6 +212,7 @@ pub fn run(
     // Moved on the share: the copy here follows.
     for moved in &plan.moves {
         let done = target.rename(&moved.from, &moved.to).map_err(String::from).and_then(|_| {
+            tidy_after(target, &moved.from);
             library.forget_synced(&moved.from)?;
             remember(&moved.to, None)
         });
@@ -267,7 +268,10 @@ pub fn run(
             result.removals_waiting = plan.gone.len() as u32;
         } else {
             for path in &plan.gone {
-                match target.delete(path).map_err(String::from).and_then(|_| library.forget_synced(path)) {
+                match target.delete(path).map_err(String::from).and_then(|_| {
+                    tidy_after(target, path);
+                    library.forget_synced(path)
+                }) {
                     Ok(()) => result.removed += 1,
                     Err(e) => result.failed.push((path.clone(), e)),
                 }
@@ -277,4 +281,16 @@ pub fn run(
     state.current = None;
     progress(&state);
     Ok(result)
+}
+
+/// The folders a song left empty here (moved or removed), up to the synced folder: gone too. A folder with anything
+/// else in it stays.
+fn tidy_after(target: &dyn Share, path: &str) {
+    let mut dir = path;
+    while let Some((parent, _)) = dir.rsplit_once('/') {
+        if parent.is_empty() || target.delete_empty_dir(parent).is_err() {
+            break;
+        }
+        dir = parent;
+    }
 }

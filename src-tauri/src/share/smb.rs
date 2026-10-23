@@ -203,12 +203,13 @@ impl SmbShare {
         Ok(Self { config: Arc::new(config), base, conn: Arc::new(Mutex::new(None)), runtime: Some(runtime) })
     }
 
-    /// Connects and lists the music folder: what a "Test connection" button does.
     /// Why the home address wasn't used at home (None: it was, or this device isn't at home).
     pub fn home_note(&self) -> Option<String> {
         self.config.home_note.lock().unwrap().clone()
     }
 
+    /// Connects and lists the music folder (the tests' check that a login works).
+    #[cfg(test)]
     pub fn check(&self) -> ShareResult<()> {
         self.list("").map(|_| ())
     }

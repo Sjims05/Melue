@@ -150,6 +150,9 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
 
     override fun load(webView: WebView) {
         super.load(webView)
+        // Melue Dev (a test build, com.simon.melue.dev) only: its page can be looked into and driven from a computer over
+        // USB (Chrome's remote debugging), for testing. Never the official app.
+        if (activity.packageName.endsWith(".dev")) WebView.setWebContentsDebuggingEnabled(true)
         // Melue's app is running: it saves and offers synced playback itself (not the car's provider).
         CarQueue.appRunning = true
         // The folder for Melue's log file (Rust's logging.rs writes there); Android makes it on first ask.

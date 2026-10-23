@@ -15,6 +15,14 @@ use serde_json::Value;
 use crate::library::{err, now_ms, Library, Result};
 use crate::share::{Share, ShareError};
 
+/// Whether `their` setting wins over `ours`: the newer change; changed at the same time (both never changed: each
+/// device's first snapshot), the same value wins on every device (the larger, as JSON), so they settle on one instead
+/// of each writing its own back to the share, over and over.
+fn wins(their: &Shared, ours: &Shared) -> bool {
+    their.changed_at_ms > ours.changed_at_ms
+        || (their.changed_at_ms == ours.changed_at_ms && their.value.to_string() > ours.value.to_string())
+}
+
 /// The file on the share.
 pub const FILE: &str = ".melue/settings.json";
 /// The snapshot here (Melue's settings).
@@ -73,7 +81,7 @@ pub fn sync_settings(library: &Library, share: &dyn Share) -> Result<BTreeMap<St
     let mut merged = mine.clone();
     let mut changed_here = BTreeMap::new();
     for (id, their) in &theirs {
-        let newer = mine.get(id).is_none_or(|ours| their.changed_at_ms > ours.changed_at_ms);
+        let newer = mine.get(id).is_none_or(|ours| wins(their, ours));
         if newer {
             if mine.get(id).is_none_or(|ours| ours.value != their.value) {
                 changed_here.insert(id.clone(), their.value.clone());
@@ -93,4 +101,35 @@ pub fn sync_settings(library: &Library, share: &dyn Share) -> Result<BTreeMap<St
         library.keep_shared_settings(&merged)?;
     }
     Ok(changed_here)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::library::testkit::TestLibrary;
+    use crate::share::testkit::TestShare;
+
+    fn never_changed(value: Value) -> Shared {
+        Shared { value, changed_at_ms: 0 }
+    }
+
+    #[test]
+    fn two_devices_with_different_untouched_settings_settle_on_one() {
+        let share = TestShare::new("settings-tie");
+        let (pc, phone) = (TestLibrary::new("settings-tie-pc"), TestLibrary::new("settings-tie-phone"));
+        pc.library.keep_shared_settings(&Settings::from([("playlists.topSize".into(), never_changed(100.into()))])).unwrap();
+        phone.library.keep_shared_settings(&Settings::from([("playlists.topSize".into(), never_changed(50.into()))])).unwrap();
+        for _ in 0..3 {
+            sync_settings(&pc.library, &share.share).unwrap();
+            sync_settings(&phone.library, &share.share).unwrap();
+        }
+        let (on_pc, on_phone) = (pc.library.shared_settings().unwrap(), phone.library.shared_settings().unwrap());
+        assert_eq!(on_pc, on_phone, "one value on both");
+        // Settled: another round writes nothing (the file stays as it is).
+        let before = share.share.stat(FILE).unwrap().unwrap().modified_ms;
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        sync_settings(&pc.library, &share.share).unwrap();
+        sync_settings(&phone.library, &share.share).unwrap();
+        assert_eq!(share.share.stat(FILE).unwrap().unwrap().modified_ms, before, "nothing written again");
+    }
 }

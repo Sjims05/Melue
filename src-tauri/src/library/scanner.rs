@@ -160,6 +160,11 @@ fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
         };
         let _ = app.emit(SCAN_EVENT, event);
     }
+    // Songs that went from one folder to another: one song, with its history (moved.rs).
+    match library.join_moved_songs() {
+        Ok(joined) => total.moved += joined,
+        Err(e) => eprintln!("melue: scan: can't join moved songs: {e}"),
+    }
 
     // The second pass: tags and covers of new and changed songs.
     let open = |job: &TagJob, path: &str| open_file(app, job, path);

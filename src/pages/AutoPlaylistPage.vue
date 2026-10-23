@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * A Made for you list (opened on top, like your playlists): All songs (A–Z), Liked songs (newest liked first), or a
- * Top songs list (most played first, numbered, with how many it holds: 25, 50, 100 or 200, chosen here). Its cover,
+ * Top songs list (most played first, numbered, with how many it holds: 25, 50, 100 or 200, chosen here for every Top songs list). Its cover,
  * "Made for you", its name and line, Play, Shuffle and ⋯ (its card's menu: Hide). The songs scroll like the Songs tab
  * (only what's on screen is drawn). It follows the library and your likes.
  */
@@ -18,6 +18,7 @@ import { isDesktop } from '@/platform/platform'
 import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { exportList, listAction, playList, playSong, songAction, trackSong } from '@/player/songs'
 import { goBack, setPageTitle } from '@/router'
+import { settingsTouched } from '@/settings/sharedSettings'
 import { autoCard } from './playlists/playlists'
 import { Button } from '@/components/ui/button'
 
@@ -56,8 +57,11 @@ const headingOf = source === 'songs' ? (s: Song) => letterOf(s.title) : undefine
 const rank = computed(() => new Map(songs.value.map((s, i) => [s.id, i + 1])))
 const numberOf = top ? (s: Song) => ({ text: String(rank.value.get(s.id) ?? ''), title: count(s.plays ?? 0, 'play') }) : undefined
 const SIZES = AUTO_PLAYLIST_SIZES.map((n) => [n, String(n)] as const)
+// One size for all the Top songs lists (as Settings has it): changed here, changed for each.
 async function resize(size: number) {
-  await library.setAutoPlaylist(source, { size })
+  const tops = (await library.autoPlaylists()).filter((p) => p.kind === 'top')
+  await Promise.all(tops.map((p) => library.setAutoPlaylist(p.source, { size })))
+  settingsTouched()
   await load()
 }
 

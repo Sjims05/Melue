@@ -1,12 +1,12 @@
 /**
  * Melue's pages. The main ones are the side dots (Home, Library, Playlists, Now playing, Settings); the others open on
  * top of them (an artist, an album, a folder, a playlist, Search) with a back link named after the page they came
- * from ("‹ Library"). The spike's test pages are a developer page, in dev builds only.
+ * from ("‹ Library"). Melue Dev also has the dev page (its tests and tools: lib/devBuild.ts, `addDevPage`).
  *
  * A page's title: the main pages' are here; a page that only knows its title once loaded (an artist's name) sets it
  * with `setPageTitle`, so a page opened from it can say "‹ Juniper Vale".
  */
-import { computed, ref } from 'vue'
+import { computed, ref, shallowReactive } from 'vue'
 import { createRouter, createWebHashHistory, type RouteLocationNormalized } from 'vue-router'
 import type { StartOn } from '@/lib/appearance'
 // The main pages load with the app (switching to one slides it in at once); the others when first opened.
@@ -40,7 +40,6 @@ export const router = createRouter({
     { path: '/playlist/:id(\\d+)', name: 'playlist', component: () => import('@/pages/PlaylistPage.vue'), meta: { title: 'Playlist' } },
     // Made for you: All songs, Liked songs, the Top songs lists (/playlist/songs, /playlist/liked, /playlist/top-month).
     { path: '/playlist/:auto', name: 'auto-playlist', component: () => import('@/pages/AutoPlaylistPage.vue'), meta: { title: 'Playlist' } },
-    ...(import.meta.env.DEV ? [{ path: '/dev', name: 'dev', component: () => import('@/pages/DevPage.vue'), meta: { main: 'Dev', title: 'Dev' } }] : []),
     { path: '/:rest(.*)*', redirect: '/' },
   ],
   // A page opens at its top; going back returns to where it was.
@@ -65,7 +64,16 @@ export function preloadPages() {
 }
 
 /** The main pages, in the side dots' order. */
-export const MAIN_PAGES = router.getRoutes().filter((r) => r.meta.main).sort((a, b) => order(a.path) - order(b.path))
+export const MAIN_PAGES = shallowReactive(mainPages())
+function mainPages() {
+  return router.getRoutes().filter((r) => r.meta.main).sort((a, b) => order(a.path) - order(b.path))
+}
+
+/** Melue Dev only: the dev page, a main page after Settings (main.ts adds it before the app is drawn). */
+export function addDevPage() {
+  router.addRoute({ path: '/dev', name: 'dev', component: () => import('@/pages/DevPage.vue'), meta: { main: 'Dev', title: 'Dev' } })
+  MAIN_PAGES.splice(0, MAIN_PAGES.length, ...mainPages())
+}
 function order(path: string) {
   return ['/', '/library', '/playlists', '/now-playing', '/settings', '/dev'].indexOf(path)
 }

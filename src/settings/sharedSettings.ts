@@ -67,6 +67,7 @@ const ADAPTERS: Record<string, Adapter> = {
   'playback.mode': playbackField('mode'),
   'playback.continueWithinMinutes': playbackField('continueWithinMinutes'),
   'sync.atStart': syncField('atStart'),
+  'sync.onChange': syncField('onChange'),
   'sync.onReturnAfterMinutes': syncField('onReturnAfterMinutes'),
   'sync.everyMinutes': syncField('everyMinutes'),
   'sync.removeGone': syncField('removeGone'),

@@ -13,6 +13,7 @@
 //! to the new paths, and so are Melue's synced playlists; folders left empty are removed.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
@@ -294,6 +295,9 @@ pub fn status(app: &AppHandle) -> Result<LayoutStatus> {
 #[serde(rename_all = "camelCase")]
 pub struct ReorganiseResult {
     pub moved: u32,
+    /// Not on the share any more (another device took them off): left for the sync (Remove songs gone).
+    #[serde(skip)]
+    pub gone: Vec<String>,
     /// Playlist files (.m3u) and Melue playlists updated to the new paths.
     pub playlists_updated: u32,
     pub failed: Vec<(String, String)>,
@@ -302,6 +306,19 @@ pub struct ReorganiseResult {
 /// Puts the share in the chosen layout: renames songs on the share and in the synced folder here, updates
 /// playlists, removes folders left empty. `only_if_applied`: only when the share is in the layout already (new
 /// songs, by themselves); otherwise this is the user's "Reorganise now", and the layout counts as applied after.
+/// Songs a tidy found gone from the share: not tried again until the next sync (which sees to them), so a scan
+/// doesn't walk the share for them every time.
+static GONE: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+/// A sync ran: songs found gone are tried again by the next tidy.
+pub fn forget_gone() {
+    *GONE.lock().unwrap() = None;
+}
+
+fn known_gone(path: &str) -> bool {
+    GONE.lock().unwrap().as_ref().is_some_and(|gone| gone.contains(&key(path)))
+}
+
 pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result<ReorganiseResult, SyncFailure> {
     let library = app.state::<Library>();
     // As last known here first (no connecting after every scan for nothing), then as the share says.
@@ -310,7 +327,7 @@ pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result
         return Ok(ReorganiseResult::default());
     }
     let folder = library.synced_folder()?.ok_or_else(|| "no share is set up".to_string())?;
-    if only_if_applied && library.layout_moves(&folder, here.layout)?.is_empty() {
+    if only_if_applied && library.layout_moves(&folder, here.layout)?.iter().all(|m| known_gone(&m.from)) {
         return Ok(ReorganiseResult::default());
     }
     let (settings, share) = with_stores(app, |library, stores| setup::current(library, stores, &setup::open))
@@ -320,7 +337,10 @@ pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result
     if only_if_applied && applied != Some(layout) {
         return Ok(ReorganiseResult::default());
     }
-    let moves = library.layout_moves(&folder, layout)?;
+    let mut moves = library.layout_moves(&folder, layout)?;
+    if only_if_applied {
+        moves.retain(|m| !known_gone(&m.from));
+    }
     let done = |library: &Library| -> Result<()> {
         library.keep_layout_here(ShareFile { layout, applied: Some(layout) })?;
         let file = ShareFile { layout, applied: Some(layout) };
@@ -337,11 +357,17 @@ pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result
     let result = scheduler::exclusive(app, |report| {
         Ok(reorganise_files(&library, share.as_ref(), target.as_deref(), &moves, report, &|| scheduler::cancelled(app))?)
     })?;
+    if !result.gone.is_empty() {
+        GONE.lock().unwrap().get_or_insert_with(HashSet::new).extend(result.gone.iter().map(|p| key(p)));
+    }
     if result.failed.is_empty() {
         done(&library)?;
     }
-    scanner::scan_soon(app);
-    super::data::soon(app);
+    // Only when something moved: a scan after a tidy that moved nothing would tidy again, and again.
+    if result.moved > 0 || result.playlists_updated > 0 {
+        scanner::scan_soon(app);
+        super::data::soon(app);
+    }
     Ok(result)
 }
 
@@ -365,6 +391,12 @@ pub fn reorganise_files(
             break;
         }
         report(&Progress { files_done: done as u32, files_total: total, current: Some(m.from.clone()), ..Default::default() });
+        // Not on the share any more (another device took it off): nothing to put in place. The sync sees to it
+        // (Remove songs gone from the share).
+        if !taken.contains(&key(&m.from)) {
+            result.gone.push(m.from.clone());
+            continue;
+        }
         let to = free_path(&m.to, |p| taken.contains(&key(p)));
         match move_file(library, share, target, &m.from, &to) {
             Ok(()) => {
@@ -488,8 +520,15 @@ fn update_synced_playlists(share: &dyn Share, moved: &HashMap<String, String>) -
 pub fn tidy_new_songs(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || match reorganise(&app, true) {
-        Ok(r) if r.moved > 0 => eprintln!("melue: put {} new songs in place on the share", r.moved),
-        Ok(_) | Err(SyncFailure::Running) => {}
+        Ok(r) => {
+            if r.moved > 0 {
+                eprintln!("melue: put {} new songs in place on the share", r.moved);
+            }
+            if !r.failed.is_empty() {
+                eprintln!("melue: couldn't put {} songs in place on the share: {:?}", r.failed.len(), r.failed);
+            }
+        }
+        Err(SyncFailure::Running) => {}
         Err(e) => eprintln!("melue: can't put new songs in place on the share: {e:?}"),
     });
 }

@@ -13,11 +13,12 @@ import { syncNowPlaying } from "./player/nowPlaying";
 import { startSync } from "./library/sync";
 import DesktopShell from "./shells/desktop/DesktopShell.vue";
 import MobileShell from "./shells/mobile/MobileShell.vue";
+import { devBuild, readDevBuild } from "./lib/devBuild";
 import { startTrail } from "./lib/report/trail";
 import { appearance } from "./lib/appearance";
 import { offerCopy } from "./lib/copyMenu";
 import { startHoverTips } from "./lib/hoverTips";
-import { preloadPages, router, startPage } from "./router";
+import { addDevPage, preloadPages, router, startPage } from "./router";
 
 // Hover tips in Melue's style (every title: lib/hoverTips.ts).
 startHoverTips();
@@ -34,6 +35,12 @@ document.addEventListener("contextmenu", (e) => {
 async function start(shell = isMobile ? MobileShell : DesktopShell) {
   // Opening without a page asked for: the one Start on says (Display settings), there before the app mounts (mounting
   // takes the router to Home otherwise).
+  // Melue Dev: its dev page (lib/devBuild.ts), there before the app is drawn.
+  await readDevBuild();
+  if (devBuild.value) {
+    addDevPage();
+    import("./dev/testHooks").then(({ installTestHooks }) => installTestHooks()).catch(() => {});
+  }
   const page = startPage(appearance.startOn);
   if ((!location.hash || location.hash === "#/") && page !== "/") await router.replace(page).catch(() => {});
   // Phone and desktop have their own shell (navigation and layout) around the same pages.
@@ -72,9 +79,9 @@ async function start(shell = isMobile ? MobileShell : DesktopShell) {
   startSync().catch((e) => console.error("melue: sync status failed", e));
 }
 
-// In a dev browser (no Melue behind it), sample answers first: see spike/browserPreview.ts. Left out of the build.
+// In a dev browser (no Melue behind it), sample answers first: see dev/browserPreview.ts. Left out of the build.
 if (import.meta.env.DEV && !isTauri()) {
-  import("./spike/browserPreview").then(({ installBrowserPreview }) => {
+  import("./dev/browserPreview").then(({ installBrowserPreview }) => {
     installBrowserPreview();
     // ?phone: the phone's frame, to look at it in the browser.
     start(new URLSearchParams(location.search).has("phone") ? MobileShell : undefined);

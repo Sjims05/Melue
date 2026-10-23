@@ -284,7 +284,12 @@ pub fn write_playback_file(share: &dyn Share, file: &PlaybackFile) -> Result<()>
 pub fn queue_here(library: &Library, folder: &Folder, other: &Playback) -> Result<Option<(Vec<tauri_plugin_native_audio::QueueItem>, usize)>> {
     let songs: HashMap<String, i64> = library.synced_songs(folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
     let Some((ids, index)) = here(other, &songs) else { return Ok(None) };
-    Ok(Some((library.queue_items_for(&ids)?, index)))
+    // The songs that can play (one that's here but missing, or hidden as a copy, is left out of the queue): the song's
+    // place counted among them, not among all.
+    let playing = ids[index];
+    let items = library.queue_items_for(&ids)?;
+    let Some(index) = items.iter().position(|item| item.id == Some(playing)) else { return Ok(None) };
+    Ok(Some((items, index)))
 }
 
 /// What plays, on the share's terms, from the queue's item ids (None: the song isn't on the share).

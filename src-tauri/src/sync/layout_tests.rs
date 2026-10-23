@@ -76,6 +76,24 @@ fn reorganising_moves_songs_on_the_share_and_here_with_their_playlists() {
 }
 
 #[test]
+fn a_song_gone_from_the_share_is_left_for_the_sync_not_failed() {
+    let t = TestLibrary::new("layout-gone");
+    let music = t.music_folder("Synced");
+    let share = TestShare::new("layout-gone");
+    // Synced from the share, then taken off it by another device; the copy here stays.
+    music.add("Melue test/Test song.wav", &Tags::song("Test song", "", "", 1));
+    let folder = t.add_folder(&music);
+    t.scan(folder.id, &music);
+    t.library.set_setting(SHARE_SETTING, &format!(r#"{{"kind":"drive","path":"Z:","stream":false,"syncFolderId":{}}}"#, folder.id)).unwrap();
+    let moves = t.library.layout_moves(&folder, Layout::OneFolder).unwrap();
+    assert_eq!(moves.len(), 1);
+    let here = FolderShare::new(&music.root);
+    let result = reorganise_files(&t.library, &share.share, Some(&here as &dyn Share), &moves, &mut |_| {}, &|| false).unwrap();
+    assert_eq!((result.moved, result.failed.len(), result.gone.as_slice()), (0, 0, ["Melue test/Test song.wav".to_string()].as_slice()));
+    assert!(music.path("Melue test/Test song.wav").exists(), "the copy here is the sync's to remove (or keep)");
+}
+
+#[test]
 fn every_device_uses_the_layout_on_the_share() {
     let share = TestShare::new("layout-shared");
     let (desktop, phone) = (TestLibrary::new("layout-shared-desktop"), TestLibrary::new("layout-shared-phone"));

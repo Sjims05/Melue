@@ -1,0 +1,4 @@
+# What `tauri dev` doesn't rebuild for: the Android plugin's build output (a phone build running beside tauri dev
+# writes there, and each file would restart the desktop app).
+plugins/melue-android/android/build/
+plugins/melue-android/android/.gradle/

@@ -1,5 +1,6 @@
 #[cfg(desktop)]
 mod desktop;
+mod dev;
 mod github;
 mod library;
 mod logging;
@@ -9,7 +10,6 @@ mod share;
 mod startup;
 mod sync;
 
-use std::sync::{Arc, Mutex};
 
 /// Who this Melue is (its data folders, its log, its saved passwords): the official app, or a development build as
 /// "Melue Dev", which keeps its own (never the installed app's library or settings). Android test builds are their own
@@ -26,66 +26,6 @@ fn app_is_dev() -> bool {
     cfg!(debug_assertions)
 }
 
-use share::smb::{SmbConfig, SmbShare};
-use share::{Entry, Share};
-
-/// The spike's SMB share (section 1, with .env's test login), through Phase 2's share access.
-#[derive(Default)]
-struct SpikeShare(Mutex<Option<Arc<SmbShare>>>);
-
-impl SpikeShare {
-    fn get(&self) -> Result<Arc<SmbShare>, String> {
-        self.0.lock().unwrap().clone().ok_or_else(|| "not connected: connect first".to_string())
-    }
-}
-
-use share::commands::on_share_thread;
-
-/// Connects to the share (its root folder) and checks it can be listed.
-#[tauri::command]
-async fn smb_connect(state: tauri::State<'_, SpikeShare>, host: String, user: String, pass: String, share: String) -> Result<(), String> {
-    let connected = on_share_thread(move || {
-        let connected = SmbShare::new(SmbConfig { host, share, user, password: pass, ..Default::default() })?;
-        connected.check()?;
-        Ok::<_, String>(connected)
-    })
-    .await?;
-    *state.0.lock().unwrap() = Some(Arc::new(connected));
-    Ok(())
-}
-
-#[tauri::command]
-async fn smb_list_dir(state: tauri::State<'_, SpikeShare>, path: String) -> Result<Vec<Entry>, String> {
-    let share = state.get()?;
-    on_share_thread(move || Ok(share.list(&path)?)).await
-}
-
-/// Downloads a file to `local_path` (a temporary file first, renamed when complete). Returns its size.
-#[tauri::command]
-async fn smb_copy_file(state: tauri::State<'_, SpikeShare>, remote_path: String, local_path: String) -> Result<u64, String> {
-    let share = state.get()?;
-    on_share_thread(move || {
-        let local = std::path::PathBuf::from(&local_path);
-        if let Some(parent) = local.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        let part = std::path::PathBuf::from(format!("{local_path}.part"));
-        let copied = (|| -> Result<u64, String> {
-            let mut file = std::fs::File::create(&part).map_err(|e| e.to_string())?;
-            let size = share.read_to(&remote_path, &mut file, &mut |_| {})?;
-            file.sync_all().map_err(|e| e.to_string())?;
-            Ok(size)
-        })();
-        match copied.and_then(|size| std::fs::rename(&part, &local).map(|_| size).map_err(|e| e.to_string())) {
-            Ok(size) => Ok(size),
-            Err(e) => {
-                let _ = std::fs::remove_file(&part);
-                Err(e)
-            }
-        }
-    })
-    .await
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -114,7 +54,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(SpikeShare::default())
         .manage(share::commands::SessionPasswords::default())
         .manage(sync::scheduler::Syncing::default())
         // Covers for the UI: cover://localhost/<file>-300.jpg (src/library's coverUrl makes these).
@@ -224,6 +163,7 @@ pub fn run() {
             phone_update::update_install_downloaded,
             logging::log_show,
             app_is_dev,
+            dev::dev_share_sample,
             github::github_sign_in_start,
             github::github_sign_in_wait,
             github::github_sign_in_cancel,
@@ -236,9 +176,6 @@ pub fn run() {
             report::saved::report_discard,
             report::saved::reports_list,
             report::screenshot::report_screenshot,
-            smb_connect,
-            smb_list_dir,
-            smb_copy_file,
             share::commands::share_info,
             share::commands::share_test,
             share::commands::share_set_up,
@@ -345,6 +282,7 @@ pub fn run() {
             library::library_set_player_settings,
             library::library_folder_covers,
             library::library_set_folder_covers,
+            library::songs_there::library_songs_there,
         ])
         .run(context())
         .expect("error while running tauri application");

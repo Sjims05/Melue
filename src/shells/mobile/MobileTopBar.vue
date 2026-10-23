@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
  * The phone's top bar: the Melue logo on the main pages, "‹ back" on a page opened on top (named after the page it came
- * from), and the sync status. Dev builds: a way to the developer page (the spike's tests).
+ * from), and the sync status. Melue Dev: a way to the dev page (its tests and tools).
  */
+import { devBuild } from '@/lib/devBuild'
 import { ChevronLeft, Wrench } from '@lucide/vue'
 import mark from '@/assets/melue-mark.png'
 import { goBack } from '@/router'
 import SyncChip from '../desktop/SyncChip.vue'
 
 defineProps<{ back?: string | null }>()
-const dev = import.meta.env.DEV
+const dev = devBuild
 </script>
 
 <template>

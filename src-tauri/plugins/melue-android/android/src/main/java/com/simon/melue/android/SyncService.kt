@@ -32,6 +32,17 @@ class SyncService : Service() {
         @Volatile
         private var running = false
 
+        /** Asked to start, not started yet (Android starts it a moment later). */
+        @Volatile
+        private var starting = false
+
+        /**
+         * Over before it started (a sync that had nothing to do): stopped once it has started. Stopping it earlier
+         * makes Android end Melue (a service started this way has to show its notification first).
+         */
+        @Volatile
+        private var stopWhenStarted = false
+
         private fun channel(context: Context) {
             val manager = context.getSystemService(NotificationManager::class.java)
             if (manager.getNotificationChannel(CHANNEL) == null) {
@@ -68,13 +79,15 @@ class SyncService : Service() {
 
         /** Shows or updates the notification (starting the service the first time). */
         fun show(context: Context, done: Int, total: Int, text: String) {
-            if (!running) {
+            stopWhenStarted = false
+            if (!running && !starting) {
                 val start = Intent(context, SyncService::class.java)
                     .putExtra(EXTRA_DONE, done)
                     .putExtra(EXTRA_TOTAL, total)
                     .putExtra(EXTRA_TEXT, text)
                 try {
                     context.startForegroundService(start)
+                    starting = true
                     return
                 } catch (e: Exception) {
                     // Android may not allow starting it now (the app in the background): a plain notification.
@@ -85,6 +98,10 @@ class SyncService : Service() {
 
         /** The sync is over: the notification goes. */
         fun stop(context: Context) {
+            if (starting && !running) {
+                stopWhenStarted = true
+                return
+            }
             context.stopService(Intent(context, SyncService::class.java))
             context.getSystemService(NotificationManager::class.java).cancel(ID)
         }
@@ -107,11 +124,18 @@ class SyncService : Service() {
             startForeground(ID, notification)
         }
         running = true
+        starting = false
+        if (stopWhenStarted) {
+            stopWhenStarted = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         running = false
+        starting = false
         super.onDestroy()
     }
 

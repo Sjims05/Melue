@@ -30,7 +30,7 @@ onPageLoad(loadSyncSettings)
     <SettingsRow title="Sync when Melue starts" description="Gets new music as soon as you open it" v-bind="resetSync('atStart')">
       <Switch :model-value="syncSettings.value.atStart" @update:model-value="(atStart) => saveSyncSettings({ atStart })" />
     </SettingsRow>
-    <SettingsRow title="Sync on share changes" description="When the contents of the share folder changes" v-bind="resetSync('onChange')">
+    <SettingsRow title="Sync on share changes" description="When the songs on the share change" v-bind="resetSync('onChange')">
       <Switch :model-value="syncSettings.value.onChange" @update:model-value="(onChange) => saveSyncSettings({ onChange })" />
     </SettingsRow>
     <SettingsRow title="Sync when coming back after…" description="When you reopen an inactive instance" wide v-bind="resetSync('onReturnAfterMinutes')">

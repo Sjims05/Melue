@@ -6,7 +6,9 @@
  * the row opens the full path and the synced folder), with Change password and Remove share in its ⋯ menu.
  */
 import { ChevronRight, Cloud, Ellipsis, Folder, Monitor } from '@lucide/vue'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
+import { count } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
@@ -73,6 +75,32 @@ const syncFolder = computed<SyncFolderChoice | null>(
 async function chooseFolder() {
   const location = await storage.pickMusicFolder()
   if (location) chosenFolder.value = { kind: isAndroid ? 'android_tree' : 'path', location }
+}
+
+// Songs already in the chosen folder (src-tauri library/songs_there.rs): the share's songs go in beside them, at other
+// places, so songs in both would be there twice (a folder holding an earlier synced folder, say). Said, with where most
+// of them are; on a computer that folder can be taken instead.
+const there = ref<{ songs: number; mostIn: string | null; most: number } | null>(null)
+watch(
+  syncFolder,
+  async (folder) => {
+    there.value = null
+    if (!folder) return
+    there.value = await invoke<{ songs: number; mostIn: string | null; most: number }>('library_songs_there', { kind: folder.kind, location: folder.location }).catch(() => null)
+  },
+  { immediate: true },
+)
+const thereLine = computed(() => {
+  const t = there.value
+  if (!t?.songs) return ''
+  const where = t.mostIn ? `, ${t.most} of them in “${t.mostIn}”` : ''
+  const instead = t.mostIn && isAndroid ? ` If “${t.mostIn}” is synced music from before, choose it instead.` : ''
+  return `This folder has ${count(t.songs, 'song')} already${where}. The share’s songs go in beside them, so songs in both would be here twice.${instead}`
+})
+function useMostIn() {
+  const folder = syncFolder.value
+  if (!folder || !there.value?.mostIn) return
+  chosenFolder.value = { kind: folder.kind, location: `${folder.location.replace(/[\\/]+$/, '')}\\${there.value.mostIn}` }
 }
 
 /** A setup error, under the field to fix (or under the form). */
@@ -196,6 +224,16 @@ function toggleDetails(event: Event) {
         <SettingsRow title="Synced music goes to" :description="syncFolder ? middle(readablePath(syncFolder.location), 44) : 'Choose a folder on this phone'">
           <Button variant="outline" size="sm" @click="chooseFolder">{{ syncFolder ? 'Change' : 'Choose folder' }}</Button>
         </SettingsRow>
+        <Reveal :show="!!thereLine">
+          <div class="settings-row" data-row>
+            <SettingsTip class="w-full">
+              {{ thereLine }}
+              <template v-if="there?.mostIn && isDesktop" #action>
+                <Button variant="secondary" size="sm" @click="useMostIn">Use “{{ there.mostIn }}”</Button>
+              </template>
+            </SettingsTip>
+          </div>
+        </Reveal>
         <div class="settings-row" data-row>
           <Button :disabled="connecting" @click="connect">{{ connecting ? 'Connecting…' : 'Connect to share' }}</Button>
         </div>
