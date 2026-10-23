@@ -320,7 +320,17 @@ pub fn reach(app: &AppHandle, device: &Device) -> Result<Reached, String> {
             Err(e) => why.push(e),
         }
     }
-    Err(format!("{} isn’t running Melue right now, or can’t be reached ({})", device.name, why.join("; ")))
+    // The details for the log; the reason, in words, for the app.
+    eprintln!("melue: can't reach {}: {}", device.name, why.join("; "));
+    if let Some(key) = why.iter().find(|w| w.contains("another share")) {
+        return Err(format!("{}: {}", device.name, key.split_once(": ").map_or(key.as_str(), |(_, w)| w)));
+    }
+    Err(if device.online {
+        // Online (it says so on the share), yet nothing answers: something between blocks Melue's connections.
+        format!("{} is online, but can’t be reached from here: a firewall may be blocking Melue there (on Windows: allow Melue in Windows Firewall)", device.name)
+    } else {
+        format!("{} isn’t running Melue right now", device.name)
+    })
 }
 
 /// Reaches one of your devices (the dev page's test).

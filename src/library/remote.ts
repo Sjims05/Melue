@@ -93,5 +93,7 @@ export const remote = {
   onError: (listener: (error: string) => void) => listen<string>('remote-error', (e) => listener(e.payload)),
   /** The connection ended (`why`; null when this device closed it). */
   onClosed: (listener: (why: string | null) => void) => listen<string | null>('remote-closed', (e) => listener(e.payload)),
+  /** The connection was lost and is being tried again (true: for a minute), or is back (false). */
+  onReconnecting: (listener: (trying: boolean) => void) => listen<boolean>('remote-reconnecting', (e) => listener(e.payload)),
   reach: (id: string) => invoke<{ address: string; ms: number; hello: { deviceId: string; name: string; version: string; allow: Allow } }>('remote_reach', { id }),
 }

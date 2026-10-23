@@ -11,6 +11,8 @@ export const playingOn = reactive({
   device: null as { id: string; name: string } | null,
   /** Its state, as it last said. */
   state: null as RemoteState | null,
+  /** The connection to it was lost, and is being tried again (for a minute; it goes on playing meanwhile). */
+  reconnecting: false,
   /** Connecting to this device (its id), for the menu to show it. */
   connecting: null as string | null,
   /** The other way round: the devices playing on this one now (their names). */
@@ -24,6 +26,6 @@ export const connectedTo = (): string | null => playingOn.device?.name ?? (playi
 
 /** The connection in words: "Playing on <device>", "Played from <device>", or null. */
 export function connectionText(): string | null {
-  if (playingOn.device) return `Playing on ${playingOn.device.name}`
+  if (playingOn.device) return playingOn.reconnecting ? `Reconnecting to ${playingOn.device.name}…` : `Playing on ${playingOn.device.name}`
   return playingOn.playedFrom.length ? `Played from ${playingOn.playedFrom.join(' and ')}` : null
 }

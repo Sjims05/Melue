@@ -94,6 +94,32 @@ pub trait Host: Send + Sync + 'static {
     fn connection(&self, from: &str, open: bool);
 }
 
+/// How a controller's connection ended (its `on_closed`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Closed {
+    /// Closed from the controller's side (the link dropped: Disconnect, This device, another device).
+    Disconnected,
+    /// The other device ended it (Disconnect there, another device playing there), saying why.
+    Ended(String),
+    /// Lost: the other device stopped answering, or the network failed (the controller tries again: link.rs).
+    Lost(String),
+}
+
+/// A controller lost lately (by its device id): when, so it can come back without being asked again (Ask first).
+static LOST: std::sync::Mutex<Vec<(String, Instant)>> = std::sync::Mutex::new(Vec::new());
+/// How long a lost controller may come back without asking (the controller tries for a minute: link.rs).
+const COME_BACK_WITHIN: Duration = Duration::from_secs(90);
+
+/// Whether device `from` is coming back: connected here now (the old connection not noticed as gone yet), or lost
+/// lately. Taken off the lost list.
+fn coming_back(from: &str) -> bool {
+    let mut lost = LOST.lock().unwrap();
+    lost.retain(|(_, at)| at.elapsed() < COME_BACK_WITHIN);
+    let was_lost = lost.iter().any(|(id, _)| id == from);
+    lost.retain(|(id, _)| id != from);
+    was_lost || SESSIONS.lock().unwrap().iter().any(|(_, id, _)| id == from)
+}
+
 /// The controllers connected here now: each one's device, and a way to end its connection (with why).
 static SESSIONS: std::sync::Mutex<Vec<(u64, String, tokio::sync::mpsc::UnboundedSender<String>)>> = std::sync::Mutex::new(Vec::new());
 static NEXT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -141,7 +167,8 @@ pub async fn control(State(host): State<Arc<dyn Host>>, headers: HeaderMap, upgr
     };
     match host.hello().map(|h| h.allow) {
         Ok(Allow::On) => {}
-        // Someone there says yes first (the controller waits for it).
+        // Someone there says yes first (the controller waits for it), unless it's coming back after losing the connection.
+        Ok(Allow::Ask) if coming_back(&from) => {}
         Ok(Allow::Ask) => {
             let (asking, who) = (host.clone(), from.clone());
             if !tokio::task::spawn_blocking(move || asking.ask(&who)).await.unwrap_or(false) {
@@ -167,9 +194,18 @@ impl Drop for Open {
 async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
     let id = NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let (end, mut ended) = tokio::sync::mpsc::unbounded_channel::<String>();
-    SESSIONS.lock().unwrap().push((id, from.clone(), end));
+    {
+        let mut sessions = SESSIONS.lock().unwrap();
+        // The same device again (it lost its connection, and this one hadn't noticed yet): the old one goes.
+        for (_, _, old) in sessions.iter().filter(|(_, other, _)| *other == from) {
+            let _ = old.send("connected again".into());
+        }
+        sessions.push((id, from.clone(), end));
+    }
     host.connection(&from, true);
-    let _open = Open(host.clone(), id, from);
+    let _open = Open(host.clone(), id, from.clone());
+    // Lost (not closed by either side): it may come back without asking.
+    let mut lost = false;
     let (mut out, mut incoming) = socket.split();
     let mut last: Option<RemoteState> = None;
     let mut position_sent = Instant::now();
@@ -188,6 +224,7 @@ async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
             // The controller still there? (It answers a ping by itself; nothing heard for a while: it's gone.)
             _ = check.tick() => {
                 if heard.elapsed() > SILENT_AT_MOST || out.send(Message::Ping(Vec::new().into())).await.is_err() {
+                    lost = true;
                     break;
                 }
                 false
@@ -207,7 +244,11 @@ async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
                     }
                     true
                 }
-                Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                Some(Ok(Message::Close(_))) => break,
+                None | Some(Err(_)) => {
+                    lost = true;
+                    break;
+                }
                 Some(Ok(_)) => {
                     heard = tokio::time::Instant::now();
                     false
@@ -224,11 +265,15 @@ async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
         if send_now || changed || position_due {
             let text = serde_json::to_string(&Outgoing::State(state.clone())).unwrap_or_default();
             if out.send(Message::Text(text.into())).await.is_err() {
+                lost = true;
                 break;
             }
             position_sent = Instant::now();
             last = Some(state);
         }
+    }
+    if lost {
+        LOST.lock().unwrap().push((from, Instant::now()));
     }
 }
 
@@ -250,7 +295,7 @@ pub async fn connect(
     key: &[u8],
     me: &str,
     on_message: impl Fn(Outgoing) + Send + 'static,
-    on_closed: impl FnOnce(Option<String>) + Send + 'static,
+    on_closed: impl FnOnce(Closed) + Send + 'static,
 ) -> Result<Link, String> {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     use tokio_tungstenite::tungstenite::Message as TMessage;
@@ -279,20 +324,20 @@ pub async fn connect(
                 // The other device still there? (It pings every few seconds; nothing heard for a while: it's gone.)
                 _ = check.tick() => {
                     if heard.elapsed() > SILENT_AT_MOST {
-                        break Some("the other device stopped answering".into());
+                        break Closed::Lost("the other device stopped answering".into());
                     }
                 }
                 command = queued.recv() => match command {
                     Some(command) => {
                         let text = serde_json::to_string(&command).unwrap_or_default();
                         if let Err(e) = out.send(TMessage::Text(text.into())).await {
-                            break Some(e.to_string());
+                            break Closed::Lost(e.to_string());
                         }
                     }
                     // The link was dropped: disconnect.
                     None => {
                         let _ = out.send(TMessage::Close(None)).await;
-                        break None;
+                        break Closed::Disconnected;
                     }
                 },
                 message = incoming.next() => match message {
@@ -304,10 +349,10 @@ pub async fn connect(
                     }
                     Some(Ok(TMessage::Close(frame))) => {
                         let why = frame.map(|f| f.reason.to_string()).filter(|r| !r.is_empty());
-                        break Some(why.unwrap_or_else(|| "the other device closed the connection".into()));
+                        break Closed::Ended(why.unwrap_or_else(|| "the other device closed the connection".into()));
                     }
-                    None => break Some("the other device closed the connection".into()),
-                    Some(Err(e)) => break Some(e.to_string()),
+                    None => break Closed::Lost("the connection broke".into()),
+                    Some(Err(e)) => break Closed::Lost(e.to_string()),
                     Some(Ok(_)) => heard = tokio::time::Instant::now(),
                 },
             }
@@ -343,7 +388,7 @@ mod tests {
             Ok(self.state.lock().unwrap().clone())
         }
         fn ask(&self, from: &str) -> bool {
-            assert_eq!(from, "phone", "asked about the device connecting");
+            assert!(from.starts_with("phone-"), "asked about the device connecting: {from}");
             self.says_yes
         }
         fn connection(&self, _from: &str, _open: bool) {}
@@ -383,9 +428,12 @@ mod tests {
 
     /// Connects as the phone; what comes back is collected.
     async fn phone(port: u16, key: &[u8]) -> Result<(Link, Arc<Mutex<Vec<Outgoing>>>), String> {
+        // A device of its own each time (the sessions are the process's: the tests run side by side).
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+        let me = format!("phone-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let keep = seen.clone();
-        let link = connect("127.0.0.1", port, key, "phone", move |m| keep.lock().unwrap().push(m), |_| {}).await?;
+        let link = connect("127.0.0.1", port, key, &me, move |m| keep.lock().unwrap().push(m), |_| {}).await?;
         Ok((link, seen))
     }
 
@@ -434,7 +482,7 @@ mod tests {
         .await
         .unwrap();
         let why = tokio::time::timeout(Duration::from_secs(30), why).await.expect("noticed").unwrap();
-        assert_eq!(why.as_deref(), Some("the other device stopped answering"));
+        assert_eq!(why, Closed::Lost("the other device stopped answering".into()));
     }
 
     #[tokio::test]
@@ -452,5 +500,14 @@ mod tests {
         assert!(err.contains("said no"), "{err}");
         let yes = serve(TestHost { says_yes: true, ..host(&key, Allow::Ask) }).await;
         assert!(phone(yes, &key).await.is_ok());
+    }
+
+    #[test]
+    fn a_device_that_lost_its_connection_comes_back_without_asking_once() {
+        assert!(!coming_back("lost-phone"));
+        LOST.lock().unwrap().push(("lost-phone".into(), Instant::now()));
+        assert!(coming_back("lost-phone"));
+        // Taken off the list: the next time (a new connection, not coming back) asks again.
+        assert!(!coming_back("lost-phone"));
     }
 }

@@ -2,7 +2,8 @@
  * Connect device (library/remote.ts; src-tauri remote/link.rs): where this device's music plays, this device or
  * another of yours, and moving it. Playing on another: what plays here goes there (from where it is) and this one
  * pauses; "This device" brings it back the same way; Disconnect leaves it playing there. The other device's state
- * comes in as it changes. While connected, Continue (synced playback) rests on both devices.
+ * comes in as it changes. While connected, Continue (synced playback) rests on both devices. A connection lost (a
+ * network change) is tried again for a minute: "Reconnecting to …" meanwhile.
  */
 import { Monitor, MonitorSpeaker, Smartphone, Unplug } from '@lucide/vue'
 import { remote, type Device } from '@/library/remote'
@@ -35,6 +36,7 @@ export async function playOn(device: Device) {
   try {
     const connected = await remote.playOn(device.id)
     playingOn.device = { id: connected.id, name: connected.name }
+    playingOn.reconnecting = false
     await syncNowPlaying().catch(() => {})
     toast(`Playing on ${connected.name}`, MonitorSpeaker)
   } catch (e) {
@@ -55,6 +57,7 @@ export async function bringBack() {
     toast(`Couldn’t bring it back from ${name}: ${e}`, MonitorSpeaker)
   } finally {
     playingOn.device = null
+    playingOn.reconnecting = false
     playingOn.state = null
     await syncNowPlaying().catch(() => {})
   }
@@ -73,6 +76,7 @@ export async function disconnect() {
   const name = playingOn.device?.name
   await remote.disconnect().catch(() => {})
   playingOn.device = null
+  playingOn.reconnecting = false
   playingOn.state = null
   if (name) toast(`Disconnected: ${name} goes on playing`, Unplug)
 }
@@ -117,9 +121,11 @@ export async function startRemotePlayback() {
       const name = playingOn.device?.name
       playingOn.device = null
       playingOn.state = null
+      playingOn.reconnecting = false
       if (why && name) toast(`Stopped playing on ${name}: ${why}`, MonitorSpeaker)
     })
     .catch(() => {})
+  await remote.onReconnecting((trying) => (playingOn.reconnecting = trying)).catch(() => {})
   await remote.onPlayedFrom((names) => (playingOn.playedFrom = names)).catch(() => {})
   const settings = await remote.settings().catch(() => null)
   if (settings) playingOn.phoneStep = settings.phoneStep

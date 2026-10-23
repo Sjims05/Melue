@@ -3,6 +3,16 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.6 (2026-10-23)
+
+Connections that come back.
+
+- A connection to another device that drops (a network change, Wi-Fi going and coming back) is tried again for a
+  minute, the music playing on there meanwhile: the pill says "Reconnecting to …", then you're back in control. It
+  ends sooner when Melue was closed on the other device.
+- A device that asks first doesn't ask again when the one that was playing on it comes back.
+- A device that can't be reached says why in words: not running Melue, or online but blocked (a firewall).
+
 ## 0.6.5 (2026-10-23)
 
 The volume, across your devices.

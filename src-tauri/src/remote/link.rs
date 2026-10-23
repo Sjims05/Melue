@@ -1,16 +1,20 @@
 //! This device controlling another (the app's side): one connection at a time. Its state comes to the app as
 //! `remote-state` events, a command that didn't work there as `remote-error`, and the end of the connection as
-//! `remote-closed` (with why, unless this device closed it).
+//! `remote-closed` (with why, unless this device closed it). A connection lost (not ended by either side) is tried
+//! again for a minute (`remote-reconnecting`), the other device playing on meanwhile.
 //!
 //! Connect device: [`remote_play_on`] moves what plays here to another device (and pauses here);
 //! [`remote_bring_back`] moves what plays there back here (and pauses there).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::control::{self, Command, Link, Outgoing, RemoteState};
+use super::control::{self, Closed, Command, Link, Outgoing, RemoteState};
+use super::presence::Device;
 use super::{key, presence, server};
 use crate::library::Library;
 use crate::sync::handoff::{self, Playback};
@@ -19,15 +23,28 @@ use tauri_plugin_native_audio::NativeAudioExt;
 pub const STATE_EVENT: &str = "remote-state";
 pub const ERROR_EVENT: &str = "remote-error";
 pub const CLOSED_EVENT: &str = "remote-closed";
+/// The connection was lost and is being tried again (true), or is back (false).
+pub const RECONNECTING_EVENT: &str = "remote-reconnecting";
 
 /// The connection (to which device, its name), the other device's state as it last said, and the queue this device
 /// had when it sent it there (brought back as it was, songs only here included, when its song is in it).
 #[derive(Default)]
-pub struct Remote(
-    Mutex<Option<(String, Link)>>,
-    Mutex<Option<(Connected, RemoteState)>>,
-    Mutex<Option<Vec<tauri_plugin_native_audio::QueueItem>>>,
-);
+pub struct Remote(Mutex<Option<Current>>, Mutex<Option<(Connected, RemoteState)>>, Mutex<Option<Vec<tauri_plugin_native_audio::QueueItem>>>);
+
+/// The connection there is: to which device, which connection it is (its serial: one replaced, or closed here,
+/// doesn't end the next), and its link (None while reconnecting).
+pub struct Current {
+    id: String,
+    serial: u64,
+    link: Option<Link>,
+}
+
+static NEXT_SERIAL: AtomicU64 = AtomicU64::new(1);
+
+/// A lost connection: tried again this often...
+const RETRY_EVERY: Duration = Duration::from_secs(3);
+/// ...for this long, then given up.
+const RECONNECT_FOR: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,8 +57,32 @@ pub struct Connected {
 /// Connects to one of your devices (closing any connection there was).
 #[tauri::command]
 pub async fn remote_connect(app: AppHandle, id: String) -> Result<Connected, String> {
+    let device = {
+        let (blocking, wanted) = (app.clone(), id.clone());
+        tauri::async_runtime::spawn_blocking(move || presence::device(&blocking, &wanted)).await.map_err(|e| e.to_string())??.ok_or("no such device")?
+    };
+    // One way at a time: the devices playing on this one are disconnected first (this one plays elsewhere now).
+    if !control::controllers().is_empty() {
+        let name = handoff::settings(&app).ok().and_then(|s| s.device_name).unwrap_or_else(|| "The other device".into());
+        let target = device.name.clone();
+        control::end_sessions_saying(|from| if from == id { format!("{name} plays here now") } else { format!("{name} plays on {target} now") });
+    }
+    let serial = NEXT_SERIAL.fetch_add(1, Ordering::SeqCst);
+    let (connected, link) = open(&app, &id, serial).await?;
+    let remote = app.state::<Remote>();
+    *remote.1.lock().unwrap() = None;
+    // While playing there, Continue doesn't offer (or follow) that device's playback here, and rests altogether.
+    handoff::ignore(&id, i64::MAX);
+    if remote.0.lock().unwrap().replace(Current { id, serial, link: Some(link) }).is_none() {
+        handoff::connection_began();
+    }
+    Ok(connected)
+}
+
+/// Opens connection `serial` to device `id`: its state goes to the app, and its end to [`closed`].
+async fn open(app: &AppHandle, id: &str, serial: u64) -> Result<(Connected, Link), String> {
     let blocking = app.clone();
-    let wanted = id.clone();
+    let wanted = id.to_string();
     let (device, reached, key, me) = tauri::async_runtime::spawn_blocking(move || {
         let device = presence::device(&blocking, &wanted)?.ok_or("no such device")?;
         let reached = server::reach(&blocking, &device)?;
@@ -50,15 +91,8 @@ pub async fn remote_connect(app: AppHandle, id: String) -> Result<Connected, Str
     .await
     .map_err(|e| e.to_string())??;
     let port = device.port.ok_or("it doesn’t take connections")?;
-    // One way at a time: the devices playing on this one are disconnected first (this one plays elsewhere now).
-    if !control::controllers().is_empty() {
-        let name = handoff::settings(&app).ok().and_then(|s| s.device_name).unwrap_or_else(|| "The other device".into());
-        let target = device.name.clone();
-        control::end_sessions_saying(|from| if from == id { format!("{name} plays here now") } else { format!("{name} plays on {target} now") });
-    }
-    let connected = Connected { id: id.clone(), name: device.name.clone(), address: reached.address.clone() };
-    let (to_app, closing) = (app.clone(), app.clone());
-    let (closed_id, keep) = (id.clone(), connected.clone());
+    let connected = Connected { id: id.to_string(), name: device.name.clone(), address: reached.address.clone() };
+    let (to_app, closing, keep) = (app.clone(), app.clone(), connected.clone());
     let link = control::connect(
         &reached.address,
         port,
@@ -73,30 +107,91 @@ pub async fn remote_connect(app: AppHandle, id: String) -> Result<Connected, Str
                 Outgoing::Error(error) => to_app.emit(ERROR_EVENT, error),
             };
         },
-        move |why| {
-            // Only when it's still the connection there is (not one replaced or closed here).
-            let remote = closing.state::<Remote>();
-            let mut current = remote.0.lock().unwrap();
-            if current.as_ref().is_some_and(|(id, _)| *id == closed_id) {
-                *current = None;
-                handoff::connection_ended();
-                remote.1.lock().unwrap().take();
-                remote.2.lock().unwrap().take();
-                handoff::ignore(&closed_id, crate::library::now_ms() + 60_000);
-                let _ = closing.emit(CLOSED_EVENT, why);
-            }
-        },
+        move |how| closed(&closing, serial, how),
     )
     .await
     .map_err(|e| format!("{}: {e}", device.name))?;
+    Ok((connected, link))
+}
+
+/// Connection `serial` ended: lost, it's tried again (`remote-reconnecting`); ended there, the connection's over.
+/// Only when it's still the connection there is (not one replaced, or closed here).
+fn closed(app: &AppHandle, serial: u64, how: Closed) {
     let remote = app.state::<Remote>();
-    *remote.1.lock().unwrap() = None;
-    // While playing there, Continue doesn't offer (or follow) that device's playback here, and rests altogether.
-    handoff::ignore(&id, i64::MAX);
-    if remote.0.lock().unwrap().replace((id, link)).is_none() {
-        handoff::connection_began();
+    let mut current = remote.0.lock().unwrap();
+    let Some(now) = current.as_mut().filter(|c| c.serial == serial) else { return };
+    match how {
+        Closed::Lost(_) => {
+            now.link = None;
+            let id = now.id.clone();
+            drop(current);
+            let _ = app.emit(RECONNECTING_EVENT, true);
+            tauri::async_runtime::spawn(reconnect(app.clone(), id, serial));
+        }
+        Closed::Ended(why) => {
+            drop(current);
+            end(app, Some(why));
+        }
+        Closed::Disconnected => {
+            drop(current);
+            end(app, None);
+        }
     }
-    Ok(connected)
+}
+
+/// The connection's over: Continue is back (not offering what that device saves as it stops, for a minute), and the
+/// app's told (`remote-closed`, with why).
+fn end(app: &AppHandle, why: Option<String>) {
+    let remote = app.state::<Remote>();
+    if let Some(Current { id, .. }) = remote.0.lock().unwrap().take() {
+        handoff::connection_ended();
+        handoff::ignore(&id, crate::library::now_ms() + 60_000);
+    }
+    remote.1.lock().unwrap().take();
+    remote.2.lock().unwrap().take();
+    let _ = app.emit(CLOSED_EVENT, why);
+}
+
+/// Connection `serial` to device `id` was lost (a network change, the other device's network): tried again every few
+/// seconds for a minute, while it's still the connection there is (not disconnected or replaced meanwhile). The other
+/// device goes on playing; Melue closed there (offline), or a minute without reaching it, ends the connection.
+async fn reconnect(app: AppHandle, id: String, serial: u64) {
+    let still = |app: &AppHandle| app.state::<Remote>().0.lock().unwrap().as_ref().is_some_and(|c| c.serial == serial);
+    let looked_up = |app: &AppHandle, id: &str| {
+        let (app, id) = (app.clone(), id.to_string());
+        tauri::async_runtime::spawn_blocking(move || presence::device(&app, &id))
+    };
+    let name = looked_up(&app, &id).await.ok().and_then(Result::ok).flatten().map_or_else(|| "the other device".to_string(), |d| d.name);
+    let until = tokio::time::Instant::now() + RECONNECT_FOR;
+    loop {
+        tokio::time::sleep(RETRY_EVERY).await;
+        if !still(&app) {
+            return;
+        }
+        // Melue closed there (it said so as it went), or the device is gone: no use trying.
+        if let Ok(Ok(None) | Ok(Some(Device { online: false, .. }))) = looked_up(&app, &id).await {
+            if still(&app) {
+                end(&app, Some(format!("{name} isn’t online anymore")));
+            }
+            return;
+        }
+        if let Ok((_, link)) = open(&app, &id, serial).await {
+            let remote = app.state::<Remote>();
+            let mut current = remote.0.lock().unwrap();
+            if let Some(now) = current.as_mut().filter(|c| c.serial == serial) {
+                now.link = Some(link);
+                drop(current);
+                let _ = app.emit(RECONNECTING_EVENT, false);
+            }
+            return;
+        }
+        if tokio::time::Instant::now() >= until {
+            if still(&app) {
+                end(&app, Some(format!("couldn’t reach {name} for a minute")));
+            }
+            return;
+        }
+    }
 }
 
 /// Connect device: plays what plays here on device `id` (from where it is) and pauses here. Nothing playing here:
@@ -187,7 +282,7 @@ pub fn remote_load(app: AppHandle, ids: Vec<i64>, index: usize, playing: bool) -
 #[tauri::command]
 pub fn remote_status(app: AppHandle) -> Option<(Connected, Option<RemoteState>)> {
     let remote = app.state::<Remote>();
-    let connected = remote.0.lock().unwrap().as_ref().map(|(id, _)| id.clone())?;
+    let connected = remote.0.lock().unwrap().as_ref().map(|c| c.id.clone())?;
     let last = remote.1.lock().unwrap().clone();
     Some(match last {
         Some((who, state)) if who.id == connected => (who, Some(state)),
@@ -200,8 +295,8 @@ pub fn remote_status(app: AppHandle) -> Option<(Connected, Option<RemoteState>)>
 pub fn remote_command(app: AppHandle, command: Command) -> Result<(), String> {
     let remote = app.state::<Remote>();
     let current = remote.0.lock().unwrap();
-    let (_, link) = current.as_ref().ok_or("not connected to another device")?;
-    link.send(command)
+    let current = current.as_ref().ok_or("not connected to another device")?;
+    current.link.as_ref().ok_or("reconnecting to it: a moment")?.send(command)
 }
 
 /// What plays here, sent to the device connected to (its queue, the song and where in it; playing or paused).
@@ -230,7 +325,7 @@ pub fn give_way(app: &AppHandle, to: &str) {
 pub fn remote_disconnect(app: AppHandle) {
     // Dropping the link closes it.
     let remote = app.state::<Remote>();
-    if let Some((id, _)) = remote.0.lock().unwrap().take() {
+    if let Some(Current { id, .. }) = remote.0.lock().unwrap().take() {
         handoff::connection_ended();
         // A minute more: what that device saves as it stops isn't offered back here.
         handoff::ignore(&id, crate::library::now_ms() + 60_000);
