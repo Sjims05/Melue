@@ -171,8 +171,14 @@ impl Library {
             let rows = stmt.query_map([folder.id], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?, r.get(3)?)))).map_err(err)?;
             rows.collect::<rusqlite::Result<_>>().map_err(err)?
         };
+        // Only songs the sync knows are on the share: one only here (put in the synced folder by hand) has nothing
+        // on the share to move.
+        let on_share: HashSet<String> = self.sync_records()?.into_iter().map(|r| key(&r.path)).collect();
         let mut moves = Vec::new();
         for (id, path) in self.synced_songs(folder)? {
+            if !on_share.contains(&key(&path)) {
+                continue;
+            }
             let Some((album_artist, artist, album)) = tags.get(&id) else { continue };
             let wanted = layout_path(layout, album_artist.as_deref(), artist.as_deref(), album.as_deref(), &file_name_of(&path));
             if !in_place(&path, &wanted) {

@@ -55,15 +55,21 @@ fn reorganising_moves_songs_on_the_share_and_here_with_their_playlists() {
     }
     share.add("Mix.m3u", b"Big Mountain/Unriddle/Baby.wav\nFlat.wav\n");
     share.add(".melue/playlists/p1.json", br#"{"id":"p1","name":"Mix","entries":[{"key":"Big Mountain/Unriddle/Baby.wav"}]}"#);
+    // One more only here (not on the share): the layout leaves it alone.
+    music.add("Only here.wav", &Tags::song("Only here", "Someone", "Mine", 1));
     let folder = t.add_folder(&music);
     t.scan(folder.id, &music);
     t.library.set_setting(SHARE_SETTING, &format!(r#"{{"kind":"drive","path":"Z:","stream":false,"syncFolderId":{}}}"#, folder.id)).unwrap();
+    // The sync knows the shared ones (they came from the share).
+    let here = FolderShare::new(&music.root);
+    for path in ["Big Mountain/Unriddle/Baby.wav", "Flat.wav"] {
+        t.library.record_synced(&share.share.stat(path).unwrap().unwrap(), &here.stat(path).unwrap().unwrap()).unwrap();
+    }
 
     let moves = t.library.layout_moves(&folder, Layout::OneFolder).unwrap();
     assert_eq!(moves.iter().map(|m| (m.from.as_str(), m.to.as_str())).collect::<Vec<_>>(), vec![("Big Mountain/Unriddle/Baby.wav", "Baby.wav")]);
-    assert_eq!(t.library.layout_moves(&folder, Layout::ArtistAlbum).unwrap().len(), 1, "Flat.wav goes to Band/");
+    assert_eq!(t.library.layout_moves(&folder, Layout::ArtistAlbum).unwrap().len(), 1, "Flat.wav goes to Band/; Only here stays");
 
-    let here = FolderShare::new(&music.root);
     let result = reorganise_files(&t.library, &share.share, Some(&here as &dyn Share), &moves, &mut |_| {}, &|| false).unwrap();
     assert_eq!((result.moved, result.playlists_updated, result.failed.len()), (1, 2, 0));
     assert!(share.exists("Baby.wav") && music.path("Baby.wav").exists(), "moved on the share and here");
@@ -85,9 +91,12 @@ fn a_song_gone_from_the_share_is_left_for_the_sync_not_failed() {
     let folder = t.add_folder(&music);
     t.scan(folder.id, &music);
     t.library.set_setting(SHARE_SETTING, &format!(r#"{{"kind":"drive","path":"Z:","stream":false,"syncFolderId":{}}}"#, folder.id)).unwrap();
+    // The sync knew it (it came from the share).
+    let here = FolderShare::new(&music.root);
+    let entry = here.stat("Melue test/Test song.wav").unwrap().unwrap();
+    t.library.record_synced(&entry, &entry).unwrap();
     let moves = t.library.layout_moves(&folder, Layout::OneFolder).unwrap();
     assert_eq!(moves.len(), 1);
-    let here = FolderShare::new(&music.root);
     let result = reorganise_files(&t.library, &share.share, Some(&here as &dyn Share), &moves, &mut |_| {}, &|| false).unwrap();
     assert_eq!((result.moved, result.failed.len(), result.gone.as_slice()), (0, 0, ["Melue test/Test song.wav".to_string()].as_slice()));
     assert!(music.path("Melue test/Test song.wav").exists(), "the copy here is the sync's to remove (or keep)");

@@ -3,6 +3,17 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.6.0 (2026-10-23)
+
+Melue's first release: your own music on every device.
+
+- Your music folders on a computer and a phone, and an SMB share (a NAS) that keeps them in sync: songs, likes,
+  plays, playlists and settings, with Android Auto on the phone.
+- Continue on one device what another was playing; lyrics, timed and tappable; playlists that follow their files.
+- Melue updates itself on computers and phones, says what's new, and lets you report a bug from the app.
+- Since 0.5.22: the "Continue from …" card shows the song's cover and the whole device name, and a song you put in
+  the synced folder yourself (not on the share) no longer counts as one to move into the share's layout.
+
 ## 0.5.22 (2026-10-23)
 
 A test of every setting, and what it found.

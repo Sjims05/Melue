@@ -100,6 +100,12 @@ pub fn playback_offer(app: AppHandle) -> Option<PlaybackFile> {
     handoff::offer(&app)
 }
 
+/// The offered song here (its id), for its cover on the offer.
+#[tauri::command(async)]
+pub fn playback_offer_song(app: AppHandle) -> Result<Option<i64>, String> {
+    handoff::offer_song(&app)
+}
+
 /// Continue where the other device left off: its queue, loaded paused at its position.
 #[tauri::command]
 pub async fn playback_continue(app: AppHandle) -> Result<(), String> {

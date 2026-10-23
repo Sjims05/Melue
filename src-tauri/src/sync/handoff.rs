@@ -465,6 +465,15 @@ pub fn offer(app: &AppHandle) -> Option<PlaybackFile> {
     app.state::<Handoff>().offer.lock().unwrap().clone()
 }
 
+/// The offered song here (its id, for its cover), if this device has it.
+pub fn offer_song(app: &AppHandle) -> Result<Option<i64>> {
+    let Some(other) = offer(app) else { return Ok(None) };
+    let library = app.state::<Library>();
+    let Some(folder) = library.synced_folder()? else { return Ok(None) };
+    let Some(path) = other.state.queue.get(other.state.index) else { return Ok(None) };
+    Ok(library.synced_songs(&folder)?.into_iter().find(|(_, p)| key(p) == key(path)).map(|(id, _)| id))
+}
+
 /// The answer to the offer: Continue (load it) or Not now (it isn't offered again).
 pub fn answer(app: &AppHandle, continue_here: bool) -> Result<()> {
     let Some(other) = app.state::<Handoff>().offer.lock().unwrap().take() else { return Ok(()) };

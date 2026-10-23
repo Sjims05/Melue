@@ -196,6 +196,7 @@ pub fn run() {
             sync::commands::playback_sync_settings,
             sync::commands::playback_sync_set_settings,
             sync::commands::playback_offer,
+            sync::commands::playback_offer_song,
             sync::commands::playback_continue,
             sync::commands::playback_not_now,
             sync::commands::playback_check,

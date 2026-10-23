@@ -473,7 +473,8 @@ export function installBrowserPreview() {
         }
         case 'plugin:native-audio|get_tracked_list': return { entries: ['playlist:10', 'artist:3', 'album:3', 'liked', 'playlist:13', 'top:year', 'album:5', 'playlist:11', 'album:8'].map((id, i) => ({ id, playedAtMs: Date.now() - i * 3_600_000 })) }
         case 'library_recently_played': return queueTracks(queueItems.map((q) => q.id)).slice(0, a.limit as number)
-        case 'playback_offer': return { deviceId: 'phone', deviceName: 'Phone', savedAtMs: Date.now(), queue: [], index: 0, positionS: 83, playing: false, shuffle: false, repeat: 'off', title: 'Digital Rain', artist: 'Cyber Symphony' }
+        case 'playback_offer_song': return 1
+        case 'playback_offer': return { deviceId: 'phone', deviceName: 'OnePlus Nord CE5', savedAtMs: Date.now(), queue: [], index: 0, positionS: 83, playing: false, shuffle: false, repeat: 'off', title: 'Digital Rain', artist: 'Cyber Symphony' }
         case 'library_auto_playlist_tracks': return a.source === 'songs' ? bigLibrary('title') : bigLibrary('plays').slice(0, 25)
         case 'library_folder_tracks': return bigLibrary('album').map((t) => ({ ...t, path: `${t.album ?? ''}${t.album ? '/' : ''}${t.title}.mp3` }))
         case 'library_artists': {

@@ -6,13 +6,13 @@
  * Recent songs (the last ones you played).
  */
 import { CircleAlert, History, Music } from '@lucide/vue'
-import { computed, onActivated, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Cover, CoverCard, coverMenu, type CoverAction } from '@/components/covers'
 import { EmptyState, PageHeader } from '@/components/page'
 import { SongList, type Song } from '@/components/songs'
 import { Button } from '@/components/ui/button'
-import { library, type Track } from '@/library'
+import { coverUrl, library, type Track } from '@/library'
 import { RECENT_LISTS } from '@/library/playback'
 import { minutesAndSeconds, playbackSync, sync, type PlaybackFile } from '@/library/sync'
 import { appearance, primaryArea } from '@/lib/appearance'
@@ -33,6 +33,15 @@ const cardClass = computed(() => (appearance.homeCardsPrimary ? primaryArea.valu
 
 // ---- Another device's playback, offered
 const offer = ref<PlaybackFile | null>(null)
+// Its cover: the song's here, when this device has it.
+const offerCover = ref<string | null>(null)
+watch(offer, async (o) => {
+  offerCover.value = null
+  if (!o) return
+  const id = await playbackSync.offerSong().catch(() => null)
+  const [song] = id ? await library.tracksByIds([id]).catch(() => []) : []
+  if (offer.value === o) offerCover.value = song?.cover ? coverUrl(song.cover) : null
+})
 const stops = [playbackSync.onOffer((o) => (offer.value = o))]
 async function answer(go: boolean) {
   await (go ? playbackSync.continue() : playbackSync.notNow()).catch(() => {})
@@ -111,9 +120,10 @@ const MENU = coverMenu({ kind: 'list' })
           <!-- On a phone its buttons go on a line of their own, at the right. It fades away once answered. -->
           <Transition name="fade">
             <div v-if="offer" class="flex min-w-0 flex-wrap items-center gap-4 rounded-xl p-4 phone:gap-x-4 phone:gap-y-3" :class="cardClass">
-              <span class="grid size-16 flex-none place-items-center rounded-md bg-well text-muted-foreground"><Music class="size-6" /></span>
+              <span v-if="offerCover" class="w-16 flex-none [&>div]:rounded-md"><Cover :image="offerCover" /></span>
+              <span v-else class="grid size-16 flex-none place-items-center rounded-md bg-well text-muted-foreground"><Music class="size-6" /></span>
               <span class="flex min-w-0 flex-1 flex-col phone:basis-[calc(100%-5rem)]">
-                <span class="truncate text-sm text-muted-foreground">Continue from {{ offer.deviceName }}?</span>
+                <span class="line-clamp-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">Continue from {{ offer.deviceName }}?</span>
                 <span class="truncate text-[17px] font-semibold">{{ offer.title ?? 'A song' }}</span>
                 <span class="truncate text-muted-foreground">{{ [offer.artist, minutesAndSeconds(offer.positionS)].filter(Boolean).join(' · ') }}</span>
               </span>
