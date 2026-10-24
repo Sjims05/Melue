@@ -219,6 +219,21 @@ export interface SyncSettings {
   moveNewSongs: boolean
   /** How songs are laid out on the share: Artist/Album/ (default) or all in one folder. */
   shareLayout: ShareLayout
+  /** Songs every device has, each its own copy, but not on the share: the Library card asks (default), they go by themselves, or off. */
+  songsOnMoreDevices: 'ask' | 'auto' | 'off'
+}
+
+/** A song here that isn't on the share but all your devices have: offered for it (Songs on all your devices). */
+export interface OfferedSong {
+  id: number
+  title: string
+  artist: string | null
+  /** Your other devices (they all have it too), by name. */
+  devices: string[]
+  /** This device has the best copy: it's the one that puts it on the share. */
+  bestHere: boolean
+  /** Someone said yes to it, on any device. */
+  approved: boolean
 }
 
 export type ShareLayout = 'artistAlbum' | 'oneFolder'
@@ -326,6 +341,11 @@ export const syncing = {
   status: () => invoke<SyncStatus>('sync_status'),
   settings: () => invoke<SyncSettings>('sync_settings'),
   setSettings: (settings: SyncSettings) => invoke<SyncSettings>('sync_set_settings', { settings }),
+  /** Songs on all your devices: what's offered for the share now, and when that changes. */
+  toShare: () => invoke<OfferedSong[]>('sync_to_share'),
+  onToShare: (listener: (songs: OfferedSong[]) => void) => listen<OfferedSong[]>('to-share', (e) => listener(e.payload)),
+  /** "Put on share": yes to songs offered (these, or all; the device with the best copy of each puts it there). */
+  putOnShare: (ids?: number[]) => invoke<void>('sync_put_on_share', { ids: ids ?? null }),
 }
 
 // ---- synced playback: carrying on where another device left off

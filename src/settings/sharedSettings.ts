@@ -73,6 +73,7 @@ const ADAPTERS: Record<string, Adapter> = {
   'sync.removeGone': syncField('removeGone'),
   'sync.askBeforeRemoving': syncField('askBeforeRemoving'),
   'sync.moveNewSongs': syncField('moveNewSongs'),
+  'sync.songsOnMoreDevices': syncField('songsOnMoreDevices'),
   'lyrics.online': { read: readLyricsOnline, write: (on) => setLyricsOnline(on as boolean) },
   'mobile.level': {
     read: async () => {

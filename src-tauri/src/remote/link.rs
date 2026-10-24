@@ -281,19 +281,78 @@ pub fn remote_song_ids(app: AppHandle, paths: Vec<Option<String>>) -> Result<Vec
 }
 
 /// Plays songs from here (a list, a song: by their ids here) on the device connected to, from song `index`. Songs
-/// that aren't on the share can't play there: left out.
+/// that aren't on the share can't play there: left out (the one to start on: refused, saying so).
 #[tauri::command(async)]
 pub fn remote_load(app: AppHandle, ids: Vec<i64>, index: usize, playing: bool) -> Result<(), String> {
-    let library = app.state::<Library>();
-    let folder = library.synced_folder()?.ok_or("no share is set up")?;
-    let paths: std::collections::HashMap<i64, String> = library.synced_songs(&folder)?.into_iter().collect();
+    let paths = share_paths(&app)?;
     let start = *ids.get(index).ok_or("no such song")?;
     if !paths.contains_key(&start) {
-        return Err("that song is only on this device, so it can’t play on the other one".into());
+        return Err(only_here(&app, start));
     }
     let index = ids[..index].iter().filter(|id| paths.contains_key(id)).count();
     let queue = ids.iter().filter_map(|id| paths.get(id).cloned()).collect();
     remote_command(app.clone(), Command::Load { queue, index, position: 0.0, playing })
+}
+
+/// Plays a list (a play source here: "playlist:12", "album:3"…) on the device connected to: its own copy of it, its
+/// songs only there included, from song `start` (an id here; None: its first, or a random one with shuffle on
+/// there). A list only on this device (a playlist kept here, a music folder) is refused, saying so.
+#[tauri::command(async)]
+pub fn remote_play_list(app: AppHandle, source: String, start: Option<i64>) -> Result<(), String> {
+    let library = app.state::<Library>();
+    let list = library.shared_list(&source).map_err(|e| capitalized(&e))?;
+    let paths = share_paths(&app)?;
+    let start = match start {
+        Some(id) => Some(paths.get(&id).cloned().ok_or_else(|| only_here(&app, id))?),
+        None => None,
+    };
+    let songs = library.queue_items(&source)?.iter().filter_map(|item| item.id.and_then(|id| paths.get(&id).cloned())).collect();
+    remote_command(app.clone(), Command::PlayList { list, songs, start })
+}
+
+/// Songs (ids here), or a list (a play source), into Up next on the device connected to: right after the playing
+/// song (`next`) or at the end. Songs only on this device can't go: left out (the number left out is returned); all
+/// of them, or a list only on this device: refused, saying so.
+#[tauri::command(async)]
+pub fn remote_add(app: AppHandle, ids: Vec<i64>, source: Option<String>, next: bool) -> Result<usize, String> {
+    let library = app.state::<Library>();
+    let list = source.as_deref().map(|s| library.shared_list(s)).transpose().map_err(|e| capitalized(&e))?;
+    let paths = share_paths(&app)?;
+    let songs: Vec<String> = ids.iter().filter_map(|id| paths.get(id).cloned()).collect();
+    if list.is_none() && songs.is_empty() {
+        return Err(match ids.as_slice() {
+            [id] => only_here(&app, *id),
+            _ => format!("Those songs are only on this device, so they can’t play on {}", there(&app)),
+        });
+    }
+    remote_command(app.clone(), Command::Add { songs, list, next })?;
+    Ok(if source.is_some() { 0 } else { ids.len() - ids.iter().filter(|id| paths.contains_key(id)).count() })
+}
+
+/// The songs here that are on the share: their paths there, by id.
+fn share_paths(app: &AppHandle) -> Result<std::collections::HashMap<i64, String>, String> {
+    let library = app.state::<Library>();
+    let folder = library.synced_folder()?.ok_or("no share is set up")?;
+    Ok(library.synced_songs(&folder)?.into_iter().collect())
+}
+
+/// "“Valerie” is only on this device, so it can't play on TROLLGANG".
+fn only_here(app: &AppHandle, id: i64) -> String {
+    let title = app.state::<Library>().queue_items_for(&[id]).ok().and_then(|items| items.into_iter().next()?.title);
+    let song = title.map_or_else(|| "That song".to_string(), |t| format!("“{t}”"));
+    format!("{song} is only on this device, so it can’t play on {}", there(app))
+}
+
+/// The device connected to, by name.
+fn there(app: &AppHandle) -> String {
+    let remote = app.state::<Remote>();
+    let name = remote.1.lock().unwrap().as_ref().map(|(c, _)| c.name.clone());
+    name.filter(|n| !n.is_empty()).unwrap_or_else(|| "the other device".into())
+}
+
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |c| c.to_uppercase().chain(chars).collect())
 }
 
 /// Whether this device plays on another now: which, and that one's state as it last said (None: playing here).

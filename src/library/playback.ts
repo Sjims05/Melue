@@ -35,8 +35,8 @@ export async function playSource(source: Source, options: { startAt?: number } =
   const picked = items.findIndex((item) => item.id === options.startAt)
   const shuffled = picked < 0 && (await player.getState().catch(() => null))?.shuffle
   const startIndex = picked >= 0 ? picked : shuffled ? Math.floor(Math.random() * items.length) : 0
-  // Playing on another device (Connect device): the list plays there.
-  if (playingOn.device) return remote.load(items.map((i) => i.id), startIndex)
+  // Playing on another device (Connect device): the list plays there, that device's own copy of it.
+  if (playingOn.device) return remote.playList(source, picked >= 0 ? (options.startAt ?? null) : null)
   await player.setQueue(items, { sourceId: source, startIndex })
   await player.play()
 }

@@ -59,6 +59,12 @@ pub struct DeviceData {
     /// A phone's song data on mobile data this month (mobile.rs), for the other devices' Mobile data settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mobile: Option<super::mobile::MobileUse>,
+    /// The device's songs that aren't on the share, for the others to see which they have too (to_share.rs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_songs: Vec<super::to_share::NotOnShare>,
+    /// Songs someone on the device said to put on the share: the device with the best copy does (to_share.rs).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub put_on_share: Vec<super::to_share::SongName>,
     /// When the share wrote it (the share's clock). Not in the file.
     #[serde(skip)]
     pub share_ms: i64,
@@ -154,6 +160,10 @@ impl Library {
         let paths: HashMap<i64, String> = self.synced_songs(folder)?.into_iter().collect();
         // A phone's mobile data use (read before the connection is held: it reads settings, which takes it too).
         let mobile = if cfg!(target_os = "android") { Some(self.mobile_use(&self.sync_settings()?)?) } else { None };
+        // The songs here that aren't on the share, and those someone here said to put there.
+        let mut local_songs: Vec<_> = self.songs_not_on_share(folder, &self.songs_here(folder, device_id)?)?.into_iter().map(|h| h.copy).collect();
+        local_songs.sort_by(|a, b| (&a.name.artist, &a.name.title).cmp(&(&b.name.artist, &b.name.title)));
+        let put_on_share = self.approved_for_share()?;
         let conn = self.conn();
         // (song, a number, maybe a time) rows.
         let rows = |sql: &str, p: &[&dyn rusqlite::ToSql]| -> Result<Vec<(i64, i64, Option<i64>)>> {
@@ -213,6 +223,8 @@ impl Library {
             history,
             lyrics_offsets,
             mobile,
+            local_songs,
+            put_on_share,
             share_ms: 0,
         };
         // A steady order: the same data is the same file.
@@ -336,6 +348,12 @@ pub fn read_device_files(share: &dyn Share) -> Result<Vec<DeviceData>> {
 /// Syncs the library data with the share: takes in the other devices', and writes this device's when it
 /// changed. Returns what it did, and how far the share's clock is ahead of this device's.
 pub fn sync_device_data(library: &Library, share: &dyn Share, folder: &Folder, me: &str, name: &str) -> Result<(DataResult, i64)> {
+    let (result, ahead, _) = sync_device_data_offering(library, share, folder, me, name)?;
+    Ok((result, ahead))
+}
+
+/// As sync_device_data, and what's offered for the share here (songs on more than one device: to_share.rs).
+pub fn sync_device_data_offering(library: &Library, share: &dyn Share, folder: &Folder, me: &str, name: &str) -> Result<(DataResult, i64, Vec<super::to_share::Offered>)> {
     let files = read_device_files(share)?;
     let ahead = share_clock_ahead(&files, me);
     let (mine, others): (Vec<DeviceData>, Vec<DeviceData>) = files.into_iter().partition(|f| f.device_id == me);
@@ -352,7 +370,12 @@ pub fn sync_device_data(library: &Library, share: &dyn Share, folder: &Folder, m
         share.create_dir_all(DIR)?;
         share.write(&format!("{DIR}/{me}.json"), &serde_json::to_vec(&data).map_err(err)?)?;
     }
-    Ok((DataResult { likes_changed, devices: others.len(), written }, ahead))
+    let here = library.songs_not_on_share(folder, &library.songs_here(folder, me)?)?;
+    // The other devices that count: those that synced lately (the share's clock).
+    let since = now_ms() + ahead - super::to_share::RECENT_DAYS * DAY_MS;
+    let recent: Vec<DeviceData> = others.iter().filter(|d| d.share_ms >= since).cloned().collect();
+    let offered = super::to_share::offer(&here, &recent, me, &data.put_on_share);
+    Ok((DataResult { likes_changed, devices: others.len(), written }, ahead, offered))
 }
 
 // ---- running it
@@ -391,17 +414,24 @@ pub fn run(app: &AppHandle) -> Result<()> {
     }
     let me = handoff::device_id(&library)?;
     let name = handoff::settings(app)?.device_name.unwrap_or_default();
-    let (data, playlists, settings) = with_share(app, |share| {
-        let (data, ahead) = sync_device_data(&library, share, &folder, &me, &name)?;
+    // For the sign-ins shared through the share (connections.rs): their key comes from the share's password.
+    let password = crate::share::commands::with_stores(app, |library, stores| crate::share::setup::share_password(library, stores)).ok().and_then(Result::ok).flatten();
+    let (data, playlists, settings, offered) = with_share(app, |share| {
+        let (data, ahead, offered) = sync_device_data_offering(&library, share, &folder, &me, &name)?;
         let mut playlists = super::playlist_sync::sync_playlists(&library, share, &folder, &me, &name, ahead)?;
         playlists.changed.extend(super::cover_sync::sync_covers(&library, share, &folder, &me, ahead)?);
         let settings = super::settings_sync::sync_settings(&library, share)?;
+        if let Err(e) = crate::connections::sync(app, share, password.as_deref()) {
+            eprintln!("melue: connections on the share: {e}");
+        }
         // Bug reports: to the share, and those waiting there sent from here when signed in (report/saved.rs).
         if let Err(e) = crate::report::saved::sync(app, share) {
             eprintln!("melue: bug reports on the share: {e}");
         }
-        Ok((data, playlists, settings))
+        Ok((data, playlists, settings, offered))
     })?;
+    // Songs on more than one device: the sync card's offer, and this device's best copies to the share.
+    super::to_share::after_data_sync(app, offered);
     // Settings another device changed: the app sets them here.
     if !settings.is_empty() {
         let _ = app.emit(super::settings_sync::EVENT, &settings);

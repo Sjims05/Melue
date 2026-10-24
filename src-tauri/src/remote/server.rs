@@ -17,7 +17,8 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::control::{self, Command, Host, RemoteSong, RemoteState, ASK_WAIT};
+use super::control::{self, Command, Host, Place, RemoteSong, RemoteState, SharedList, ASK_WAIT};
+use tauri_plugin_native_audio::QueueItem;
 use super::presence::{self, Device};
 use super::{key, Allow};
 use crate::library::{now_ms, Library};
@@ -199,6 +200,43 @@ impl Host for AppHost {
 }
 
 impl AppHost {
+    /// This device's copy of a list from the controller (as a play source, for the queue), or, when it hasn't got one,
+    /// the controller's songs of it that are here.
+    fn list_here(&self, list: &SharedList, songs: &[String]) -> Result<(Vec<QueueItem>, Option<String>), String> {
+        let library = self.0.state::<Library>();
+        let items = match library.shared_list_here(list)? {
+            Some(source) => (library.queue_items(&source)?, Some(source)),
+            None => (self.songs_here(songs)?, None),
+        };
+        if items.0.is_empty() {
+            return Err("nothing in that list is on this device".into());
+        }
+        Ok(items)
+    }
+
+    /// The songs here for paths on the share (those not here left out).
+    fn songs_here(&self, songs: &[String]) -> Result<Vec<QueueItem>, String> {
+        let library = self.0.state::<Library>();
+        let Some(folder) = library.synced_folder()? else { return Ok(Vec::new()) };
+        let ids: HashMap<String, i64> = library.synced_songs(&folder)?.into_iter().map(|(id, p)| (handoff::key(&p), id)).collect();
+        library.queue_items_for(&songs.iter().filter_map(|p| ids.get(&handoff::key(p)).copied()).collect::<Vec<_>>())
+    }
+
+    /// Whether the queue's songs at these places are the ones the controller means (it changed meanwhile: not).
+    fn check_places(&self, places: &[Place]) -> Result<(), String> {
+        let queue = self.0.native_audio().get_queue()?;
+        let paths = self.paths()?;
+        let same = places.iter().all(|place| {
+            let here = queue.items.get(place.index).map(|item| item.id.and_then(|id| paths.get(&id)));
+            match (here, &place.path) {
+                (None, _) => false,
+                (Some(here), Some(path)) => here.is_some_and(|h| handoff::key(h) == handoff::key(path)),
+                (Some(_), None) => true,
+            }
+        });
+        if same { Ok(()) } else { Err("Up next changed there meanwhile: have another look".into()) }
+    }
+
     /// On a phone, the volume another device sees and sets is its media volume (what its buttons change; Melue's own
     /// volume there stays as it is): 0 to 1, and its levels. None elsewhere.
     fn phone_volume(&self) -> Option<(f64, u32)> {
@@ -237,6 +275,46 @@ impl AppHost {
             Command::Repeat { mode } => player.set_repeat_mode(&mode),
             Command::SkipTo { index } => player.skip_to(index),
             Command::Like(_) => Ok(()),
+            Command::PlayList { list, songs, start } => {
+                let (items, source) = self.list_here(&list, &songs)?;
+                let index = match start {
+                    Some(start) => {
+                        let paths = self.paths()?;
+                        let wanted = handoff::key(&start);
+                        items
+                            .iter()
+                            .position(|item| item.id.and_then(|id| paths.get(&id)).is_some_and(|p| handoff::key(p) == wanted))
+                            .ok_or("that song isn’t on this device (not synced yet?)")?
+                    }
+                    // Shuffle on here: a random song first, the rest shuffled after it.
+                    None if player.get_state()?.shuffle => (crate::library::now_ms() as usize) % items.len(),
+                    None => 0,
+                };
+                player.set_queue(items, index, 0.0, source)?;
+                player.play()
+            }
+            Command::Add { songs, list, next } => {
+                let items = match list {
+                    Some(list) => self.list_here(&list, &songs)?.0,
+                    None => self.songs_here(&songs)?,
+                };
+                if items.is_empty() {
+                    return Err(if songs.len() == 1 { "that song isn’t on this device (not synced yet?)" } else { "those songs aren’t on this device (not synced yet?)" }.into());
+                }
+                player.add_to_queue(items, next)
+            }
+            Command::Remove { mut places } => {
+                self.check_places(&places)?;
+                // From the end, so the places before stay right.
+                places.sort_by(|a, b| b.index.cmp(&a.index));
+                places.iter().try_for_each(|place| player.remove_from_queue(place.index))
+            }
+            Command::Move { from, to, path } => {
+                let queue = player.get_queue()?;
+                let index = queue.play_order.get(from).map_or(from, |&i| i as usize);
+                self.check_places(&[Place { index, path }])?;
+                player.move_in_play_order(from, to)
+            }
             Command::Load { queue, index, position, playing } => {
                 // The songs here, by their paths on the share (as Continue does).
                 let library = self.0.state::<Library>();

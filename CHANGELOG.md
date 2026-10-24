@@ -3,6 +3,23 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.7.1 (2026-10-24)
+
+Playing on another device, more fully; your songs across devices; sign-ins everywhere.
+
+- Playing on another device: lists play that device's own copy (a playlist, an album, an artist, Liked songs, Top
+  songs; its own songs in them too), and Up next is edited from here (Play next, Add to queue, move, remove, clear).
+  Songs and lists only on this device are refused, saying so. On a computer playing on a phone, the media keys and
+  Windows' media panel control the phone.
+- Songs on all your devices, each its own copy but not on the share: the Library card offers to put them there (the
+  best copy goes; Ask, Automatically or Off). Songs put in the synced folder by hand count as only on this device.
+- The Library card's rows open their songs: tick some or all, then Forget (songs that can't be found), Move, or Put on
+  share. Music folders list a folder's songs not on the share, those on all your devices marked; a tap ticks a song.
+- Across devices: an old device (a Melue removed) can be forgotten, so it isn't counted anywhere.
+- Signing in to GitHub on one device signs in on all of them (through the share, encrypted with its password), and
+  signing out does too.
+- The phone app stays upright (portrait). A folder that stopped being the synced one gets its own name back.
+
 ## 0.7.0 (2026-10-23)
 
 Play on your other devices: your phone on your computer's speakers, or the other way round, like Spotify Connect for

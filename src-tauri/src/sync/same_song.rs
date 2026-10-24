@@ -188,9 +188,14 @@ impl Songs {
 }
 
 impl Library {
-    /// The songs here (there, in switched-on folders), with the synced folder's paths on the share.
+    /// The songs here (there, in switched-on folders), with the synced folder's paths on the share (those a sync
+    /// brought or that were moved there: a song put in the synced folder by hand isn't on the share).
     pub fn songs_here(&self, folder: &Folder, me: &str) -> Result<Songs> {
         let conn = self.conn();
+        let on_share: std::collections::HashSet<String> = conn
+            .prepare("SELECT path FROM synced_files")
+            .and_then(|mut stmt| stmt.query_map([], |r| r.get::<_, String>(0))?.collect())
+            .map_err(err)?;
         let mut stmt = conn
             .prepare(
                 "SELECT t.id, t.folder_id, t.path, t.title, coalesce(t.artist_credit, ''), t.duration_ms
@@ -205,7 +210,7 @@ impl Library {
         let mut songs = Songs { me: me.to_string(), songs: HashMap::new(), by_path: HashMap::new(), by_name: HashMap::new() };
         for row in rows {
             let (id, folder_id, path, title, artist, duration_ms): (i64, i64, String, String, String, Option<i64>) = row.map_err(err)?;
-            let share_path = if folder_id == folder.id { share_path(folder, &path) } else { None };
+            let share_path = if folder_id == folder.id { share_path(folder, &path).filter(|p| on_share.contains(p)) } else { None };
             if let Some(p) = &share_path {
                 songs.by_path.insert(key(p), id);
             }

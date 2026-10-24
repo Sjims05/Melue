@@ -303,6 +303,14 @@ pub fn current(library: &Library, stores: &PasswordStores, opener: &Opener) -> R
     Ok((settings, share))
 }
 
+/// The share's password, where it's kept (None: a share without one, or not given yet).
+pub fn share_password(library: &Library, stores: &PasswordStores) -> Result<Option<String>, String> {
+    Ok(match library.share_settings()? {
+        Some(ShareSettings { setup: ShareSetup::Smb { password_store, .. }, .. }) => stores.of(password_store).get(PASSWORD_KEY)?,
+        _ => None,
+    })
+}
+
 /// Whether the password has to be asked for before the share can be used.
 pub fn needs_password(library: &Library, stores: &PasswordStores) -> Result<bool, String> {
     Ok(match library.share_settings()? {

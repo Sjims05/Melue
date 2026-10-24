@@ -1,8 +1,8 @@
 //! Signing in to GitHub (Settings: Connections), so bug reports go to Sjims05/Melue as issues from the user's own
 //! account. GitHub's device flow for Melue's GitHub App (Issues: read and write, installed on Melue only): Melue shows
 //! a code, the user enters it at github.com/login/device and approves, and Melue gets a token for their account. The
-//! token is kept in the system's secure store (each device its own) and reaches only the issues of the repositories
-//! the app is installed on. The client ID is public; there is no secret in the app.
+//! token is kept in the system's secure store, and reaches only the issues of the repositories the app is installed
+//! on. Signing in or out on one device does so on all of them (connections.rs). The client ID is public; there is no secret in the app.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -22,9 +22,9 @@ const USER_URL: &str = "https://api.github.com/user";
 /// Where bug reports go.
 const ISSUES_URL: &str = "https://api.github.com/repos/Sjims05/Melue/issues";
 /// The token, in the system's secure store.
-const TOKEN_KEY: &str = "github_token";
+pub(crate) const TOKEN_KEY: &str = "github_token";
 /// The account's name (this device's library setting), shown in Connections.
-const LOGIN_SETTING: &str = "github_login";
+pub(crate) const LOGIN_SETTING: &str = "github_login";
 
 /// What the user is shown while signing in.
 #[derive(Debug, Clone, Serialize)]
@@ -147,6 +147,8 @@ pub fn github_sign_in_wait(app: AppHandle) -> Result<String, String> {
     let login = account(&token)?;
     SystemSecrets::new(&app).set(TOKEN_KEY, &token)?;
     app.state::<Library>().set_setting(LOGIN_SETTING, &login).map_err(|e| e.to_string())?;
+    // Your other devices too.
+    crate::connections::changed(&app, "github");
     Ok(login)
 }
 
@@ -164,12 +166,14 @@ pub fn github_account(app: AppHandle) -> Result<Option<String>, String> {
     Ok(login.filter(|l| !l.is_empty()))
 }
 
-/// Signs this device out: its token is forgotten. (The app stays authorized on GitHub until the user revokes it
+/// Signs out, on every device: the token is forgotten. (The app stays authorized on GitHub until the user revokes it
 /// there: github.com/settings/apps/authorizations.)
 #[tauri::command(async)]
 pub fn github_sign_out(app: AppHandle) -> Result<(), String> {
     SystemSecrets::new(&app).delete(TOKEN_KEY)?;
-    app.state::<Library>().set_setting(LOGIN_SETTING, "").map_err(|e| e.to_string())
+    app.state::<Library>().set_setting(LOGIN_SETTING, "").map_err(|e| e.to_string())?;
+    crate::connections::changed(&app, "github");
+    Ok(())
 }
 
 #[derive(Deserialize)]

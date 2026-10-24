@@ -346,13 +346,19 @@ pub fn set_settings(app: &AppHandle, settings: &PlaybackSettings) -> Result<()> 
 }
 
 impl Library {
-    /// The synced folder's songs: (track id, path on the share).
+    /// The synced folder's songs that are on the share (a sync brought them, or they were moved there): (track id,
+    /// path on the share). A song put in the synced folder by hand, and not on the share, isn't one: the other
+    /// devices haven't got it.
     pub(crate) fn synced_songs(&self, folder: &Folder) -> Result<Vec<(i64, String)>> {
         let conn = self.conn();
+        let on_share: std::collections::HashSet<String> = conn
+            .prepare("SELECT path FROM synced_files")
+            .and_then(|mut stmt| stmt.query_map([], |r| r.get::<_, String>(0))?.collect())
+            .map_err(err)?;
         let mut stmt = conn.prepare("SELECT id, path FROM tracks WHERE folder_id = ?1 AND missing_since IS NULL").map_err(err)?;
         let rows = stmt.query_map([folder.id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
         let rows: Vec<(i64, String)> = rows.collect::<rusqlite::Result<_>>().map_err(err)?;
-        Ok(rows.into_iter().filter_map(|(id, path)| share_path(folder, &path).map(|p| (id, p))).collect())
+        Ok(rows.into_iter().filter_map(|(id, path)| share_path(folder, &path).filter(|p| on_share.contains(p)).map(|p| (id, p))).collect())
     }
 
     /// The synced folder (None: no share set up).

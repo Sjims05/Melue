@@ -33,6 +33,9 @@ pub mod same_song;
 #[cfg(test)]
 mod playlist_sync_tests;
 pub mod shared;
+pub mod to_share;
+#[cfg(test)]
+mod to_share_tests;
 #[cfg(test)]
 mod handoff_tests;
 pub mod local;
@@ -88,6 +91,8 @@ pub struct SyncSettings {
     pub move_new_songs: bool,
     /// How songs are laid out on the share (layout.rs; default Artist/Album/).
     pub share_layout: layout::Layout,
+    /// Songs on more than one device that aren't on the share: Ask (default), Automatically, Off (to_share.rs).
+    pub songs_on_more_devices: to_share::Mode,
 }
 
 impl Default for SyncSettings {
@@ -107,6 +112,7 @@ impl Default for SyncSettings {
             mobile_ask_at_limit: false,
             move_new_songs: false,
             share_layout: layout::Layout::default(),
+            songs_on_more_devices: to_share::Mode::Ask,
         }
     }
 }

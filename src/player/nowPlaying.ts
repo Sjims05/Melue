@@ -156,12 +156,8 @@ function control(command: RemoteCommand, here: () => Promise<PlayerState>): Prom
   return remote.command(command).catch((e) => toast(`${playingOn.device?.name ?? 'The other device'}: ${e}`, MonitorSpeaker))
 }
 
-/** Up next can't be changed from here while playing on another device: said so (true), or false. */
-function notHere(): boolean {
-  if (!playingOn.device) return false
-  toast(`Up next is changed on ${playingOn.device.name} itself while playing there`, MonitorSpeaker)
-  return true
-}
+/** The other device's song at this place of its queue's list: its path on the share (null: a song only there). */
+const pathThere = (index: number) => playingOn.state?.queue[index]?.path ?? null
 
 let holding = 0
 /** Makes several changes to the queue, then reads it once (what's shown doesn't jump back between them). */
@@ -360,7 +356,6 @@ export async function playFromUpNext(index: number) {
 }
 /** Up next: move a song (places in Up next: in the play order, so it works with shuffle too), take one out, or empty it. */
 export async function moveInUpNext(from: number, to: number) {
-  if (notHere()) return
   const q = nowPlaying.queue
   if (!q) return
   const order = q.playOrder.length ? q.playOrder : q.items.map((_, i) => i)
@@ -375,33 +370,44 @@ export async function moveInUpNext(from: number, to: number) {
     const items = moved.map((i) => q.items[i])
     nowPlaying.queue = { ...q, items, currentIndex: items.indexOf(q.items[q.currentIndex]), playOrder: items.map((_, i) => i) }
   }
+  // Playing on another device: moved there (its next state shows it).
+  if (playingOn.device) return void control({ cmd: 'move', from: start + from, to: start + to, path: pathThere(order[start + from]) }, () => player.getState())
   await player.moveInPlayOrder(start + from, start + to)
   await refreshQueue()
 }
 export async function removeFromUpNext(at: number) {
-  if (notHere()) return
   const { index } = upNext.value[at]
   takeOut([index])
+  if (playingOn.device) return removeThere([index])
   await player.removeFromQueue(index)
   await refreshQueue()
 }
 /** Takes these queue items out (by their place in the queue's list), shown at once and read back once at the end. */
 export async function takeOutOfQueue(indexes: number[]) {
-  if (!indexes.length || notHere()) return
+  if (!indexes.length) return
+  if (playingOn.device) return removeThere(indexes, true)
   takeOut(indexes)
   await holdingQueue(async () => {
     for (const index of [...indexes].sort((a, b) => b - a)) await player.removeFromQueue(index)
   })
 }
 export async function clearUpNext() {
-  if (notHere()) return
   const indexes = upNext.value.map((u) => u.index)
+  if (playingOn.device) return removeThere(indexes, true)
   takeOut(indexes)
   // From the end, so the indexes before stay right.
   await holdingQueue(async () => {
     for (const index of indexes.sort((a, b) => b - a)) await player.removeFromQueue(index)
   })
 }
+/** Playing on another device: songs out of its queue (by place, and which songs they are, so a changed queue isn't
+ * edited in the wrong place). `show`: taken out here at once too. */
+async function removeThere(indexes: number[], show = false) {
+  const places = indexes.map((index) => ({ index, path: pathThere(index) }))
+  if (show) takeOut(indexes)
+  await control({ cmd: 'remove', places }, () => player.getState())
+}
+
 // Taken out of the queue as shown at once (the list closes up as the songs fold away), not only once the player has
 // answered: the items go, and the indexes after them move down.
 function takeOut(indexes: number[]) {

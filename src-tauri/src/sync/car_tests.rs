@@ -16,6 +16,7 @@ fn phone(name: &str, share: &TestShare) -> (Car, crate::library::testkit::TestDi
     music.add("B.wav", &Tags::song("B", "Band", "", 2));
     let folder = t.add_folder(&music);
     t.scan(folder.id, &music);
+    t.on_share(folder.id);
     let setting = serde_json::json!({ "kind": "drive", "path": share.dir.path.to_string_lossy(), "stream": false, "syncFolderId": folder.id });
     t.library.set_setting(SHARE_SETTING, &setting.to_string()).unwrap();
     let ids = ["A", "B"].iter().map(|s| t.library.conn().query_row("SELECT id FROM tracks WHERE title = ?1", [s], |r| r.get(0)).unwrap()).collect();

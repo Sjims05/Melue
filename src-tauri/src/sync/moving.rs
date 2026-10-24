@@ -166,30 +166,44 @@ impl Library {
             .ok_or_else(|| format!("no song {id}"))
     }
 
-    /// Local songs that aren't on the share (not in the synced folder, and no copy of a synced song), by
-    /// artist and title.
+    /// Local songs that aren't on the share, by artist and title: in another music folder without a synced copy, or
+    /// put in the synced folder by hand (they didn't come through the share).
     pub fn not_on_share(&self, folder: &Folder, songs: &Songs) -> Result<Vec<LocalSong>> {
         let names: HashMap<i64, (String, bool)> = self.folders()?.into_iter().map(|f| (f.id, (f.name, f.network))).collect();
         let conn = self.conn();
+        // The synced folder's songs that came through the share (a song put there by hand didn't: it's only here).
+        let on_share: std::collections::HashSet<String> =
+            conn.prepare("SELECT path FROM synced_files").and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect()).map_err(err)?;
         let mut stmt = conn
             .prepare(
-                "SELECT t.id, t.title, t.artist_credit, t.tag_album, f.id, t.size
+                "SELECT t.id, t.title, t.artist_credit, t.tag_album, f.id, t.size, t.path
                  FROM tracks t JOIN folders f ON f.id = t.folder_id
-                 WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled AND t.folder_id != ?1
+                 WHERE t.missing_since IS NULL AND t.copy_of IS NULL AND f.enabled
                  ORDER BY t.artist_credit IS NULL, t.artist_credit COLLATE NOCASE, t.sort_title, t.id",
             )
             .map_err(err)?;
         let rows = stmt
-            .query_map([folder.id], |r| {
-                let (folder, network) = names.get(&r.get::<_, i64>(4)?).cloned().unwrap_or_default();
-                Ok(LocalSong { id: r.get(0)?, title: r.get(1)?, artist: r.get(2)?, album: r.get(3)?, folder, network, size: r.get(5)? })
+            .query_map([], |r| {
+                let folder_id = r.get::<_, i64>(4)?;
+                let (name, network) = names.get(&folder_id).cloned().unwrap_or_default();
+                let song = LocalSong { id: r.get(0)?, title: r.get(1)?, artist: r.get(2)?, album: r.get(3)?, folder: name, network, size: r.get(5)? };
+                Ok((song, folder_id, r.get::<_, String>(6)?))
             })
             .map_err(err)?;
-        let all: Vec<LocalSong> = rows.collect::<rusqlite::Result<_>>().map_err(err)?;
-        Ok(all.into_iter().filter(|s| songs.synced_copy(s.id).is_none()).collect())
+        let all: Vec<(LocalSong, i64, String)> = rows.collect::<rusqlite::Result<_>>().map_err(err)?;
+        Ok(all
+            .into_iter()
+            .filter(|(song, folder_id, path)| {
+                if *folder_id == folder.id {
+                    share_path(folder, path).is_some_and(|p| !on_share.contains(&p))
+                } else {
+                    songs.synced_copy(song.id).is_none()
+                }
+            })
+            .map(|(song, ..)| song)
+            .collect())
     }
 
-    /// Carries a song's likes, plays and playlist entries over to another (its synced copy).
     pub fn carry_over(&self, from: i64, to: i64) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
@@ -456,6 +470,25 @@ fn move_one(app: &AppHandle, library: &Library, share: &dyn Share, target: Optio
                 return Ok(None);
             }
             let file = library.song_file(*id)?;
+            // In the synced folder already (put there by hand), but not on the share: it goes up where it is.
+            if let Some(synced) = library.synced_folder()?.filter(|f| f.id == file.folder_id) {
+                let dest = share_path(&synced, &file.path).ok_or("can't tell where it goes on the share")?;
+                if share.stat(&dest)?.is_some() {
+                    return Err(format!("the share has another file at {dest}"));
+                }
+                if let Some(parent) = dest.rfind('/').map(|i| &dest[..i]) {
+                    share.create_dir_all(parent)?;
+                }
+                let job = TagJob { track_id: *id, kind: file.kind, location: file.location.clone(), path: file.path.clone(), folder_cover: None };
+                share.write_from(&dest, &mut scanner::open_file(app, &job, &job.path)?, &mut |_| {})?;
+                let on_share = share.stat(&dest)?.ok_or("the share lost the song right after it was written")?;
+                let here = match target {
+                    Some(target) => target.stat(&dest)?.ok_or("the song isn't in the synced folder any more")?,
+                    None => on_share.clone(),
+                };
+                library.record_synced(&on_share, &here)?;
+                return Ok(Some(dest));
+            }
             let dest = layout_path(layout, file.album_artist.as_deref(), file.artist.as_deref(), file.album.as_deref(), &file.file_name());
             if file.kind == FolderKind::Path {
                 original = Some(std::path::Path::new(&file.location).join(&file.path));

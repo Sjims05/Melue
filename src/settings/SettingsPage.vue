@@ -110,8 +110,9 @@ const toShare = () => shareSection.value?.scrollIntoView({ behavior: 'smooth', b
         <OutputDevice />
 
         <SettingsHeading title="Library" description="Your music folders, and the share" />
-        <AndroidSource v-if="isAndroid" />
+        <!-- The library's status first, under the heading (it has no label of its own: after a card it'd sit against it). -->
         <LibraryStatus />
+        <AndroidSource v-if="isAndroid" />
         <MusicFolders />
         <div ref="shareSection" class="scroll-mt-16" />
         <ShareSetup />

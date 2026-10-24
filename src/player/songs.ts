@@ -3,7 +3,7 @@
  * (Play next, Add to queue, like, Go to album / artist, Show in folder), the same in every list. And what a whole
  * list's buttons and card menu do (an album's Play and Shuffle; Play next, Add to queue, Go to artist).
  */
-import { CloudUpload, ListEnd, ListStart } from '@lucide/vue'
+import { CloudUpload, ListEnd, ListStart, MonitorSpeaker } from '@lucide/vue'
 import { audioDir, join } from '@tauri-apps/api/path'
 import { save } from '@tauri-apps/plugin-dialog'
 import type { CoverAction } from '@/components/covers'
@@ -71,7 +71,7 @@ export async function exportList(source: Source, name: string): Promise<string |
 export async function playOne(id: number) {
   if (id === current.value?.id) return togglePlay()
   // Playing on another device: the song plays there (on its own).
-  if (playingOn.device) return remote.load([id], 0).catch((e) => toast(`${playingOn.device?.name}: ${e}`))
+  if (playingOn.device) return remote.load([id], 0).catch((e) => toast(String(e), MonitorSpeaker))
   const items = await library.queueItemsFor([id])
   if (!current.value) {
     await player.setQueue(items, { startIndex: 0 })
@@ -96,7 +96,8 @@ export const playSong = (song: Song, via: 'button' | 'doubleClick' = 'button') =
 /** One song (a double-click): to the end of Up next; nothing playing: it plays. */
 export async function queueOne(id: number) {
   if (id === current.value?.id) return togglePlay()
-  if (!current.value || playingOn.device) return playOne(id)
+  if (playingOn.device) return addThere([id], null, false)
+  if (!current.value) return playOne(id)
   await addItems(await library.queueItemsFor([id]), false)
   await refreshQueue()
 }
@@ -107,7 +108,7 @@ export async function queueOne(id: number) {
  */
 async function addItems(items: QueueItem[], playNext: boolean, note = true) {
   if (!items.length) return
-  if (playingOn.device) return void toast(`Up next is changed on ${playingOn.device.name} itself while playing there`)
+  if (playingOn.device) return addThere(items.map((i) => Number(i.id)), null, playNext)
   // Where they go in the queue's list, for Undo.
   const before = await player.getQueue().catch(() => null)
   const at = playNext ? (before?.currentIndex ?? -1) + 1 : (before?.items.length ?? 0)
@@ -117,6 +118,23 @@ async function addItems(items: QueueItem[], playNext: boolean, note = true) {
   const undo = { label: 'Undo', run: () => undoAdd(items.map((i) => i.id), at) }
   if (playNext) toast(`${what} ${items.length === 1 ? 'plays' : 'play'} next`, ListStart, undo)
   else toast(`Added ${what} to the queue`, ListEnd, undo)
+}
+
+/**
+ * Playing on another device: songs (ids here) or a list into Up next there. Songs only on this device can't go (left
+ * out, said so); the list there is that device's own copy.
+ */
+async function addThere(ids: number[], source: Source | null, playNext: boolean) {
+  const name = playingOn.device?.name ?? 'the other device'
+  try {
+    const left = await remote.add(ids, source, playNext)
+    const what = source ? 'The list' : ids.length - left === 1 ? 'The song' : count(ids.length - left, 'song')
+    const verb = source || ids.length - left === 1 ? (playNext ? 'plays' : 'goes') : playNext ? 'play' : 'go'
+    toast(`${what} ${verb} ${playNext ? 'next' : 'into the queue'} on ${name}`, playNext ? ListStart : ListEnd)
+    if (left) toast(`${count(left, 'song')} only on this device ${left === 1 ? 'was' : 'were'} left out`, MonitorSpeaker)
+  } catch (e) {
+    toast(String(e), MonitorSpeaker)
+  }
 }
 
 /**
@@ -153,6 +171,7 @@ export async function listAction(source: Source, action: CoverAction, artistId?:
       break
     case 'playNext':
     case 'addToQueue': {
+      if (playingOn.device) return addThere([], source, action === 'playNext')
       await addItems(await library.queueItems(source), action === 'playNext')
       await refreshQueue()
       break

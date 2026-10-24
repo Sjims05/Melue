@@ -29,6 +29,7 @@ impl Device {
         }
         let folder = t.add_folder(&music);
         t.scan(folder.id, &music);
+        t.on_share(folder.id);
         let setting = format!(r#"{{"kind":"drive","path":"Z:\\","stream":true,"syncFolderId":{}}}"#, folder.id);
         t.library.set_setting(SHARE_SETTING, &setting).unwrap();
         let id = handoff::device_id(&t.library).unwrap();
@@ -180,6 +181,7 @@ fn songs_a_device_doesnt_have_yet_wait_greyed() {
     // The song arrives on the phone: it fills in.
     phone.music.add("New.wav", &Tags::song("New", "Band", "", 2));
     phone.t.scan(phone.folder.id, &phone.music);
+    phone.t.on_share(phone.folder.id);
     phone.sync(&share);
     assert_eq!(phone.playlist("Mix").unwrap(), vec!["A", "New"]);
 }
@@ -293,6 +295,7 @@ impl Device {
         }
         let folder = self.t.add_folder(&music);
         self.t.scan(folder.id, &music);
+        self.t.on_share(folder.id);
         folder.id
     }
 
@@ -393,6 +396,7 @@ fn a_linked_playlist_in_the_synced_folder_shares_its_cover_one_elsewhere_keeps_i
         device.lib().set_folder_synced(device.folder.id, true).unwrap();
         device.music.add_text("Road.m3u", "A.wav\n");
         device.t.scan(device.folder.id, &device.music);
+        device.t.on_share(device.folder.id);
     }
     let elsewhere = desktop.t.music_folder("Local");
     elsewhere.add_text("Here.m3u", "");

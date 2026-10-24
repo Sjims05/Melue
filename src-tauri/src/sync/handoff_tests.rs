@@ -160,9 +160,26 @@ fn another_devices_song_keeps_its_place_when_one_before_it_cant_play_here() {
     }
     let synced = t.library.add_synced_folder(FolderKind::Path, music.root.to_str().unwrap(), None).unwrap();
     t.scan(synced.id, &music);
+    t.on_share(synced.id);
     // B is here, but hidden as a copy: it can't be in the queue.
     t.library.conn().execute("UPDATE tracks SET copy_of = (SELECT id FROM tracks WHERE path = 'A.wav') WHERE path = 'B.wav'", []).unwrap();
     let (items, index) = queue_here(&t.library, &synced, &playback(&["A.wav", "B.wav", "C.wav"], 2)).unwrap().unwrap();
     assert_eq!(items.len(), 2);
     assert_eq!((index, items[index].title.as_deref()), (1, Some("C")), "C, the song the other device plays");
+}
+
+#[test]
+fn a_song_put_in_the_synced_folder_by_hand_isnt_on_the_share() {
+    use crate::library::testkit::{Tags, TestLibrary};
+    let t = TestLibrary::new("handoff-by-hand");
+    let music = t.music_folder("Synced");
+    music.add("Synced.wav", &Tags::song("Synced", "X", "Y", 1));
+    let synced = t.library.add_synced_folder(FolderKind::Path, music.root.to_str().unwrap(), None).unwrap();
+    t.scan(synced.id, &music);
+    t.on_share(synced.id);
+    // Copied in by hand afterwards: no sync brought it, so the other devices haven't got it.
+    music.add("By hand.wav", &Tags::song("By hand", "X", "Y", 2));
+    t.scan(synced.id, &music);
+    let paths: Vec<String> = t.library.synced_songs(&synced).unwrap().into_iter().map(|(_, p)| p).collect();
+    assert_eq!(paths, ["Synced.wav"]);
 }

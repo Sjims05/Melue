@@ -74,6 +74,18 @@ impl TestLibrary {
 
     /// A whole scan of one folder, as the scanner does it: list it, read tags, group, bring its linked
     /// playlists in line with their files, clean up covers.
+    /// The share has the songs of synced folder `folder_id` (as if a sync brought them): their sync records.
+    pub fn on_share(&self, folder_id: i64) {
+        self.library
+            .conn()
+            .execute(
+                "INSERT OR IGNORE INTO synced_files (path, share_size, share_modified_ms, local_size, local_modified_ms, synced_at)
+                 SELECT replace(path, '\', '/'), size, modified_at, size, modified_at, 0 FROM tracks WHERE folder_id = ?1",
+                [folder_id],
+            )
+            .unwrap();
+    }
+
     pub fn scan(&self, folder_id: i64, folder: &MusicFolder) -> super::scan::ScanSummary {
         let listed = super::scan::list_folder(&folder.root).unwrap();
         let this = self.library.folder(folder_id).unwrap().unwrap();

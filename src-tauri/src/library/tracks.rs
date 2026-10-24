@@ -295,6 +295,26 @@ pub struct MissingSong {
 
 impl Library {
     /// The songs that can't be found, in switched-on folders (most recently gone first).
+    /// Forgets songs that can't be found (`ids`; None: all of them): they leave the library, with their likes, plays
+    /// and places in playlists, and albums and artists left without songs go too. Returns how many went.
+    pub fn forget_missing(&self, ids: Option<&[i64]>) -> Result<usize> {
+        let gone = {
+            let conn = self.conn();
+            match ids {
+                Some(ids) => conn.execute(
+                    "DELETE FROM tracks WHERE missing_since IS NOT NULL AND id IN (SELECT value FROM json_each(?1))",
+                    [serde_json::to_string(ids).map_err(err)?],
+                ),
+                None => conn.execute("DELETE FROM tracks WHERE missing_since IS NOT NULL", []),
+            }
+            .map_err(err)?
+        };
+        if gone > 0 {
+            self.regroup()?;
+        }
+        Ok(gone)
+    }
+
     pub fn missing_songs(&self) -> Result<Vec<MissingSong>> {
         // The folders' names as the library has them (a name can be the path's, made when read: none in the table).
         let names: std::collections::HashMap<i64, String> = self.folders()?.into_iter().map(|f| (f.id, f.name)).collect();

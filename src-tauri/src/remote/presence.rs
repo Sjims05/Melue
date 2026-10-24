@@ -130,16 +130,64 @@ fn write(app: &AppHandle, share: &dyn Share, online: bool) -> Result<(), String>
 
 /// Every device's file, with when the share wrote it.
 fn read_all(share: &dyn Share) -> Result<Vec<(Presence, i64)>, String> {
-    let entries = match share.list(DIR) {
-        Ok(entries) => entries,
-        Err(ShareError::NotFound { .. }) => return Ok(Vec::new()),
-        Err(e) => return Err(e.to_string()),
+    let list = |dir: &str| match share.list(dir) {
+        Ok(entries) => Ok(entries.into_iter().filter(|e| e.name.ends_with(".json")).collect::<Vec<_>>()),
+        Err(ShareError::NotFound { .. }) => Ok(Vec::new()),
+        Err(e) => Err(e.to_string()),
     };
-    Ok(entries
-        .into_iter()
-        .filter(|e| e.name.ends_with(".json"))
-        .filter_map(|e| Some((serde_json::from_slice::<Presence>(&share.read(&e.path).ok()?).ok()?, e.modified_ms)))
-        .collect())
+    let mut all: Vec<(Presence, i64)> =
+        list(DIR)?.into_iter().filter_map(|e| Some((serde_json::from_slice::<Presence>(&share.read(&e.path).ok()?).ok()?, e.modified_ms))).collect();
+    // A device from before devices said they're online (an older Melue, one removed since): known from its library
+    // data, so it can be seen, and forgotten.
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Data {
+        device_id: String,
+        device_name: String,
+        #[serde(default)]
+        mobile: Option<serde_json::Value>,
+    }
+    for entry in list(crate::sync::data::DIR)? {
+        if all.iter().any(|(p, _)| entry.name == format!("{}.json", p.device_id)) {
+            continue;
+        }
+        let Some(data) = share.read(&entry.path).ok().and_then(|bytes| serde_json::from_slice::<Data>(&bytes).ok()) else { continue };
+        let kind = if data.mobile.is_some() { "phone" } else { "computer" };
+        let presence = Presence {
+            device_id: data.device_id,
+            name: data.device_name,
+            kind: kind.into(),
+            version: String::new(),
+            seen_ms: entry.modified_ms,
+            online: false,
+            allow: Allow::On,
+            addresses: Vec::new(),
+            port: None,
+        };
+        all.push((presence, entry.modified_ms));
+    }
+    Ok(all)
+}
+
+/// Forgets one of your devices (an old one, a Melue removed): its files on the share go (it said it's online, its
+/// library data, its playback), so it isn't counted or offered anywhere. One still in use comes back as it syncs.
+#[tauri::command(async)]
+pub fn remote_forget_device(app: AppHandle, id: String) -> Result<(), String> {
+    if id == handoff::device_id(&app.state::<Library>())? {
+        return Err("that’s this device".into());
+    }
+    crate::sync::shared::with_share(&app, |share| {
+        for dir in [DIR, crate::sync::data::DIR, handoff::DIR] {
+            let path = format!("{dir}/{id}.json");
+            if share.stat(&path).map_err(|e| e.to_string())?.is_some() {
+                share.delete(&path).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    })?;
+    // The others' data and the lists that count devices follow.
+    crate::sync::data::soon(&app);
+    Ok(())
 }
 
 /// Whether Melue may use the share now for this (a share set up; not "Nothing" on mobile data).

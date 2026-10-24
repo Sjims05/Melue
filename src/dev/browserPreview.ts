@@ -55,7 +55,7 @@ let syncStatus: SyncStatus = {
 let settings: SyncSettings = {
   removeGone: true, askBeforeRemoving: 5, atStart: false, onReturnAfterMinutes: 15, onChange: true, everyMinutes: 30,
   syncOnMetered: true, copyOnMetered: true, mobileLimitMb: 1000, mobileMonthStarts: 15, mobileAskOverMb: 100, mobileAskAtLimit: false,
-  moveNewSongs: false, shareLayout: 'artistAlbum',
+  moveNewSongs: false, shareLayout: 'artistAlbum', songsOnMoreDevices: 'ask',
 }
 // The share's songs are in Artist/Album; picking One folder leaves 3 to move.
 const layoutStatus = (): LayoutStatus => settings.shareLayout === 'artistAlbum'

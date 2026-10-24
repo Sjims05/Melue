@@ -21,6 +21,7 @@ export const SYNC_DEFAULTS: SyncSettings = {
   mobileAskAtLimit: false,
   moveNewSongs: false,
   shareLayout: 'artistAlbum',
+  songsOnMoreDevices: 'ask',
 }
 
 /** An empty name goes back to the system's name. */

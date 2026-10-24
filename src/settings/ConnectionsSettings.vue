@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
  * Connections: accounts Melue can use (src-tauri github.rs). GitHub: bug reports go to Melue's issues from the
- * user's own account. Signing in shows a code (copied, and GitHub's page opens) to enter there; each device signs in
- * by itself.
+ * user's own account. Signing in shows a code (copied, and GitHub's page opens) to enter there. A sign-in (and a
+ * sign-out) is every device's: it goes through the share, encrypted (src-tauri connections.rs).
  */
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
 import { onPageLoad } from '@/components/page/pageLoading'
@@ -22,9 +23,11 @@ const line = computed(() => {
   return 'To send bug reports from your own account'
 })
 
-onPageLoad(async () => {
-  account.value = await invoke<string | null>('github_account').catch(() => null)
-})
+const loadAccount = async () => (account.value = await invoke<string | null>('github_account').catch(() => null))
+onPageLoad(loadAccount)
+// Signed in or out on another device: the same here.
+const stopListening = listen('connections-changed', loadAccount)
+onBeforeUnmount(() => void stopListening.then((stop) => stop()))
 
 async function start() {
   error.value = ''

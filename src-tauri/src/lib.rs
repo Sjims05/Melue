@@ -1,6 +1,7 @@
 #[cfg(desktop)]
 mod desktop;
 mod dev;
+mod connections;
 mod github;
 mod library;
 mod logging;
@@ -112,6 +113,7 @@ pub fn run() {
             sync::handoff::start(app.handle());
             // Library data across devices: likes, plays and playlists (see sync/data.rs).
             app.manage(sync::data::LibrarySync::default());
+            app.manage(sync::to_share::ToShare::default());
             sync::data::start(app.handle());
             library::android::on_pause(app.handle(), {
                 let app = app.handle().clone();
@@ -176,6 +178,7 @@ pub fn run() {
             remote::remote_settings,
             remote::remote_set_settings,
             remote::presence::remote_devices,
+            remote::presence::remote_forget_device,
             remote::server::remote_reach,
             remote::link::remote_connect,
             remote::link::remote_command,
@@ -186,6 +189,8 @@ pub fn run() {
             remote::link::remote_status,
             remote::link::remote_song_ids,
             remote::link::remote_load,
+            remote::link::remote_play_list,
+            remote::link::remote_add,
             remote::server::remote_answer,
             remote::server::remote_controlled_by,
             remote::server::remote_end_control,
@@ -210,6 +215,8 @@ pub fn run() {
             share::commands::share_set_shown_in_other_apps,
             share::commands::share_set_home_host,
             sync::commands::sync_plan,
+            sync::to_share::sync_to_share,
+            sync::to_share::sync_put_on_share,
             sync::commands::sync_now,
             sync::commands::sync_cancel,
             sync::commands::sync_came_back,
@@ -244,6 +251,7 @@ pub fn run() {
             sync::commands::set_playlist_local_only,
             library::library_status,
             library::library_missing_songs,
+            library::library_forget_missing,
             library::library_lyrics,
             library::library_set_lyrics_timing,
             library::library_lyrics_other_version,

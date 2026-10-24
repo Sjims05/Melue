@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
- * The folders Melue plays from (this device's). A folder with songs only on this device (not on the share) opens to
- * list them: its tile turns into a "select all" checkbox, and Add folder into the bar that moves the ticked songs to
- * sync. The ⋯ menu has the folder's actions: Move all to sync, Switch off / on, Rename (opens in place), Remove.
+ * The folders Melue plays from (this device's). A folder with songs not on the share opens to list them (those on all
+ * your devices marked): its tile turns into a "select all" checkbox, a tap on a song ticks it, and the folder's last
+ * row moves the ticked songs to sync. The ⋯ menu has the folder's actions: Move all to sync, Switch off / on, Rename
+ * (opens in place), Remove.
  *
  * Copies of synced songs are handled on the status card above (Melue counts them for the whole library).
  */
@@ -18,7 +19,7 @@ import { isAndroid, isDesktop, isMobile, storage } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { adding, pickSongs } from './addSongs'
 import { size, whereOriginalsGo } from './format'
-import { libraryState, refreshLibrary, startLibraryState } from './libraryState'
+import { libraryState, onlyHereSongs, refreshLibrary, startLibraryState } from './libraryState'
 
 const open = ref<number | null>(null)
 const renaming = ref<number | null>(null)
@@ -31,7 +32,12 @@ onPageLoad(startLibraryState)
 // Your folders first (by name), the synced one last.
 const folders = computed(() => [...libraryState.folders].sort((a, b) => Number(a.synced) - Number(b.synced) || a.name.localeCompare(b.name)))
 const shareLike = computed(() => folders.value.filter((f) => libraryState.shareFolders.has(f.id)))
-const onlyHereIn = (folder: MusicFolder) => (folder.synced ? [] : libraryState.onlyHere.filter((s) => s.folder === folder.name))
+// A folder's songs that aren't on the share (the synced folder's too: songs put there by hand): only on this device,
+// and those all your devices have (offered for the share, marked "All devices").
+const offeredIds = computed(() => new Set(libraryState.offered.map((s) => s.id)))
+const notOnShareIn = (folder: MusicFolder) => libraryState.onlyHere.filter((s) => s.folder === folder.name)
+const onlyHereIn = (folder: MusicFolder) => onlyHereSongs.value.filter((s) => s.folder === folder.name)
+const onAllIn = (folder: MusicFolder) => notOnShareIn(folder).filter((s) => offeredIds.value.has(s.id))
 const plural = (n: number, one: string) => `${n.toLocaleString()} ${one}${n === 1 ? '' : 's'}`
 
 // A folder that is the share (or looks like it): its songs are in the library already, as your synced music.
@@ -44,15 +50,14 @@ function line(folder: MusicFolder) {
   const share = libraryState.shareFolders.get(folder.id)
   if (share) return SHARE_LINE[share]
   if (!folder.enabled) return 'Switched off: its songs are hidden'
-  if (folder.kind === 'android_media') return `${plural(folder.tracks, 'song')} · all music on this phone`
-  if (folder.synced) return `${plural(folder.tracks, 'song')} · your share, copied here`
-  const here = onlyHereIn(folder).length
-  return `${plural(folder.tracks, 'song')}${folder.network ? ' · on the network' : ''}${here ? ` · ${here} only here` : ''}`
+  const where = folder.kind === 'android_media' ? ' · all music on this phone' : folder.synced ? ' · your share, copied here' : folder.network ? ' · on the network' : ''
+  const [here, onAll] = [onlyHereIn(folder).length, onAllIn(folder).length]
+  return `${plural(folder.tracks, 'song')}${where}${here ? ` · ${here} only here` : ''}${onAll ? ` · ${onAll} on all your devices` : ''}`
 }
 const tile = (folder: MusicFolder) => (folder.synced ? Cloud : folder.kind === 'android_media' ? Smartphone : Folder)
 
 // Opening a folder: only one with songs to move.
-const canOpen = (folder: MusicFolder) => sync.available && folder.enabled && onlyHereIn(folder).length > 0
+const canOpen = (folder: MusicFolder) => sync.available && folder.enabled && notOnShareIn(folder).length > 0
 function toggle(folder: MusicFolder, event: Event) {
   if (!canOpen(folder) || (event.target as HTMLElement).closest('button, [role=checkbox]')) return
   open.value = open.value === folder.id ? null : folder.id
@@ -61,7 +66,7 @@ function toggle(folder: MusicFolder, event: Event) {
 
 const openSongs = computed(() => {
   const folder = folders.value.find((f) => f.id === open.value)
-  return folder ? onlyHereIn(folder) : []
+  return folder ? notOnShareIn(folder) : []
 })
 const all = computed<boolean | 'indeterminate'>(() => {
   const n = openSongs.value.filter((s) => picked.has(s.id)).length
@@ -166,7 +171,19 @@ function confirm() {
         <EditRow class="pt-0" :value="folder.name" @save="(name) => rename(folder, name)" @cancel="renaming = null" />
       </Reveal>
       <Reveal :show="open === folder.id">
-        <SettingsRow v-for="song in openSongs" :key="song.id" :title="song.title" :description="song.artist ?? undefined" detail>
+        <!-- A tap anywhere on a song ticks it (the folder's row opens and closes instead). -->
+        <SettingsRow
+          v-for="song in openSongs"
+          :key="song.id"
+          :description="song.artist ?? undefined"
+          detail
+          class="cursor-pointer"
+          @click="(e: MouseEvent) => !(e.target as HTMLElement).closest('[role=checkbox]') && pick(song, !picked.has(song.id))"
+        >
+          <template #title>
+            {{ song.title }}
+            <SettingsBadge v-if="offeredIds.has(song.id)" class="ml-1.5">All devices</SettingsBadge>
+          </template>
           <template #lead>
             <span class="grid size-[34px] flex-none place-items-center">
               <Checkbox :model-value="picked.has(song.id)" :aria-label="song.title" @update:model-value="(on) => pick(song, on)" />
@@ -174,31 +191,29 @@ function confirm() {
           </template>
           <span class="text-[13px] text-muted-foreground">{{ size(song.size) }}</span>
         </SettingsRow>
+        <!-- What's ticked, to move: the open folder's last row, so it opens and closes with its songs. -->
+        <SettingsRow :title="`${plural(pickedSongs.length, 'song')} to move · ${size(bytes(pickedSongs))}`" wide>
+          <template #lead><IconTile :icon="CloudUpload" /></template>
+          <Button size="sm" :disabled="pickedSongs.length === 0" @click="asking = { what: 'move', songs: pickedSongs }">
+            Move {{ plural(pickedSongs.length, 'song') }} to sync
+          </Button>
+        </SettingsRow>
       </Reveal>
     </template>
 
-    <!-- The last row: Add folder, or (while a folder is open) the bar that moves what's ticked. -->
-    <SettingsRow v-if="open !== null" :title="`${plural(pickedSongs.length, 'song')} to move · ${size(bytes(pickedSongs))}`" wide>
-      <template #lead><IconTile :icon="CloudUpload" /></template>
-      <Button size="sm" :disabled="pickedSongs.length === 0" @click="asking = { what: 'move', songs: pickedSongs }">
-        Move {{ plural(pickedSongs.length, 'song') }} to sync
-      </Button>
+    <SettingsRow as="button" title="Add folder" @click="addFolder">
+      <template #lead><IconTile :icon="Plus" /></template>
     </SettingsRow>
-    <template v-else>
-      <SettingsRow as="button" title="Add folder" @click="addFolder">
-        <template #lead><IconTile :icon="Plus" /></template>
-      </SettingsRow>
-      <!-- Desktop, with a share: songs from anywhere (or dropped on Melue: DropSongs.vue), copied to the share. -->
-      <SettingsRow
-        v-if="isDesktop && sync.available"
-        as="button"
-        title="Add songs…"
-        description="From anywhere, to your synced music: the files you pick stay where they are"
-        @click="pickSongs"
-      >
-        <template #lead><IconTile :icon="FilePlus" /></template>
-      </SettingsRow>
-    </template>
+    <!-- Desktop, with a share: songs from anywhere (or dropped on Melue: DropSongs.vue), copied to the share. -->
+    <SettingsRow
+      v-if="isDesktop && sync.available"
+      as="button"
+      title="Add songs…"
+      description="From anywhere, to your synced music: the files you pick stay where they are"
+      @click="pickSongs"
+    >
+      <template #lead><IconTile :icon="FilePlus" /></template>
+    </SettingsRow>
   </SettingsCard>
   <SettingsTip v-for="folder in shareLike" :key="folder.id" class="mt-3">
     {{ folder.name }} {{ libraryState.shareFolders.get(folder.id) === 'looksLikeShare' ? 'looks like your share' : 'is your share' }}: Melue

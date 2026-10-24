@@ -41,6 +41,9 @@ pub mod playlists;
 mod playlists_tests;
 pub mod scan;
 pub mod scanner;
+pub mod shared_lists;
+#[cfg(test)]
+mod shared_lists_tests;
 mod search;
 #[cfg(test)]
 mod schema_tests;

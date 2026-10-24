@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::key;
 use super::server::{Hello, PROOF};
 use super::Allow;
+pub use crate::library::shared_lists::SharedList;
 use crate::library::now_ms;
 
 /// What the controller asks of the device playing.
@@ -41,6 +42,27 @@ pub enum Command {
     Load { queue: Vec<String>, index: usize, position: f64, playing: bool },
     /// A song was liked or unliked on the controller: the same there at once (remote/likes.rs).
     Like(Like),
+    /// A list to play there: its own copy of `list` (its songs only there too), or, when it hasn't got one (a
+    /// playlist not synced there yet), `songs` (the controller's songs of it on the share). From song `start` (a
+    /// path), or the first (a random one with shuffle on there).
+    PlayList { list: SharedList, songs: Vec<String>, start: Option<String> },
+    /// Songs (paths on the share), or a list (as for PlayList), into Up next there: right after the playing song
+    /// (`next`) or at the end.
+    Add { songs: Vec<String>, list: Option<SharedList>, next: bool },
+    /// Up next there: these songs out of the queue.
+    Remove { places: Vec<Place> },
+    /// Up next there: the song at place `from` of the play order to place `to` (`path`: which song that is).
+    Move { from: usize, to: usize, path: Option<String> },
+}
+
+/// A song in the playing device's queue, as the controller sees it: its place in the queue's list, and which song
+/// that is (its path on the share; None for a song only there), so a queue that changed meanwhile isn't edited
+/// in the wrong place.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Place {
+    pub index: usize,
+    pub path: Option<String>,
 }
 
 /// A song liked or unliked (`liked`) on one device, for the other: by its path on the share, and when (ms).

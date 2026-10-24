@@ -501,6 +501,8 @@ export const library = {
   queueItemsFor: (ids: number[]) => invoke<QueueItem[]>('library_queue_items_for', { ids }),
   /** Use setLiked from '@/library/playback' instead: it also updates the player's like button. */
   setLikedOnly: (id: number, liked: boolean) => invoke<void>('library_set_liked', { id, liked }),
+  /** Forgets songs that can't be found (these, or all): out of the library, with their likes and plays. How many. */
+  forgetMissing: (ids?: number[]) => invoke<number>('library_forget_missing', { ids: ids ?? null }),
   likedIds: () => invoke<number[]>('library_liked_ids'),
   queueFollow: () => invoke<QueueFollow>('library_queue_follow'),
   setQueueFollow: (settings: QueueFollow) => invoke<QueueFollow>('library_set_queue_follow', { settings }),

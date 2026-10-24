@@ -64,6 +64,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: 'Off',
     help: 'Songs that turn up in your music folders here are moved to the share by themselves, so every device gets them.',
   },
+  'sync.songsOnMoreDevices': {
+    title: 'Songs on all your devices',
+    default: 'Ask',
+    help: 'A song every one of your devices has, each its own copy, but that isn’t on the share: Melue offers to put it there, so they all share the one song (Ask: the Library card asks; Automatically: it goes by itself). The device with the better copy (the higher quality) puts it there; on the others their own copy steps aside for it, keeping its likes and plays. Devices that haven’t synced in a month don’t count.',
+  },
   'sync.shareLayout': {
     title: 'Folders on the share',
     default: 'Artist / Album',

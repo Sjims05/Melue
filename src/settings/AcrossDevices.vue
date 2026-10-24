@@ -2,15 +2,17 @@
 /**
  * Across devices: continuing what another device was playing (Ask / Follow / Off), when Ask may continue without
  * asking, and this device's name (what the others call it: "Continue from TROLLGANG"). Saves as you change it. Then
- * your devices (library/remote.ts): which are online now, whether the others may play on this one, and the volume's
+ * your devices (library/remote.ts): which are online now (an old one can be forgotten), whether the others may play on this one, and the volume's
  * steps when playing on another (a phone's; on a phone, its buttons' on a computer).
  *
  * Melue's playback sync settings (library/sync.ts: playbackSync). An empty name goes back to the system's name. Only
  * with a share: it all goes through the share.
  */
-import { Monitor, Smartphone } from '@lucide/vue'
+import { Ellipsis, Monitor, Smartphone } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { onBeforeUnmount, ref } from 'vue'
-import { Chevron, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot, Stepper } from '@/components/settings'
+import { Chevron, ConfirmDialog, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot, Stepper } from '@/components/settings'
 import { usePhone } from '@/lib/phone'
 import { playingOn } from '@/player/playingOn'
 import { remote, type Allow, type Device, type RemoteSettings } from '@/library/remote'
@@ -45,8 +47,13 @@ const ALLOW_LINE: Record<Allow, string> = {
   ask: 'Someone here says yes first',
   off: 'Your other devices can’t play on this one',
 }
+// A device that never said where it can be reached: an older Melue (or one removed since), known from its library data.
+const older = (d: Device) => !d.this && d.port == null && d.addresses.length === 0
 const deviceLine = (d: Device) =>
-  [d.online ? 'Online now' : `Last seen ${ago(d.lastSeenMs)}`, d.allow === 'off' ? 'doesn’t let others play on it' : d.allow === 'ask' ? 'asks first' : '']
+  [
+    d.online ? 'Online now' : `Last seen ${ago(d.lastSeenMs)}`,
+    older(d) ? 'an older Melue' : d.allow === 'off' ? 'doesn’t let others play on it' : d.allow === 'ask' ? 'asks first' : '',
+  ]
     .filter(Boolean)
     .join(' · ')
 
@@ -65,6 +72,19 @@ async function setRemote(change: Partial<RemoteSettings>) {
   }
 }
 const setAllow = (allow: Allow) => setRemote({ allow })
+
+// An old device (a Melue removed, one not used any more): forgotten, it isn't counted or offered anywhere.
+const forgetting = ref<Device | null>(null)
+async function forget() {
+  const device = forgetting.value
+  if (!device) return
+  try {
+    await remote.forget(device.id)
+    devices.value = devices.value.filter((d) => d.id !== device.id)
+  } catch (e) {
+    error.value = `Can’t forget ${device.name}: ${e}`
+  }
+}
 
 onPageLoad(async () => {
   try {
@@ -179,6 +199,14 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
               <template #lead><IconTile :icon="d.kind === 'phone' ? Smartphone : Monitor" /></template>
               <template #title>{{ d.name }} <SettingsBadge v-if="d.this" class="ml-1.5">This device</SettingsBadge></template>
               <StatusDot :kind="d.online ? 'ok' : 'off'" />
+              <DropdownMenu v-if="!d.this && !d.online">
+                <DropdownMenuTrigger as-child>
+                  <Button variant="ghost" size="icon-sm" :aria-label="`${d.name}: more`"><Ellipsis /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem variant="destructive" @select="forgetting = d">Forget…</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </SettingsRow>
           </TransitionGroup>
         </SettingsCard>
@@ -187,5 +215,13 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
     <Transition name="drop">
       <SettingsTip v-if="error" kind="bad" class="mt-3">{{ error }}</SettingsTip>
     </Transition>
+    <ConfirmDialog
+      :open="!!forgetting"
+      :title="`Forget ${forgetting?.name ?? 'this device'}?`"
+      text="Its files on your share go: it isn’t counted among your devices any more (for songs on all your devices, mobile data, playing on it). The likes and plays it already shared stay. A device still in use comes back the next time it syncs."
+      action="Forget"
+      @update:open="(open) => !open && (forgetting = null)"
+      @confirm="forget"
+    />
   </template>
 </template>

@@ -150,3 +150,20 @@ fn songs_that_cant_be_found_are_listed_with_their_folders_name() {
     let missing = t.library.missing_songs().unwrap();
     assert_eq!(missing.iter().map(|s| (s.title.as_str(), s.folder.as_str())).collect::<Vec<_>>(), vec![("Gone", "Music")]);
 }
+
+#[test]
+fn songs_that_cant_be_found_can_be_forgotten() {
+    let t = TestLibrary::new("forget-missing");
+    let m = t.music_folder("Music");
+    let f = t.add_folder(&m).id;
+    m.add("Kept.wav", &Tags::song("Kept", "Band", "Kept album", 1));
+    m.add("Gone.wav", &Tags::song("Gone", "Other band", "Gone album", 1));
+    t.scan(f, &m);
+    m.remove("Gone.wav");
+    t.scan(f, &m);
+    assert_eq!(t.library.missing_songs().unwrap().len(), 1);
+    assert_eq!(t.library.forget_missing(None).unwrap(), 1);
+    assert!(t.library.missing_songs().unwrap().is_empty());
+    let albums: Vec<String> = t.library.conn().prepare("SELECT title FROM albums").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+    assert_eq!(albums, ["Kept album"], "its album went with it");
+}

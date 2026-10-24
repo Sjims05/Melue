@@ -40,6 +40,10 @@ export type RemoteCommand =
   | { cmd: 'repeat'; mode: 'off' | 'all' | 'one' }
   | { cmd: 'skipTo'; index: number }
   | { cmd: 'load'; queue: string[]; index: number; position: number; playing: boolean }
+  /** Up next there: songs out (their places in its queue, and which songs: their paths on the share, to check). */
+  | { cmd: 'remove'; places: { index: number; path: string | null }[] }
+  /** Up next there: a song from place `from` of the play order to place `to`. */
+  | { cmd: 'move'; from: number; to: number; path: string | null }
 
 /** The device played on: its state, as it last said (`position` when it said it: count on while `playing`). */
 export interface RemoteState {
@@ -62,6 +66,8 @@ export const remote = {
   setSettings: (settings: RemoteSettings) => invoke<RemoteSettings>('remote_set_settings', { settings }),
   /** Your devices: this one first, then the online ones. */
   devices: () => invoke<Device[]>('remote_devices'),
+  /** Forgets one of your devices (an old one): its files on the share go. One still in use comes back as it syncs. */
+  forget: (id: string) => invoke<void>('remote_forget_device', { id }),
   /** Reaches a device directly (the dev page's test): the address that answered, how long it took, what it said. */
   /** Connects to one of your devices, to play on it (one at a time). */
   connect: (id: string) => invoke<{ id: string; name: string; address: string }>('remote_connect', { id }),
@@ -73,6 +79,10 @@ export const remote = {
   songIds: (paths: (string | null)[]) => invoke<(number | null)[]>('remote_song_ids', { paths }),
   /** Songs from here (their ids) to play on the device connected to, from song `index`. */
   load: (ids: number[], index: number, playing = true) => invoke<void>('remote_load', { ids, index, playing }),
+  /** A list from here plays there: that device's own copy (its songs only there too), from song `start` (an id here). */
+  playList: (source: string, start: number | null) => invoke<void>('remote_play_list', { source, start }),
+  /** Songs (ids here) or a list into Up next there; how many songs were left out (only on this device). */
+  add: (ids: number[], source: string | null, next: boolean) => invoke<number>('remote_add', { ids, source, next }),
   /** Connect device: what plays here plays there, and pauses here. */
   playOn: (id: string) => invoke<{ id: string; name: string; address: string }>('remote_play_on', { id }),
   /** "This device": what plays there plays here, and pauses there. */

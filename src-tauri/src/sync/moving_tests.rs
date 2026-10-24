@@ -45,6 +45,7 @@ fn setup(name: &str) -> (TestLibrary, crate::library::Folder, crate::library::te
     other_music.add("A.wav", &Tags::song("A", "Band", "", 1));
     other_music.add("B.wav", &Tags::song("B", "Band", "", 2));
     t.scan(synced.id, &synced_music);
+    t.on_share(synced.id);
     t.scan(other, &other_music);
     (t, synced, other_music, other)
 }
@@ -99,6 +100,8 @@ fn a_moved_songs_original_goes_once_its_synced_copy_is_in() {
     let synced_music = crate::library::testkit::MusicFolder { root: std::path::PathBuf::from(&synced.location) };
     synced_music.add("Band/B.wav", &Tags::song("B", "Band", "", 2));
     t.scan(synced.id, &synced_music);
+    // Moving it recorded it as on the share.
+    t.on_share(synced.id);
     let songs = t.library.songs_here(&synced, "me").unwrap();
     let found = t.library.find_copies(&synced, &songs).unwrap();
     assert_eq!(found.remove, vec![b], "the original goes");
@@ -145,4 +148,15 @@ fn linked_playlists_follow_their_songs_to_the_synced_copy() {
     other_music.add_text("Mix.m3u", "B.wav\nA.wav\n");
     t.scan(other, &other_music);
     assert_eq!(tracks(&t), vec![track(&t, other, "B"), track(&t, synced.id, "A")]);
+}
+
+#[test]
+fn a_song_put_in_the_synced_folder_by_hand_is_only_on_this_device() {
+    let (t, synced, _, _) = setup("moving-by-hand");
+    let synced_music = crate::library::testkit::MusicFolder { root: std::path::PathBuf::from(&synced.location) };
+    synced_music.add("By hand.wav", &Tags::song("By hand", "Band", "", 9));
+    t.scan(synced.id, &synced_music);
+    let songs = t.library.songs_here(&synced, "me").unwrap();
+    let only_here: Vec<String> = t.library.not_on_share(&synced, &songs).unwrap().into_iter().map(|s| s.title).collect();
+    assert!(only_here.contains(&"By hand".to_string()), "{only_here:?}");
 }

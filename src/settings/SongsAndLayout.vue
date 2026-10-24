@@ -60,6 +60,14 @@ const didWords = (r: ReorganiseResult) =>
   [`${r.moved} moved`, r.playlistsUpdated && `${r.playlistsUpdated} playlists updated`, r.failed.length && `${r.failed.length} failed`]
     .filter(Boolean)
     .join(' · ')
+
+// Songs every device has, each its own copy, but not on the share: put them there.
+const MORE_DEVICES = [['ask', 'Ask'], ['auto', 'Automatically'], ['off', 'Off']] as const
+const MORE_DEVICES_LINE = {
+  ask: 'The Library card asks to put songs all your devices have on the share',
+  auto: 'Songs all your devices have go on the share by themselves',
+  off: 'Songs all your devices have stay a copy on each',
+} as const
 </script>
 
 <template>
@@ -80,6 +88,18 @@ const didWords = (r: ReorganiseResult) =>
       </Reveal>
       <SettingsRow title="Move new songs to sync automatically" description="Songs you add to your music folders go to the share" v-bind="resetSync('moveNewSongs')">
         <Switch :model-value="syncSettings.value.moveNewSongs" @update:model-value="(moveNewSongs) => saveSyncSettings({ moveNewSongs })" />
+      </SettingsRow>
+      <SettingsRow
+        title="Songs on all your devices"
+        :description="MORE_DEVICES_LINE[syncSettings.value.songsOnMoreDevices]"
+        wide
+        v-bind="resetSync('songsOnMoreDevices')"
+      >
+        <Segmented
+          :model-value="syncSettings.value.songsOnMoreDevices"
+          :options="MORE_DEVICES"
+          @update:model-value="(songsOnMoreDevices) => saveSyncSettings({ songsOnMoreDevices })"
+        />
       </SettingsRow>
     </SettingsCard>
 

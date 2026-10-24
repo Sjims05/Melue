@@ -85,6 +85,16 @@ pub fn library_missing_songs(library: State<'_, Library>) -> Result<Vec<super::t
     library.missing_songs()
 }
 
+/// Forgets songs that can't be found (`ids`; none given: all): see Library::forget_missing.
+#[tauri::command(async)]
+pub fn library_forget_missing(app: AppHandle, library: State<'_, Library>, ids: Option<Vec<i64>>) -> Result<usize> {
+    let gone = library.forget_missing(ids.as_deref())?;
+    if gone > 0 {
+        changes::emit(&app, LibraryChange::sync());
+    }
+    Ok(gone)
+}
+
 /// An app setting saved in the library (null when it was never set).
 #[tauri::command(async)]
 pub fn library_setting(library: State<'_, Library>, key: String) -> Result<Option<String>> {
