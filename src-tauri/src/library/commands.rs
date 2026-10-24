@@ -634,3 +634,87 @@ pub fn library_set_player_settings(library: State<'_, Library>, settings: Player
     library.set_player_settings(&settings)?;
     library.player_settings()
 }
+
+// ---- Spotify playlists (spotify.rs)
+
+/// Adds a Spotify playlist from its link (a public one): a linked playlist following it. Its id.
+#[tauri::command(async)]
+pub fn library_add_spotify_playlist(app: AppHandle, library: State<'_, Library>, link: String) -> Result<i64> {
+    let index = library.track_index()?;
+    let id = library.add_spotify_playlist(&link, &index)?;
+    changes::emit(&app, LibraryChange::playlists(ChangeReason::Playlists, vec![id]));
+    Ok(id)
+}
+
+/// Reads a Spotify playlist (or, `id` None, all of them) again now. Whether any changed here.
+#[tauri::command(async)]
+pub fn library_update_spotify_playlists(app: AppHandle, library: State<'_, Library>, id: Option<i64>) -> Result<bool> {
+    let index = library.track_index()?;
+    let changed = match id {
+        Some(id) => library.update_spotify_playlist(id, &index)?.then_some(vec![id]).unwrap_or_default(),
+        None => library.update_spotify_playlists(&index)?,
+    };
+    if !changed.is_empty() {
+        changes::emit(&app, LibraryChange::playlists(ChangeReason::Playlists, changed.clone()));
+    }
+    Ok(!changed.is_empty())
+}
+
+/// A long Spotify playlist's full list, from a CSV's text (a website's export).
+#[tauri::command(async)]
+pub fn library_import_spotify_csv(app: AppHandle, library: State<'_, Library>, id: i64, csv: String) -> Result<()> {
+    let index = library.track_index()?;
+    library.import_spotify_csv(id, &csv, &index)?;
+    changes::emit(&app, LibraryChange::playlists(ChangeReason::Playlists, vec![id]));
+    Ok(())
+}
+
+/// A long Spotify playlist's full list, from a CSV file picked on a computer (a .csv only).
+#[tauri::command(async)]
+pub fn library_import_spotify_csv_file(app: AppHandle, library: State<'_, Library>, id: i64, path: String) -> Result<()> {
+    let file = std::path::Path::new(&path);
+    if !file.extension().is_some_and(|x| x.eq_ignore_ascii_case("csv")) {
+        return Err("that isn’t a CSV file".into());
+    }
+    let csv = std::fs::read_to_string(file).map_err(|e| format!("can't read {path}: {e}"))?;
+    library_import_spotify_csv(app, library, id, csv)
+}
+
+/// Counts waits for a CSV started or stopped: a wait that sees it change stops.
+static CSV_WAIT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Computers: waits (10 minutes at most) for a new CSV in the Downloads folder, the export just made, and imports it
+/// into Spotify playlist `id`. Ok(true): imported; Ok(false): none came (or another wait started, or it was stopped).
+#[tauri::command(async)]
+pub fn library_wait_for_spotify_csv(app: AppHandle, library: State<'_, Library>, id: i64) -> Result<bool> {
+    use tauri::Manager;
+    let attempt = CSV_WAIT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let downloads = app.path().download_dir().map_err(|e| e.to_string())?;
+    let since = std::time::SystemTime::now();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(600);
+    while std::time::Instant::now() < until && CSV_WAIT.load(std::sync::atomic::Ordering::SeqCst) == attempt {
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        let newest = std::fs::read_dir(&downloads)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("csv")))
+            .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+            .filter(|(at, _)| *at > since)
+            .max_by_key(|(at, _)| *at);
+        if let Some((_, path)) = newest {
+            // Fully written (a browser renames it into place when done; a moment more to be sure).
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let csv = std::fs::read_to_string(&path).map_err(|e| format!("can't read {}: {e}", path.display()))?;
+            library_import_spotify_csv(app.clone(), library, id, csv)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Stops waiting for a CSV.
+#[tauri::command]
+pub fn library_stop_waiting_for_spotify_csv() {
+    CSV_WAIT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}

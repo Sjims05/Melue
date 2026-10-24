@@ -24,6 +24,7 @@ import { usePlaylistActions } from './playlists/actions'
 import ConflictDialog from './playlists/ConflictDialog.vue'
 import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
+import SpotifyUpdateDialog from './playlists/SpotifyUpdateDialog.vue'
 import { playlistCover, playlistKind, playlistLine, playlistLink, playlistWhere } from './playlists/playlists'
 
 const route = useRoute()
@@ -144,6 +145,9 @@ function pick(action: CoverAction) {
   else actOnPlaylist(playlist.value, action)
 }
 const choosing = ref(false)
+// A Spotify playlist with more than 100 songs: its full list from a CSV ("Update list"; the "!" when it changed there).
+const long = computed(() => (playlist.value?.spotify?.total ?? 0) > 100)
+const updatingSpotify = ref(false)
 </script>
 
 <template>
@@ -168,12 +172,23 @@ const choosing = ref(false)
           <SettingsBadge v-for="badge in badges" :key="badge.label" class="h-7 gap-1.5 px-2.5 text-[13px]">
             <component :is="badge.icon" class="size-3.5" />{{ badge.label }}
           </SettingsBadge>
-          <SettingsBadge v-if="playlist.file" class="h-7 gap-1.5 px-2.5 text-[13px]"><FileText class="size-3.5" />{{ playlist.file }}</SettingsBadge>
+          <SettingsBadge v-if="playlist.file && !playlist.spotify" class="h-7 gap-1.5 px-2.5 text-[13px]"><FileText class="size-3.5" />{{ playlist.file }}</SettingsBadge>
           <SettingsBadge v-if="playlist.fileMissing" class="h-7 gap-1.5 px-2.5 text-[13px] text-destructive"><CircleAlert class="size-3.5" />File gone</SettingsBadge>
         </template>
         <template #line>Playlist · {{ playlistLine(playlist) }}{{ onlyInMelue ? ` · ${onlyInMelue} only in Melue` : '' }}</template>
       </ListHeader>
 
+      <Transition name="drop">
+        <SettingsTip v-if="long" :kind="playlist.spotify?.changed ? 'bad' : undefined" class="mb-6">
+          <span class="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {{ playlist.spotify?.changed ? 'Changed on Spotify since this list was updated. ' : '' }}Spotify only shares the first 100 of its
+              {{ playlist.spotify?.total }} songs by itself: the rest come from a CSV.
+            </span>
+            <Button size="sm" variant="outline" @click="updatingSpotify = true">Update list</Button>
+          </span>
+        </SettingsTip>
+      </Transition>
       <Transition name="drop">
         <SettingsTip v-if="conflict" kind="bad" class="mb-6">
           <span class="flex flex-wrap items-center justify-between gap-2">
@@ -213,6 +228,7 @@ const choosing = ref(false)
       </Transition>
 
       <PlaylistDialogs v-model="asking" @confirm="confirm" />
+      <SpotifyUpdateDialog v-if="playlist.spotify" v-model:open="updatingSpotify" :playlist="playlist" />
       <CoverCropDialog
         v-if="covering"
         :name="covering.name"

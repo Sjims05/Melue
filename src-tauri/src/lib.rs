@@ -101,6 +101,8 @@ pub fn run() {
             remote::server::start(app.handle());
             // Playing on another device, the phone's lock screen, notification and volume buttons control it.
             remote::media::start(app.handle());
+            // Spotify playlists (from their links): up to date by themselves.
+            library::spotify::start(app.handle());
             // The car with Melue closed finds the library here (sync/car.rs).
             #[cfg(target_os = "android")]
             {
@@ -258,6 +260,12 @@ pub fn run() {
             library::library_status,
             library::library_missing_songs,
             library::library_forget_missing,
+            library::library_add_spotify_playlist,
+            library::library_update_spotify_playlists,
+            library::library_import_spotify_csv,
+            library::library_import_spotify_csv_file,
+            library::library_wait_for_spotify_csv,
+            library::library_stop_waiting_for_spotify_csv,
             discord::discord_settings,
             discord::discord_set_settings,
             discord::discord_status,

@@ -2,10 +2,11 @@
  * A cover card's right-click menu (long-press on a phone): what it offers depends on what the card is. Everything
  * plays, shuffles, plays next and goes in the queue; then an album goes to its artist; your playlist renames,
  * changes where it lives (only here / synced; a linked one stops following its file), deletes, and explains how it
- * lives (About syncing / "This device" / following a file); an auto playlist hides. A song's card uses the
+ * lives (About syncing / "This device" / following a file / Spotify; a Spotify one also copies the songs you don't have);
+ * an auto playlist hides. A song's card uses the
  * song's own menu (songMenu): Add to playlist is for songs only.
  */
-import { Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
+import { ClipboardList, Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
 import { NextIcon, PlayIcon } from '@/components/player/icons'
 import type { Component } from 'vue'
 
@@ -19,6 +20,7 @@ export type CoverAction =
   | 'keepHereOnly'
   | 'syncEverywhere'
   | 'unlink'
+  | 'copyMissing'
   | 'follow'
   | 'delete'
   | 'hide'
@@ -31,7 +33,7 @@ export type CoverAction =
 export type CoverKind =
   | { kind: 'album' }
   /** A playlist; `customCover`: it has its own cover (Revert to default cover). */
-  | { kind: 'playlist'; lives: 'synced' | 'here' | 'linked' | 'unfollowed' | 'plain'; customCover?: boolean }
+  | { kind: 'playlist'; lives: 'synced' | 'here' | 'linked' | 'unfollowed' | 'spotify' | 'plain'; customCover?: boolean }
   | { kind: 'auto' }
   /** An artist or a music folder (their rows): only playing them. */
   | { kind: 'list' }
@@ -71,8 +73,13 @@ export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAc
             ? [{ action: 'unlink', label: 'Stop following the file…', icon: Unlink }]
             : what.lives === 'unfollowed'
               ? [{ action: 'follow', label: 'Follow the file again', icon: Link }]
-              : []
-    const about = { synced: 'About syncing', here: 'About “This device”', linked: 'About following a file', unfollowed: 'About “Unfollowed”', plain: '' }[
+              : what.lives === 'spotify'
+                ? [
+                    { action: 'copyMissing', label: 'Copy the songs you don’t have', icon: ClipboardList },
+                    { action: 'unlink', label: 'Stop following Spotify…', icon: Unlink },
+                  ]
+                : []
+    const about = { synced: 'About syncing', here: 'About “This device”', linked: 'About following a file', unfollowed: 'About “Unfollowed”', spotify: 'About Spotify playlists', plain: '' }[
       what.lives
     ]
     items.push(

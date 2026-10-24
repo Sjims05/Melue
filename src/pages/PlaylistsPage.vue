@@ -8,7 +8,7 @@
  * Liked songs, the Top songs lists and the music folders (with two or more), each can be hidden (Settings shows them
  * again). It follows the library and the sync.
  */
-import { CircleAlert, ListMusic, Plus } from '@lucide/vue'
+import { AudioLines, CircleAlert, ListMusic, Plus } from '@lucide/vue'
 import { computed, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { CoverBadge, CoverCard, coverMenu, type CoverAction } from '@/components/covers'
@@ -24,6 +24,7 @@ import { usePlaylistActions } from './playlists/actions'
 import ConflictDialog from './playlists/ConflictDialog.vue'
 import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
+import SpotifyAddDialog from './playlists/SpotifyAddDialog.vue'
 import { autoCard, autoPage, playlistBadge, playlistCover, playlistKind, playlistLine } from './playlists/playlists'
 
 const router = useRouter()
@@ -56,6 +57,12 @@ const conflictOf = (p: Playlist) => conflicts.value.find((c) => c.playlistId ===
 
 // ---- Your playlists: new, and the menu (shared with a playlist's page)
 const { renaming, asking, covering, act, rename, confirm, saveCover } = usePlaylistActions(load)
+// A Spotify playlist from its link: it opens once added.
+const addingSpotify = ref(false)
+async function addedSpotify(id: number) {
+  await load()
+  router.push(`/playlist/${id}`)
+}
 async function create() {
   const made = await library.createPlaylist('New playlist')
   await load()
@@ -91,6 +98,7 @@ const choosing = ref<PlaylistConflict | null>(null)
       <div class="mb-2 flex items-center gap-2">
         <h2 class="text-xl font-semibold">Your playlists</h2>
         <Button variant="ghost" size="icon-sm" aria-label="New playlist" title="New playlist" @click="create"><Plus /></Button>
+        <Button variant="ghost" size="icon-sm" aria-label="Add from Spotify" title="Add from Spotify" @click="addingSpotify = true"><AudioLines /></Button>
       </div>
       <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
       <Transition name="part" mode="out-in">
@@ -141,6 +149,7 @@ const choosing = ref<PlaylistConflict | null>(null)
     </section>
 
     <PlaylistDialogs v-model="asking" @confirm="confirm" />
+    <SpotifyAddDialog v-model:open="addingSpotify" @added="addedSpotify" />
       <CoverCropDialog
         v-if="covering"
         :name="covering.name"

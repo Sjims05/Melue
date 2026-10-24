@@ -128,6 +128,9 @@ export interface Playlist {
   customCover: string | null
   /** Linked: its file is in the synced folder (every device has it; its cover syncs too). */
   fileSynced: boolean
+  /** A Spotify playlist (from its link): its id there, its songs there, and whether it changed there since its list was
+   * last updated (one with more than 100 songs: update its list from a CSV). */
+  spotify: { id: string; total: number | null; changed: boolean } | null
   createdAt: number
   updatedAt: number
 }
@@ -503,6 +506,16 @@ export const library = {
   setLikedOnly: (id: number, liked: boolean) => invoke<void>('library_set_liked', { id, liked }),
   /** Forgets songs that can't be found (these, or all): out of the library, with their likes and plays. How many. */
   forgetMissing: (ids?: number[]) => invoke<number>('library_forget_missing', { ids: ids ?? null }),
+  /** Spotify playlists (src-tauri library/spotify.rs): one from its link (a public playlist), its id here. */
+  addSpotifyPlaylist: (link: string) => invoke<number>('library_add_spotify_playlist', { link }),
+  /** Read again now (one, or all): whether any changed here. */
+  updateSpotifyPlaylists: (id?: number) => invoke<boolean>('library_update_spotify_playlists', { id: id ?? null }),
+  /** A long one's full list from a CSV: its text (a phone's picked file), or a .csv file's path (a computer). */
+  importSpotifyCsv: (id: number, csv: string) => invoke<void>('library_import_spotify_csv', { id, csv }),
+  importSpotifyCsvFile: (id: number, path: string) => invoke<void>('library_import_spotify_csv_file', { id, path }),
+  /** Computers: waits for the CSV just exported to land in Downloads, and imports it (true), or none came (false). */
+  waitForSpotifyCsv: (id: number) => invoke<boolean>('library_wait_for_spotify_csv', { id }),
+  stopWaitingForSpotifyCsv: () => invoke<void>('library_stop_waiting_for_spotify_csv'),
   likedIds: () => invoke<number[]>('library_liked_ids'),
   queueFollow: () => invoke<QueueFollow>('library_queue_follow'),
   setQueueFollow: (settings: QueueFollow) => invoke<QueueFollow>('library_set_queue_follow', { settings }),

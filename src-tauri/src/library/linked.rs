@@ -111,11 +111,25 @@ pub struct TrackIndex {
     /// The last 2 and 3 parts of their paths.
     suffixes: [HashMap<String, Vec<i64>>; 2],
     infos: HashMap<String, Vec<i64>>,
+    /// By main artist and title, plain (version notes and featured artists left out), with their lengths: for
+    /// Spotify's songs (spotify.rs).
+    songs: HashMap<(String, String), Vec<(i64, Option<i64>)>>,
 }
 
 impl TrackIndex {
     /// The song a playlist line names; `dir` is the playlist file's folder (a logical path).
     pub fn find(&self, dir: &str, line: &FileLine) -> Option<i64> {
+        // A Spotify playlist's song: the same song here (sync/same_song.rs's rule), the one of the right length.
+        if let Some(song) = super::spotify::from_line(&line.entry) {
+            let artist = song.artist.split(", ").next().unwrap_or_default();
+            let key = (crate::sync::same_song::plain_artist(artist), crate::sync::same_song::plain_title(&song.title));
+            let near = |length: &Option<i64>| match (length, song.duration_ms) {
+                (Some(a), Some(b)) => (a - b).abs() <= 2_000,
+                _ => true,
+            };
+            let found: Vec<i64> = self.songs.get(&key)?.iter().filter(|(_, length)| near(length)).map(|(id, _)| *id).collect();
+            return found.first().copied();
+        }
         if let Some(path) = m3u::resolve(dir, &line.entry) {
             let key = path.to_lowercase();
             if let Some(id) = self.paths.get(&key) {
@@ -174,7 +188,7 @@ fn counts<'a>(lines: impl Iterator<Item = &'a str>) -> HashMap<&'a str, usize> {
 
 /// Brings linked playlist `id`'s entries in line with the file's `lines` (see the module docs), and makes
 /// them its snapshot. Returns whether any entry changed.
-fn apply_file(tx: &Transaction, id: i64, dir: &str, lines: &[FileLine], index: &TrackIndex) -> Result<bool> {
+pub(crate) fn apply_file(tx: &Transaction, id: i64, dir: &str, lines: &[FileLine], index: &TrackIndex) -> Result<bool> {
     let (new_in_file, removed_from_file): (String, String) = tx
         .query_row("SELECT new_in_file, removed_from_file FROM playlists WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
         .map_err(err)?;
@@ -409,18 +423,23 @@ impl Library {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
-                "SELECT coalesce(t.copy_of, t.id), f.kind, f.location, t.path, t.title, t.artist_credit
+                "SELECT coalesce(t.copy_of, t.id), f.kind, f.location, t.path, t.title, t.artist_credit, t.duration_ms
                  FROM tracks t JOIN folders f ON f.id = t.folder_id ORDER BY t.id",
             )
             .map_err(err)?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?))
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, Option<String>>(5)?, r.get::<_, Option<i64>>(6)?))
             })
             .map_err(err)?;
-        let mut index = TrackIndex { paths: HashMap::new(), suffixes: Default::default(), infos: HashMap::new() };
+        let mut index = TrackIndex { paths: HashMap::new(), suffixes: Default::default(), infos: HashMap::new(), songs: HashMap::new() };
         for row in rows {
-            let (id, kind, location, path, title, artist) = row.map_err(err)?;
+            let (id, kind, location, path, title, artist, length) = row.map_err(err)?;
+            let plain = (crate::sync::same_song::plain_artist(artist.as_deref().unwrap_or_default()), crate::sync::same_song::plain_title(&title));
+            let same = index.songs.entry(plain).or_default();
+            if !same.iter().any(|(known, _)| *known == id) {
+                same.push((id, length));
+            }
             let kind = FolderKind::parse(&kind).unwrap_or(FolderKind::Path);
             let key = logical_path(kind, &location, &path).to_lowercase();
             let parts: Vec<&str> = key.split('/').filter(|p| !p.is_empty()).collect();
@@ -546,26 +565,29 @@ impl Library {
             let mut stmt = conn
                 .prepare(
                     "UPDATE playlists SET file_missing_since = ?1
-                     WHERE kind = 'linked' AND file_folder_id IS NULL AND file_missing_since IS NULL RETURNING id",
+                     WHERE kind = 'linked' AND file_folder_id IS NULL AND spotify_id IS NULL AND file_missing_since IS NULL RETURNING id",
                 )
                 .map_err(err)?;
             let ids = stmt.query_map([now], |r| r.get(0)).map_err(err)?;
             ids.collect::<rusqlite::Result<_>>().map_err(err)?
         };
-        let linked: Vec<(i64, String, String, String)> = {
+        let linked: Vec<(i64, Option<String>, Option<String>, String)> = {
             let conn = self.conn();
             let mut stmt = conn
                 .prepare(
-                    "SELECT p.id, f.kind, f.location, p.file_path FROM playlists p JOIN folders f ON f.id = p.file_folder_id
-                     WHERE p.kind = 'linked'",
+                    "SELECT p.id, f.kind, f.location, p.file_path FROM playlists p LEFT JOIN folders f ON f.id = p.file_folder_id
+                     WHERE p.kind = 'linked' AND (f.id IS NOT NULL OR p.spotify_id IS NOT NULL)",
                 )
                 .map_err(err)?;
             let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map_err(err)?;
             rows.collect::<rusqlite::Result<_>>().map_err(err)?
         };
         for (id, kind, location, path) in linked {
-            let kind = FolderKind::parse(&kind).unwrap_or(FolderKind::Path);
-            let dir = parent(&logical_path(kind, &location, &path)).to_string();
+            // A Spotify playlist's lines say what each song is themselves: no folder.
+            let dir = match (kind, location) {
+                (Some(kind), Some(location)) => parent(&logical_path(FolderKind::parse(&kind).unwrap_or(FolderKind::Path), &location, &path)).to_string(),
+                _ => String::new(),
+            };
             let mut conn = self.conn();
             let tx = conn.transaction().map_err(err)?;
             let lines: Vec<FileLine> = {
@@ -734,11 +756,16 @@ impl Library {
     pub fn unlink_playlist(&self, id: i64) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
-        ignore_file(&tx, id)?;
+        // A file is let go of (not linked again by the next scan); a Spotify playlist just stops being read.
+        let spotify: bool = tx.query_row("SELECT spotify_id IS NOT NULL FROM playlists WHERE id = ?1", [id], |r| r.get(0)).map_err(err)?;
+        if !spotify {
+            ignore_file(&tx, id)?;
+        }
         let changed = tx
             .execute(
                 "UPDATE playlists SET kind = 'app', file_folder_id = NULL, file_path = NULL, file_size = NULL,
-                     file_modified_at = NULL, file_missing_since = NULL, write_back = 0, local_only = 1, updated_at = ?2
+                     file_modified_at = NULL, file_missing_since = NULL, write_back = 0, local_only = 1, updated_at = ?2,
+                     spotify_id = NULL, spotify_total = NULL, spotify_seen = NULL, spotify_changed = 0
                  WHERE id = ?1 AND kind = 'linked'",
                 params![id, now_ms()],
             )

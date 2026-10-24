@@ -2,7 +2,7 @@
  * Playlists as the app shows them (their cards and pages): the cover, the grey line, the corner badge, where they
  * live (for their menu), and the auto playlists' covers, words and pages.
  */
-import { Cloud, Link, Lock, Unlink } from '@lucide/vue'
+import { AudioLines, CircleAlert, Cloud, Link, Lock, Unlink } from '@lucide/vue'
 import type { Component } from 'vue'
 import { AUTO_COVERS, type CoverKind } from '@/components/covers'
 import { coverUrl, type AutoPlaylist, type Playlist } from '@/library'
@@ -45,9 +45,10 @@ export function playlistWhere(p: Playlist, shareSetUp: boolean): Badge | null {
   return null
 }
 
-/** A linked one's link: Linked, or Unfollowed. */
+/** A linked one's link: Linked, or Unfollowed; a Spotify one's: Spotify (changed there: the "!"). */
 export function playlistLink(p: Playlist): Badge | null {
   if (p.kind !== 'linked') return null
+  if (p.spotify) return p.spotify.changed ? { icon: CircleAlert, label: 'Changed on Spotify' } : { icon: AudioLines, label: 'Spotify' }
   return p.following ? { icon: Link, label: 'Linked' } : { icon: Unlink, label: 'Unfollowed' }
 }
 
@@ -62,6 +63,7 @@ export function playlistBadge(p: Playlist, shareSetUp: boolean): (Badge & { also
 /** Where it lives, for its menu: linked, synced or kept here (with a share), or nothing to choose (no share). */
 export function playlistKind(p: Playlist, shareSetUp: boolean): CoverKind {
   const customCover = !!p.customCover
+  if (p.spotify) return { kind: 'playlist', lives: 'spotify', customCover }
   if (p.kind === 'linked') return { kind: 'playlist', lives: p.following ? 'linked' : 'unfollowed', customCover }
   if (!shareSetUp) return { kind: 'playlist', lives: 'plain', customCover }
   return { kind: 'playlist', lives: p.localOnly ? 'here' : 'synced', customCover }

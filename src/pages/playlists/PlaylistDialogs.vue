@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * The questions and explanations of your playlists' menus: Delete (what happens, by how it lives), Stop following the
- * file (the songs stay, the file is left alone), and the About items (synced, only on this device, following a file).
+ * file (the songs stay, the file is left alone), and the About items (synced, only on this device, following a file
+ * or Spotify).
  */
 import { computed } from 'vue'
 import { ConfirmDialog } from '@/components/settings'
@@ -16,13 +17,27 @@ const dialog = computed(() => {
   const p = a.playlist
   const file = p.file ? `“${p.file}”` : 'its playlist file'
   if (a.what === 'delete') {
-    const text =
-      p.kind === 'linked'
+    const text = p.spotify
+      ? 'It leaves Melue; the playlist on Spotify stays as it is.'
+      : p.kind === 'linked'
         ? `It leaves Melue; ${file} stays where it is. If you changed it, it’s kept in Recently deleted for 30 days (Settings), where the file can also be followed again.`
         : p.synced && !p.localOnly
           ? 'It leaves your other devices too. It’s kept in Recently deleted for 30 days.'
           : 'Its songs stay in your library.'
     return { title: `Delete “${p.name}”?`, text, action: 'Delete', danger: true }
+  }
+  if (a.what === 'unlink' && p.spotify) {
+    return {
+      title: 'Stop following Spotify?',
+      text: `“${p.name}” stays as it is, as your own playlist on this device. Its changes on Spotify don’t come in any more.`,
+      action: 'Stop following',
+    }
+  }
+  if (p.spotify) {
+    return {
+      title: 'About Spotify playlists',
+      text: `“${p.name}” follows a playlist on Spotify, read from its link (no sign-in): songs added or removed there show up here, matched to the songs you have; the others show greyed. Spotify only shares the first 100 songs by itself: a longer playlist gets the rest from a CSV (Update list). Stop following Spotify keeps it as your own playlist.`,
+    }
   }
   if (a.what === 'unlink') {
     return {

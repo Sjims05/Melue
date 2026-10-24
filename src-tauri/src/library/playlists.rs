@@ -54,8 +54,22 @@ pub struct Playlist {
     pub custom_cover: Option<String>,
     /// Linked: its file is in the synced folder (every device has it; its cover syncs too).
     pub file_synced: bool,
+    /// A Spotify playlist (spotify.rs): its id there, its number of songs there, and whether it changed there since
+    /// the last update (a long one: update its list).
+    pub spotify: Option<SpotifyState>,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+/// A Spotify playlist's state (Playlist.spotify).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpotifyState {
+    pub id: String,
+    /// Its songs on Spotify (more than 100: its list comes from a CSV).
+    pub total: Option<i64>,
+    /// Changed on Spotify since the last update of its list (a long one).
+    pub changed: bool,
 }
 
 /// A song in a playlist.
@@ -70,7 +84,8 @@ pub struct PlaylistEntry {
     pub state: String,
     /// Linked: its line in the file. Synced, not on this device yet: its path on the share.
     pub file_entry: Option<String>,
-    /// Synced, not on this device yet: its title and artist (from the device that added it).
+    /// Synced, not on this device yet: its title and artist (from the device that added it). A Spotify playlist's
+    /// song that isn't here: its title and artist on Spotify.
     pub sync_title: Option<String>,
     pub sync_artist: Option<String>,
     /// None: a line of the file that matches no song in the library ("not found").
@@ -211,7 +226,8 @@ impl Library {
                     p.sync_id IS NOT NULL, p.local_only,
                     count(e.id) FILTER (WHERE p.kind = 'app' AND e.track_id IS NULL), p.following,
                     (SELECT c.file FROM covers c WHERE c.id = p.cover_id),
-                    coalesce((SELECT f.synced FROM folders f WHERE f.id = p.file_folder_id), 0)
+                    coalesce((SELECT f.synced FROM folders f WHERE f.id = p.file_folder_id), 0),
+                    p.spotify_id, p.spotify_total, p.spotify_changed
              FROM playlists p
              LEFT JOIN playlist_entries e ON e.playlist_id = p.id
              LEFT JOIN tracks t ON t.id = e.track_id AND t.missing_since IS NULL
@@ -242,6 +258,7 @@ impl Library {
                     following: r.get(18)?,
                     custom_cover: r.get(19)?,
                     file_synced: r.get(20)?,
+                    spotify: r.get::<_, Option<String>>(21)?.map(|id| SpotifyState { id, total: r.get(22).ok().flatten(), changed: r.get(23).unwrap_or(false) }),
                     covers: Vec::new(),
                 })
             })
@@ -279,15 +296,18 @@ impl Library {
         let entries = stmt
             .query_map([id], |r| {
                 let track = if r.get::<_, Option<i64>>(0)?.is_some() { Some(track_row(r)?) } else { None };
+                let file_entry: Option<String> = r.get(TRACK_COLUMN_COUNT + 4)?;
+                // A Spotify playlist's song that isn't here: its title and artist, from its line.
+                let spotify = file_entry.as_deref().filter(|_| track.is_none()).and_then(super::spotify::from_line);
                 Ok(PlaylistEntry {
                     track,
                     id: r.get(TRACK_COLUMN_COUNT)?,
                     position: r.get(TRACK_COLUMN_COUNT + 1)?,
                     added_at: r.get(TRACK_COLUMN_COUNT + 2)?,
                     state: r.get(TRACK_COLUMN_COUNT + 3)?,
-                    file_entry: r.get(TRACK_COLUMN_COUNT + 4)?,
-                    sync_title: r.get(TRACK_COLUMN_COUNT + 5)?,
-                    sync_artist: r.get(TRACK_COLUMN_COUNT + 6)?,
+                    sync_title: r.get::<_, Option<String>>(TRACK_COLUMN_COUNT + 5)?.or_else(|| spotify.as_ref().map(|s| s.title.clone())),
+                    sync_artist: r.get::<_, Option<String>>(TRACK_COLUMN_COUNT + 6)?.or_else(|| spotify.as_ref().map(|s| s.artist.clone())),
+                    file_entry,
                 })
             })
             .map_err(err)?;

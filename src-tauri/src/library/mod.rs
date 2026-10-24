@@ -42,6 +42,9 @@ mod playlists_tests;
 pub mod scan;
 pub mod scanner;
 pub mod shared_lists;
+pub mod spotify;
+#[cfg(test)]
+mod spotify_tests;
 #[cfg(test)]
 mod shared_lists_tests;
 mod search;
