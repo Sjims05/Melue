@@ -35,7 +35,7 @@ fn a_short_playlist_is_matched_and_follows_spotify() {
     let t = library("spotify-short");
     let index = t.library.track_index().unwrap();
     // A version note on Spotify, and another artist with it: still the song here.
-    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Band, Guest", "Song One - Remastered 2001", 1), song("Other", "Not Here", 200)], total: Some(2) };
+    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Band, Guest", "Song One - Remastered 2001", 1), song("Other", "Not Here", 200)], total: Some(2), cover: None };
     let id = t.library.add_spotify_list("abc", &list, &index).unwrap();
     assert_eq!(songs(&t, id), [("Song One".to_string(), true), ("Not Here".to_string(), false)]);
     // Changed on Spotify: the change comes in.
@@ -49,7 +49,7 @@ fn a_long_playlist_says_it_changed_and_takes_its_list_from_a_csv() {
     let t = library("spotify-long");
     let index = t.library.track_index().unwrap();
     // 150 songs on Spotify: the first ones only.
-    let list = SpotifyList { name: "Long".into(), songs: vec![song("Band", "Song One", 1)], total: Some(150) };
+    let list = SpotifyList { name: "Long".into(), songs: vec![song("Band", "Song One", 1)], total: Some(150), cover: None };
     let id = t.library.add_spotify_list("long", &list, &index).unwrap();
     let seen: Option<String> = t.library.conn().query_row("SELECT spotify_seen FROM playlists WHERE id = ?1", [id], |r| r.get(0)).unwrap();
     // The same on Spotify: nothing to do. Changed there: the "!".
@@ -69,7 +69,7 @@ fn a_long_playlist_says_it_changed_and_takes_its_list_from_a_csv() {
 fn a_missing_song_fills_in_when_it_comes_to_the_library() {
     let t = library("spotify-arrives");
     let index = t.library.track_index().unwrap();
-    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Band", "Song One", 1), song("Other", "Later", 1)], total: Some(2) };
+    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Band", "Song One", 1), song("Other", "Later", 1)], total: Some(2), cover: None };
     let id = t.library.add_spotify_list("arrives", &list, &index).unwrap();
     assert_eq!(songs(&t, id), [("Song One".to_string(), true), ("Later".to_string(), false)]);
     // Its file put in the music folder: the next scan matches it, with no update from Spotify.
@@ -84,7 +84,7 @@ fn a_missing_song_fills_in_when_it_comes_to_the_library() {
 fn stopping_following_spotify_keeps_the_songs_and_stops_reading_it() {
     let t = library("spotify-stop");
     let index = t.library.track_index().unwrap();
-    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Band", "Song One", 1)], total: Some(1) };
+    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Band", "Song One", 1)], total: Some(1), cover: None };
     let id = t.library.add_spotify_list("stop", &list, &index).unwrap();
     t.library.unlink_playlist(id).unwrap();
     let p = t.library.playlist(id).unwrap();

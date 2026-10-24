@@ -1,5 +1,6 @@
 //! Running scans: every switched-on folder, one scan at a time, at start-up, when asked (the refresh
-//! button), and on Android when the music index changes or the app comes back to the foreground.
+//! button), on a computer when a music folder changes (watcher.rs), and on Android when the music index changes
+//! or the app comes back to the foreground.
 //! A scan lists every folder first (songs show up with their file names), then reads the tags and covers
 //! of new and changed songs (tags.rs), groups them into albums and artists (grouping.rs), and brings the
 //! linked playlists in line with their files (linked.rs). Progress goes to the UI as `library-scan` events,
@@ -132,6 +133,9 @@ fn scan_folders(app: &AppHandle) -> Result<ScanSummary> {
 }
 
 fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
+    // The folders watched: the ones scanned (folders switched on or off, added or removed since).
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    super::watcher::refresh(app);
     let library = app.state::<Library>();
     let _ = app.emit(SCAN_EVENT, ScanEvent::Started);
     let mut total = ScanSummary::default();

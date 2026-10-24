@@ -42,16 +42,18 @@ impl Library {
         let conn = self.conn();
         let mut statement = conn
             .prepare(
-                "SELECT p.id, p.kind, p.sync_id, p.file_path, p.cover_changed_at, (SELECT c.file FROM covers c WHERE c.id = p.cover_id)
+                "SELECT p.id, p.kind, p.sync_id, p.file_path, p.cover_changed_at, (SELECT c.file FROM covers c WHERE c.id = p.cover_id),
+                        p.spotify_id IS NOT NULL
                  FROM playlists p
-                 WHERE (p.kind = 'app' AND p.sync_id IS NOT NULL AND NOT p.local_only)
+                 WHERE ((p.kind = 'app' OR p.spotify_id IS NOT NULL) AND p.sync_id IS NOT NULL AND NOT p.local_only)
                     OR (p.kind = 'linked' AND p.file_folder_id = ?1)",
             )
             .map_err(err)?;
         let rows = statement
             .query_map(params![folder.id], |r| {
                 let kind: String = r.get(1)?;
-                let key = if kind == "app" {
+                // Synced playlists (Spotify ones too) by their sync id; a file's by its path.
+                let key = if kind == "app" || r.get::<_, bool>(6)? {
                     format!("p-{}", r.get::<_, String>(2)?)
                 } else {
                     let path: String = r.get(3)?;

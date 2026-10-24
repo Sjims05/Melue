@@ -9,6 +9,7 @@ import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
 import { library } from '@/library'
 import { describeSyncFailure, sync, syncing, type SyncFailure } from '@/library/sync'
 import { toast } from '@/lib/toast'
+import { router } from '@/router'
 
 const OWN_DRAG = '[role=slider], .song-handle, input, textarea, [data-no-pull]'
 /** How far the mark comes down before letting go refreshes, and the furthest it comes. */
@@ -23,7 +24,9 @@ async function refresh() {
     await syncing.now()
   } catch (e) {
     const kind = (e as SyncFailure)?.kind
-    if (kind !== 'cancelled' && kind !== 'running') toast(`Can't sync: ${describeSyncFailure(e)}`)
+    // Tapped: Settings at the sync's status, where its problem and fix are.
+    const show = () => router.push({ path: '/settings', query: { setting: 'sync.status' } })
+    if (kind !== 'cancelled' && kind !== 'running') toast(`Can't sync: ${describeSyncFailure(e)}`, undefined, undefined, show)
   }
 }
 

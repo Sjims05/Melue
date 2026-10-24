@@ -104,8 +104,8 @@ const refresh = usePullToRefresh(scroller)
           </div>
         </Transition>
       </RouterView>
-      <!-- Notes like "Added to the queue", above the mini player. -->
-      <Toasts />
+      <!-- Notes like "Added to the queue", above the mini player (Now playing shows its own). -->
+      <Toasts v-if="!nowPlayingOpen" />
     </div>
     <MiniPlayer />
     <BottomBar :current="tab" @top="toTop" />
@@ -130,6 +130,10 @@ const refresh = usePullToRefresh(scroller)
           <main class="app-column pb-10">
             <KeepAlive><NowPlayingPage /></KeepAlive>
           </main>
+        </div>
+        <!-- Its notes ("Added to …"): at its bottom, above the phone's own bar (the sheet covers the others). -->
+        <div class="pointer-events-none absolute inset-x-0 bottom-[env(safe-area-inset-bottom)] h-0">
+          <Toasts />
         </div>
       </div>
     </Transition>

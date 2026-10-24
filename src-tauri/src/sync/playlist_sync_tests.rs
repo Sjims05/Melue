@@ -230,10 +230,32 @@ fn only_on_this_device_isnt_synced() {
     let share = TestShare::new("devices-local");
     let (desktop, phone) = (Device::new("desktop", &["A"]), Device::new("phone", &["A"]));
     let private = desktop.make_playlist("Private", &["A"]);
-    desktop.lib().set_playlist_local_only(private, true).unwrap();
+    desktop.lib().set_playlist_local_only(private, true, false).unwrap();
     desktop.sync(&share);
     phone.sync(&share);
     assert_eq!(phone.playlist("Private"), None);
+}
+
+#[test]
+fn only_on_this_device_can_take_it_off_the_others_and_syncing_again_brings_it_back() {
+    let share = TestShare::new("devices-unshare");
+    let (desktop, phone) = (Device::new("desktop", &["A"]), Device::new("phone", &["A"]));
+    let mine = desktop.make_playlist("Mine", &["A"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    assert!(phone.playlist("Mine").is_some());
+    // Kept only on the desktop and taken off the others: gone on the phone, not in its Recently deleted.
+    desktop.lib().set_playlist_local_only(mine, true, true).unwrap();
+    desktop.sync(&share);
+    phone.sync(&share);
+    assert_eq!(phone.playlist("Mine"), None);
+    assert!(phone.lib().deleted_playlists().unwrap().is_empty());
+    assert_eq!(desktop.playlist("Mine").unwrap(), vec!["A"]);
+    // Synced again: back on the phone.
+    desktop.lib().set_playlist_local_only(mine, false, false).unwrap();
+    desktop.sync(&share);
+    phone.sync(&share);
+    assert_eq!(phone.playlist("Mine").unwrap(), vec!["A"]);
 }
 
 #[test]
@@ -363,7 +385,7 @@ fn a_synced_playlists_cover_goes_to_the_other_devices_and_so_does_reverting_it()
     phone.sync(&share);
     // Only on this device: its cover stays here.
     let mine = desktop.make_playlist("Mine", &["A"]);
-    desktop.lib().set_playlist_local_only(mine, true).unwrap();
+    desktop.lib().set_playlist_local_only(mine, true, false).unwrap();
 
     let picture = std::fs::read(crate::library::testkit::sample("cover.png")).unwrap();
     desktop.lib().set_playlist_cover(mix, &picture).unwrap();
@@ -453,4 +475,134 @@ fn settings_go_across_devices_the_newest_change_winning_and_a_new_device_doesnt_
     assert!(exchange(&desktop).is_empty());
     assert!(exchange(&phone).is_empty());
     assert_eq!(desktop.lib().shared_settings_snapshot().unwrap()["display.upNextPrimary"], json!(true));
+}
+
+// ---- Spotify playlists: synced like Melue's own, with Spotify's list as their reference.
+
+fn spotify(songs: &[&str]) -> crate::library::spotify::SpotifyList {
+    let songs = songs.iter().map(|s| crate::library::spotify::SpotifySong { title: s.to_string(), artist: "Band".into(), duration_ms: Some(1000) });
+    crate::library::spotify::SpotifyList { name: "Mix".into(), songs: songs.collect(), total: None, cover: None }
+}
+
+impl Device {
+    fn add_spotify(&self, songs: &[&str]) -> i64 {
+        let index = self.lib().track_index().unwrap();
+        let mut list = spotify(songs);
+        list.total = Some(songs.len());
+        self.lib().add_spotify_list("mix", &list, &index).unwrap()
+    }
+
+    /// Spotify playlist "Mix" read again (as it is now there).
+    fn read_spotify(&self, songs: &[&str]) {
+        let index = self.lib().track_index().unwrap();
+        let mut list = spotify(songs);
+        list.total = Some(songs.len());
+        self.lib().update_from_list(self.playlist_id("Mix"), None, &list, &index).unwrap();
+    }
+
+    /// A playlist's songs and their states ("A", or "A: removed_here"; not here: "(A)").
+    fn states(&self, name: &str) -> Vec<String> {
+        let entries = self.lib().playlist_entries(self.playlist_id(name)).unwrap();
+        entries
+            .into_iter()
+            .map(|e| {
+                let title = match e.track {
+                    Some(t) => t.title,
+                    None => format!("({})", e.sync_title.unwrap_or_default()),
+                };
+                if e.state == "both" { title } else { format!("{title}: {}", e.state) }
+            })
+            .collect()
+    }
+
+    fn follows_spotify(&self, name: &str) -> bool {
+        self.lib().playlist(self.playlist_id(name)).unwrap().spotify.is_some()
+    }
+}
+
+#[test]
+fn a_spotify_playlist_syncs_with_its_reference_and_your_changes() {
+    let share = TestShare::new("devices-spotify");
+    let (desktop, phone) = (Device::new("desktop", &["A", "B"]), Device::new("phone", &["A", "B"]));
+    desktop.add_spotify(&["A", "B", "Gone"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    // On the phone: following Spotify, matched to the phone's songs.
+    assert!(phone.follows_spotify("Mix"));
+    assert_eq!(phone.states("Mix"), ["A", "B", "(Gone)"]);
+    // Removed on the phone: greyed on the desktop (Restore), still followed.
+    phone.lib().remove_from_playlist(phone.playlist_id("Mix"), &[phone.lib().playlist_entries(phone.playlist_id("Mix")).unwrap()[0].id]).unwrap();
+    phone.sync(&share);
+    desktop.sync(&share);
+    assert_eq!(desktop.states("Mix"), ["A: removed_here", "B", "(Gone)"]);
+    // A song added on Spotify, read by the desktop only: the phone takes it from the share, once.
+    desktop.read_spotify(&["A", "B", "Gone", "C"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    phone.read_spotify(&["A", "B", "Gone", "C"]);
+    phone.sync(&share);
+    assert_eq!(phone.states("Mix"), ["A: removed_here", "B", "(Gone)", "(C)"]);
+}
+
+#[test]
+fn a_spotify_change_read_on_two_devices_comes_in_once() {
+    let share = TestShare::new("devices-spotify-both");
+    let (desktop, phone) = (Device::new("desktop", &["A", "B"]), Device::new("phone", &["A", "B"]));
+    desktop.add_spotify(&["A"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    // Both read the new song before either synced.
+    desktop.read_spotify(&["A", "B"]);
+    phone.read_spotify(&["A", "B"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    desktop.sync(&share);
+    assert_eq!(phone.states("Mix"), ["A", "B"]);
+    assert_eq!(desktop.states("Mix"), ["A", "B"]);
+}
+
+#[test]
+fn stopping_following_spotify_stops_it_everywhere_and_keeps_the_songs() {
+    let share = TestShare::new("devices-spotify-stop");
+    let (desktop, phone) = (Device::new("desktop", &["A"]), Device::new("phone", &["A"]));
+    desktop.add_spotify(&["A", "Gone"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    desktop.lib().unlink_playlist(desktop.playlist_id("Mix")).unwrap();
+    desktop.sync(&share);
+    phone.sync(&share);
+    assert!(!phone.follows_spotify("Mix"));
+    assert_eq!(phone.states("Mix"), ["A", "(Gone)"]);
+    assert_eq!(desktop.states("Mix"), ["A", "(Gone)"]);
+}
+
+#[test]
+fn a_spotify_playlist_can_be_kept_only_on_one_device() {
+    let share = TestShare::new("devices-spotify-local");
+    let (desktop, phone) = (Device::new("desktop", &["A"]), Device::new("phone", &["A"]));
+    let mix = desktop.add_spotify(&["A"]);
+    desktop.lib().set_playlist_local_only(mix, true, false).unwrap();
+    desktop.sync(&share);
+    phone.sync(&share);
+    assert_eq!(phone.playlist("Mix"), None);
+}
+
+#[test]
+fn songs_that_stay_keep_their_entries_when_another_device_changes_the_playlist() {
+    let share = TestShare::new("devices-keep-ids");
+    let (desktop, phone) = (Device::new("desktop", &["A", "B", "C"]), Device::new("phone", &["A", "B", "C"]));
+    desktop.make_playlist("Gym", &["A", "B"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    let ids = |d: &Device| d.lib().playlist_entries(d.playlist_id("Gym")).unwrap().into_iter().map(|e| e.id).collect::<Vec<_>>();
+    let before = ids(&desktop);
+    // Added and removed on the phone: on the desktop, A's entry stays, B's goes, C's is new.
+    phone.lib().add_to_playlist(phone.playlist_id("Gym"), &[phone.track("C")], None).unwrap();
+    phone.remove_from("Gym", "B");
+    phone.sync(&share);
+    desktop.sync(&share);
+    assert_eq!(desktop.playlist("Gym").unwrap(), vec!["A", "C"]);
+    let after = ids(&desktop);
+    assert_eq!(after[0], before[0]);
+    assert!(!before.contains(&after[1]));
 }

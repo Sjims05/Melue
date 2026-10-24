@@ -1,8 +1,9 @@
 /**
  * What your playlists' menus do, the same on the Playlists page and a playlist's own page: play it (and the rest of
- * the playing items), rename it (its name turns into a text field: `renaming`), keep it only here or sync it, stop
- * following its file or Spotify (asked first) or follow it again, delete it (asked first), copy a Spotify playlist's
- * songs you don't have ("Artist – Title" lines), and the About items (`asking`, shown by PlaylistDialogs).
+ * the playing items), rename it (its name turns into a text field: `renaming`), keep it only here (asked first: the
+ * other devices keep theirs, or it's taken off them) or sync it, stop following its file or Spotify (asked first)
+ * or follow it again, delete it (asked first), copy a Spotify playlist's songs you don't have ("Artist – Title"
+ * lines), and the About items (`asking`, shown by PlaylistDialogs).
  */
 import { ClipboardList } from '@lucide/vue'
 import { ref } from 'vue'
@@ -12,8 +13,9 @@ import { librarySync } from '@/library/sync'
 import { toast } from '@/lib/toast'
 import { exportList, listAction } from '@/player/songs'
 
-/** A question or explanation about a playlist: delete it? stop following its file? about how it lives. */
-export type PlaylistAsk = { what: 'delete' | 'unlink' | 'about'; playlist: Playlist }
+/** A question or explanation about a playlist: delete it? keep it only here? stop following its file? about how it
+ * lives. */
+export type PlaylistAsk = { what: 'delete' | 'keepHereOnly' | 'unlink' | 'about'; playlist: Playlist }
 
 export function usePlaylistActions(changed: () => unknown, deleted?: () => unknown) {
   const renaming = ref<number | null>(null)
@@ -23,12 +25,15 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
 
   async function act(p: Playlist, action: CoverAction) {
     if (action === 'rename') renaming.value = p.id
-    else if (action === 'delete' || action === 'unlink' || action === 'about') asking.value = { what: action, playlist: p }
-    else if (action === 'keepHereOnly' || action === 'syncEverywhere') {
-      await librarySync.setPlaylistLocalOnly(p.id, action === 'keepHereOnly')
+    else if (action === 'delete' || action === 'keepHereOnly' || action === 'unlink' || action === 'about') asking.value = { what: action, playlist: p }
+    else if (action === 'syncEverywhere') {
+      await librarySync.setPlaylistLocalOnly(p.id, false)
       await changed()
     } else if (action === 'changeCover') {
       covering.value = p
+    } else if (action === 'songsCover' || action === 'spotifyCover') {
+      await library.setSongsCover(p.id, action === 'songsCover')
+      await changed()
     } else if (action === 'revertCover') {
       await library.clearPlaylistCover(p.id)
       await changed()
@@ -46,8 +51,12 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
     if (name !== p.name) await library.renamePlaylist(p.id, name)
     await changed()
   }
-  async function confirm(ask: PlaylistAsk) {
-    if (ask.what === 'delete') {
+  /** `removeElsewhere`: Keep only on this device's second choice (deleted from the other devices). */
+  async function confirm(ask: PlaylistAsk, removeElsewhere = false) {
+    if (ask.what === 'keepHereOnly') {
+      await librarySync.setPlaylistLocalOnly(ask.playlist.id, true, removeElsewhere)
+      await changed()
+    } else if (ask.what === 'delete') {
       await library.deletePlaylist(ask.playlist.id)
       await (deleted ?? changed)()
     } else if (ask.what === 'unlink') {

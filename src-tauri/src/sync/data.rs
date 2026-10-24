@@ -447,6 +447,8 @@ pub fn run(app: &AppHandle) -> Result<()> {
     }
     if !playlists.changed.is_empty() {
         changes::emit(app, LibraryChange::playlists(ChangeReason::Playlists, playlists.changed.clone()));
+        // A Spotify playlist's picture changed on another device's read (or a playlist new here): downloaded here.
+        crate::library::spotify::update_covers_soon(app);
     }
     if playlists.conflicts_changed {
         super::playlist_sync::emit_conflicts(app);

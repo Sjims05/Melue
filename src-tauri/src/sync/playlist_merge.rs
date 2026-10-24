@@ -7,13 +7,18 @@
 //! - the name is the side's that renamed (both renamed differently: a conflict).
 //!
 //! Songs are compared by their key: their path on the share, or for a song only on one device
-//! "local:<device>/<id>".
+//! "local:<device>/<id>", or a Spotify playlist's song by its line from Spotify ("spotify:…"). A Spotify song
+//! added on both sides is the same change (both read it from Spotify): it's in once. A Spotify playlist's
+//! reference (Spotify's list as last read) is the side's that changed it; both: the newest read, and a side that
+//! stopped following Spotify wins.
 //!
 //! [`decide`] adds playlists made, deleted or missing on either side.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+
+use crate::library::spotify::SpotifyRef;
 
 /// A song in a synced playlist.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,12 +35,14 @@ pub struct SyncEntry {
     pub duration_ms: Option<i64>,
 }
 
-/// A synced playlist's name and songs.
+/// A synced playlist's name and songs, and a Spotify playlist's reference.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistData {
     pub name: String,
     pub entries: Vec<SyncEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spotify: Option<SpotifyRef>,
 }
 
 impl PlaylistData {
@@ -43,9 +50,10 @@ impl PlaylistData {
         self.entries.iter().map(|e| e.key.as_str()).collect()
     }
 
-    /// The same name and songs in the same order (titles aside: they can differ between devices).
+    /// The same name and songs in the same order (titles aside: they can differ between devices), and the same
+    /// Spotify reference.
     pub fn same(&self, other: &PlaylistData) -> bool {
-        self.name == other.name && self.keys() == other.keys()
+        self.name == other.name && self.keys() == other.keys() && self.spotify == other.spotify
     }
 }
 
@@ -160,7 +168,17 @@ pub fn merge(base: &PlaylistData, mine: &PlaylistData, theirs: &PlaylistData) ->
     let known: HashMap<&str, &SyncEntry> =
         base.entries.iter().chain(&theirs.entries).chain(&mine.entries).map(|e| (e.key.as_str(), e)).collect();
     let entries = keys.into_iter().map(|k| known[k].clone()).collect();
-    Some(PlaylistData { name, entries })
+    let spotify = if mine.spotify == base.spotify {
+        theirs.spotify.clone()
+    } else if theirs.spotify == base.spotify {
+        mine.spotify.clone()
+    } else {
+        match (&mine.spotify, &theirs.spotify) {
+            (Some(m), Some(t)) => Some(if t.read_at > m.read_at { t } else { m }.clone()),
+            _ => None,
+        }
+    };
+    Some(PlaylistData { name, entries, spotify })
 }
 
 fn counts<'a>(keys: &[&'a str]) -> HashMap<&'a str, usize> {
@@ -220,8 +238,16 @@ pub fn merge_keys<'a>(base: &[&'a str], mine: &[&'a str], theirs: &[&'a str]) ->
     let (order, other) = if theirs_moved { (theirs, mine) } else { (mine, theirs) };
     let (b, m, t) = (counts(base), counts(mine), counts(theirs));
     let count = |c: &HashMap<&str, usize>, k: &str| c.get(k).copied().unwrap_or(0);
-    // How many times each song ends up in it: added on either side, removed on either side.
-    let target = |k: &str| (count(&m, k) + count(&t, k)).saturating_sub(count(&b, k));
+    // How many times each song ends up in it: added on either side, removed on either side. A Spotify song added
+    // on both: read from Spotify by both, once.
+    let target = |k: &str| {
+        let (b, m, t) = (count(&b, k), count(&m, k), count(&t, k));
+        if k.starts_with("spotify:") && m > b && t > b {
+            m.max(t)
+        } else {
+            (m + t).saturating_sub(b)
+        }
+    };
 
     let mut result: Vec<&str> = Vec::new();
     let mut have: HashMap<&str, usize> = HashMap::new();

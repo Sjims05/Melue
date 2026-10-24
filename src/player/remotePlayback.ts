@@ -9,6 +9,7 @@ import { Monitor, MonitorSpeaker, Smartphone, Unplug } from '@lucide/vue'
 import { remote, type Device } from '@/library/remote'
 import { openMenu } from '@/lib/menuDrawer'
 import { toast } from '@/lib/toast'
+import { router } from '@/router'
 import { syncNowPlaying } from './nowPlaying'
 import { playingOn } from './playingOn'
 
@@ -42,7 +43,8 @@ export async function playOn(device: Device) {
     const now = await remote.status().catch(() => null)
     if (now?.[1]) playingOn.state = now[1]
     await syncNowPlaying().catch(() => {})
-    toast(`Playing on ${connected.name}`, MonitorSpeaker)
+    // Tapped: Now playing, with the other device's controls.
+    toast(`Playing on ${connected.name}`, MonitorSpeaker, undefined, () => router.push('/now-playing'))
   } catch (e) {
     toast(`Couldn’t play on ${device.name}: ${e}`, MonitorSpeaker)
   } finally {

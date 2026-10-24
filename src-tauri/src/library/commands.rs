@@ -643,7 +643,16 @@ pub fn library_add_spotify_playlist(app: AppHandle, library: State<'_, Library>,
     let index = library.track_index()?;
     let id = library.add_spotify_playlist(&link, &index)?;
     changes::emit(&app, LibraryChange::playlists(ChangeReason::Playlists, vec![id]));
+    super::spotify::update_covers_soon(&app);
     Ok(id)
+}
+
+/// A Spotify playlist shows its songs' covers (`songs`) or Spotify's picture.
+#[tauri::command(async)]
+pub fn library_set_songs_cover(app: AppHandle, library: State<'_, Library>, id: i64, songs: bool) -> Result<()> {
+    library.set_songs_cover(id, songs)?;
+    changes::emit(&app, LibraryChange::playlists(ChangeReason::Playlists, vec![id]));
+    Ok(())
 }
 
 /// Reads a Spotify playlist (or, `id` None, all of them) again now. Whether any changed here.

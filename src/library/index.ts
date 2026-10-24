@@ -130,7 +130,9 @@ export interface Playlist {
   fileSynced: boolean
   /** A Spotify playlist (from its link): its id there, its songs there, and whether it changed there since its list was
    * last updated (one with more than 100 songs: update its list from a CSV). */
-  spotify: { id: string; total: number | null; changed: boolean } | null
+  /** A Spotify playlist: its id there, its songs there, changed there (the "!"), Spotify's picture (a cover file,
+   * once downloaded), and whether its songs' covers show instead. */
+  spotify: { id: string; total: number | null; changed: boolean; cover: string | null; songsCover: boolean } | null
   createdAt: number
   updatedAt: number
 }
@@ -508,6 +510,8 @@ export const library = {
   forgetMissing: (ids?: number[]) => invoke<number>('library_forget_missing', { ids: ids ?? null }),
   /** Spotify playlists (src-tauri library/spotify.rs): one from its link (a public playlist), its id here. */
   addSpotifyPlaylist: (link: string) => invoke<number>('library_add_spotify_playlist', { link }),
+  /** A Spotify playlist shows its songs' covers (`songs`) or Spotify's picture, on every device. */
+  setSongsCover: (id: number, songs: boolean) => invoke<void>('library_set_songs_cover', { id, songs }),
   /** Read again now (one, or all): whether any changed here. */
   updateSpotifyPlaylists: (id?: number) => invoke<boolean>('library_update_spotify_playlists', { id: id ?? null }),
   /** A long one's full list from a CSV: its text (a phone's picked file), or a .csv file's path (a computer). */

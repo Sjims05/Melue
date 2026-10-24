@@ -6,7 +6,7 @@
  * an auto playlist hides. A song's card uses the
  * song's own menu (songMenu): Add to playlist is for songs only.
  */
-import { ClipboardList, Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
+import { AudioLines, ClipboardList, Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, LayoutGrid, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
 import { NextIcon, PlayIcon } from '@/components/player/icons'
 import type { Component } from 'vue'
 
@@ -28,12 +28,24 @@ export type CoverAction =
   | 'export'
   | 'changeCover'
   | 'revertCover'
+  | 'songsCover'
+  | 'spotifyCover'
 
 /** What the card is; a playlist also says where it lives. */
 export type CoverKind =
   | { kind: 'album' }
-  /** A playlist; `customCover`: it has its own cover (Revert to default cover). */
-  | { kind: 'playlist'; lives: 'synced' | 'here' | 'linked' | 'unfollowed' | 'spotify' | 'plain'; customCover?: boolean }
+  /**
+   * A playlist; `customCover`: it has its own cover (Revert to default cover). A Spotify one also says where it
+   * lives (`synced`: with a share; true synced, false only here) and, without its own cover, which picture it shows
+   * (`spotifyCover`: Spotify's or its songs'; the other one is offered).
+   */
+  | {
+      kind: 'playlist'
+      lives: 'synced' | 'here' | 'linked' | 'unfollowed' | 'spotify' | 'plain'
+      customCover?: boolean
+      synced?: boolean
+      spotifyCover?: 'spotify' | 'songs'
+    }
   | { kind: 'auto' }
   /** An artist or a music folder (their rows): only playing them. */
   | { kind: 'list' }
@@ -66,7 +78,7 @@ export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAc
     // Where it lives: synced (or not, with a share), linked to a file; 'plain': no share, nothing to choose.
     const lives: MenuItem<CoverAction>[] =
       what.lives === 'synced'
-        ? [{ action: 'keepHereOnly', label: 'Keep only on this device', icon: Lock }]
+        ? [{ action: 'keepHereOnly', label: 'Keep only on this device…', icon: Lock }]
         : what.lives === 'here'
           ? [{ action: 'syncEverywhere', label: 'Sync to your other devices', icon: Cloud }]
           : what.lives === 'linked'
@@ -75,6 +87,11 @@ export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAc
               ? [{ action: 'follow', label: 'Follow the file again', icon: Link }]
               : what.lives === 'spotify'
                 ? [
+                    ...(what.synced === true
+                      ? [{ action: 'keepHereOnly' as const, label: 'Keep only on this device…', icon: Lock }]
+                      : what.synced === false
+                        ? [{ action: 'syncEverywhere' as const, label: 'Sync to your other devices', icon: Cloud }]
+                        : []),
                     { action: 'copyMissing', label: 'Copy the songs you don’t have', icon: ClipboardList },
                     { action: 'unlink', label: 'Stop following Spotify…', icon: Unlink },
                   ]
@@ -86,6 +103,8 @@ export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAc
       { action: 'rename', label: 'Rename', icon: Pencil, apart: true },
       { action: 'changeCover', label: 'Change cover…', icon: ImagePlus },
       ...(what.customCover ? [{ action: 'revertCover' as const, label: 'Revert to default cover', icon: ImageMinus }] : []),
+      ...(what.spotifyCover === 'spotify' ? [{ action: 'songsCover' as const, label: 'Use the songs’ covers', icon: LayoutGrid }] : []),
+      ...(what.spotifyCover === 'songs' ? [{ action: 'spotifyCover' as const, label: 'Use Spotify’s cover', icon: AudioLines }] : []),
       ...lives,
       { action: 'delete', label: 'Delete…', icon: Trash2, danger: true, apart: true },
       ...(about ? [{ action: 'about' as const, label: about, icon: Info, apart: true }] : []),

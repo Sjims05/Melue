@@ -51,6 +51,8 @@ mod search;
 #[cfg(test)]
 mod schema_tests;
 pub mod tags;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod watcher;
 pub mod sync;
 pub mod tracks;
 #[cfg(test)]

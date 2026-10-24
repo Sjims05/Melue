@@ -23,6 +23,8 @@ export const libraryState = reactive({
   /** A scan running: what it's doing ("Reading tags: 450 of 1.200"), and how far (0 to 1, or null when unknown). */
   scanning: null as { line: string; progress: number | null } | null,
   error: '',
+  /** A song list to open when Settings shows (a toast tapped: the songs left out, only on this device). */
+  listToOpen: null as 'onlyHere' | null,
 })
 
 export async function refreshLibrary(): Promise<void> {

@@ -70,6 +70,10 @@ pub struct SpotifyState {
     pub total: Option<i64>,
     /// Changed on Spotify since the last update of its list (a long one).
     pub changed: bool,
+    /// Spotify's picture for it (a file in the covers folder), once downloaded.
+    pub cover: Option<String>,
+    /// Its songs' covers shown instead of Spotify's picture.
+    pub songs_cover: bool,
 }
 
 /// A song in a playlist.
@@ -227,7 +231,8 @@ impl Library {
                     count(e.id) FILTER (WHERE p.kind = 'app' AND e.track_id IS NULL), p.following,
                     (SELECT c.file FROM covers c WHERE c.id = p.cover_id),
                     coalesce((SELECT f.synced FROM folders f WHERE f.id = p.file_folder_id), 0),
-                    p.spotify_id, p.spotify_total, p.spotify_changed
+                    p.spotify_id, p.spotify_total, p.spotify_changed,
+                    (SELECT c.file FROM covers c WHERE c.id = p.spotify_cover_id), p.songs_cover
              FROM playlists p
              LEFT JOIN playlist_entries e ON e.playlist_id = p.id
              LEFT JOIN tracks t ON t.id = e.track_id AND t.missing_since IS NULL
@@ -258,7 +263,13 @@ impl Library {
                     following: r.get(18)?,
                     custom_cover: r.get(19)?,
                     file_synced: r.get(20)?,
-                    spotify: r.get::<_, Option<String>>(21)?.map(|id| SpotifyState { id, total: r.get(22).ok().flatten(), changed: r.get(23).unwrap_or(false) }),
+                    spotify: r.get::<_, Option<String>>(21)?.map(|id| SpotifyState {
+                        id,
+                        total: r.get(22).ok().flatten(),
+                        changed: r.get(23).unwrap_or(false),
+                        cover: r.get(24).ok().flatten(),
+                        songs_cover: r.get(25).unwrap_or(false),
+                    }),
                     covers: Vec::new(),
                 })
             })

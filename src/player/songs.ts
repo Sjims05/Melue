@@ -16,7 +16,9 @@ import { ask } from '@/lib/confirm'
 import { count } from '@/lib/format'
 import { whereOriginalsGo } from '@/settings/format'
 import { listPlay } from '@/lib/listPlay'
+import { pointOut } from '@/lib/spotlight'
 import { toast } from '@/lib/toast'
+import { libraryState } from '@/settings/libraryState'
 import { remote } from '@/library/remote'
 import { playingOn } from './playingOn'
 import { isMobile, player } from '@/platform'
@@ -116,8 +118,15 @@ async function addItems(items: QueueItem[], playNext: boolean, note = true) {
   if (!note) return
   const what = items.length === 1 ? `“${items[0].title ?? 'The song'}”` : count(items.length, 'song')
   const undo = { label: 'Undo', run: () => undoAdd(items.map((i) => i.id), at) }
-  if (playNext) toast(`${what} ${items.length === 1 ? 'plays' : 'play'} next`, ListStart, undo)
-  else toast(`Added ${what} to the queue`, ListEnd, undo)
+  // Tapped: Up next, with the (first) song that went in pointed out: playing next, the first of it there; at the end,
+  // the last.
+  const first = String(items[0].id)
+  const show = () => {
+    router.push({ path: '/now-playing', query: { queue: 'open' } })
+    pointOut((songs) => (playNext ? songs.find((s) => String(s.id) === first) : [...songs].reverse().find((s) => String(s.id) === first && !s.later)), 750)
+  }
+  if (playNext) toast(`${what} ${items.length === 1 ? 'plays' : 'play'} next`, ListStart, undo, show)
+  else toast(`Added ${what} to the queue`, ListEnd, undo, show)
 }
 
 /**
@@ -131,7 +140,12 @@ async function addThere(ids: number[], source: Source | null, playNext: boolean)
     const what = source ? 'The list' : ids.length - left === 1 ? 'The song' : count(ids.length - left, 'song')
     const verb = source || ids.length - left === 1 ? (playNext ? 'plays' : 'goes') : playNext ? 'play' : 'go'
     toast(`${what} ${verb} ${playNext ? 'next' : 'into the queue'} on ${name}`, playNext ? ListStart : ListEnd)
-    if (left) toast(`${count(left, 'song')} only on this device ${left === 1 ? 'was' : 'were'} left out`, MonitorSpeaker)
+    // Tapped: the list of them in Settings, to put them on the share.
+    const showThem = () => {
+      libraryState.listToOpen = 'onlyHere'
+      router.push({ path: '/settings', query: { setting: 'sync.onlyHere' } })
+    }
+    if (left) toast(`${count(left, 'song')} only on this device ${left === 1 ? 'was' : 'were'} left out`, MonitorSpeaker, undefined, showThem)
   } catch (e) {
     toast(String(e), MonitorSpeaker)
   }

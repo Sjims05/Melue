@@ -9,11 +9,13 @@ import { coverUrl, type AutoPlaylist, type Playlist } from '@/library'
 import { count, totalLength } from '@/lib/format'
 
 /**
- * Its picture: its own cover, or else its songs': one, or a 2×2 collage of up to four (repeated to fill it); none: the
- * note. `size`: 'large' for a page's big cover.
+ * Its picture: its own cover, or a Spotify one's picture from Spotify (unless its songs' are chosen), or else its
+ * songs': one, or a 2×2 collage of up to four (repeated to fill it); none: the note. `size`: 'large' for a page's big
+ * cover.
  */
 export function playlistCover(p: Playlist, size: 'small' | 'large' = 'small'): { image?: string; collage?: string[] } {
   if (p.customCover) return { image: coverUrl(p.customCover, size) }
+  if (p.spotify?.cover && !p.spotify.songsCover) return { image: coverUrl(p.spotify.cover, size) }
   const covers = p.covers.map((c) => coverUrl(c))
   if (covers.length === 0) return {}
   if (covers.length === 1) return { image: covers[0] }
@@ -35,11 +37,11 @@ export function playlistLine(p: Playlist): string {
 type Badge = { icon: Component; label: string }
 
 /**
- * Where it lives, with a share: Synced or This device. A linked one by where its file is: in the synced folder (every
- * device has it), or a folder only here.
+ * Where it lives, with a share: Synced or This device (a Spotify one too). A linked one by where its file is: in the
+ * synced folder (every device has it), or a folder only here.
  */
 export function playlistWhere(p: Playlist, shareSetUp: boolean): Badge | null {
-  if (p.kind === 'linked') return shareSetUp ? (p.fileSynced ? { icon: Cloud, label: 'Synced' } : { icon: Lock, label: 'This device' }) : null
+  if (p.kind === 'linked' && !p.spotify) return shareSetUp ? (p.fileSynced ? { icon: Cloud, label: 'Synced' } : { icon: Lock, label: 'This device' }) : null
   if (p.synced && !p.localOnly) return { icon: Cloud, label: 'Synced' }
   if (p.localOnly) return { icon: Lock, label: 'This device' }
   return null
@@ -63,7 +65,11 @@ export function playlistBadge(p: Playlist, shareSetUp: boolean): (Badge & { also
 /** Where it lives, for its menu: linked, synced or kept here (with a share), or nothing to choose (no share). */
 export function playlistKind(p: Playlist, shareSetUp: boolean): CoverKind {
   const customCover = !!p.customCover
-  if (p.spotify) return { kind: 'playlist', lives: 'spotify', customCover }
+  if (p.spotify) {
+    // Without its own cover: Spotify's picture or its songs' (the other one offered).
+    const spotifyCover = customCover || !p.spotify.cover ? undefined : p.spotify.songsCover ? 'songs' : 'spotify'
+    return { kind: 'playlist', lives: 'spotify', customCover, synced: shareSetUp ? !p.localOnly : undefined, spotifyCover }
+  }
   if (p.kind === 'linked') return { kind: 'playlist', lives: p.following ? 'linked' : 'unfollowed', customCover }
   if (!shareSetUp) return { kind: 'playlist', lives: 'plain', customCover }
   return { kind: 'playlist', lives: p.localOnly ? 'here' : 'synced', customCover }

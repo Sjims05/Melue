@@ -168,10 +168,11 @@ pub fn restore_playlist(app: AppHandle, library: tauri::State<'_, Library>, sync
     Ok(id)
 }
 
-/// "Only on this device": the playlist isn't synced (the other devices keep theirs), or is again.
+/// "Only on this device": the playlist isn't synced (the other devices keep theirs, or `remove_elsewhere`: it's
+/// taken off them), or is again.
 #[tauri::command(async)]
-pub fn set_playlist_local_only(app: AppHandle, library: tauri::State<'_, Library>, id: i64, local_only: bool) -> Result<(), String> {
-    library.set_playlist_local_only(id, local_only)?;
+pub fn set_playlist_local_only(app: AppHandle, library: tauri::State<'_, Library>, id: i64, local_only: bool, remove_elsewhere: Option<bool>) -> Result<(), String> {
+    library.set_playlist_local_only(id, local_only, remove_elsewhere.unwrap_or(false))?;
     changes::emit(&app, LibraryChange::playlist(id, Vec::new()));
     Ok(())
 }

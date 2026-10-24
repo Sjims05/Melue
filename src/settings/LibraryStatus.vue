@@ -7,7 +7,7 @@
  * tick some (or all), and its action at the bottom does those: Forget, Move to sync, Put on share.
  */
 import { CloudUpload, Copy, Ellipsis, FileQuestion, MonitorSmartphone } from '@lucide/vue'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -84,6 +84,16 @@ function openList(kind: ListKind) {
   picked.clear()
   listOpen.value = kind
 }
+// Asked for from elsewhere (a toast tapped: the songs left out when playing on another device).
+watch(
+  () => libraryState.listToOpen,
+  (kind) => {
+    if (!kind) return
+    libraryState.listToOpen = null
+    setTimeout(() => openList(kind), 700)
+  },
+  { immediate: true },
+)
 const list = computed(() => {
   switch (listOpen.value) {
     case 'missing':
@@ -171,6 +181,7 @@ const forgetThem = () => act(() => library.forgetMissing([...picked]))
       </Reveal>
       <Reveal :show="n > 0">
         <SettingsRow
+          setting="sync.onlyHere"
           :title="`${plural(n, 'song')} only on this device`"
           :description="`Not on your share yet · ${size(onlyHereBytes)}`"
           detail

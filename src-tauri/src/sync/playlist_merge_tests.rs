@@ -11,7 +11,7 @@ fn merged(base: &str, mine: &str, theirs: &str) -> Option<String> {
 }
 
 fn list(name: &str, songs: &str) -> PlaylistData {
-    PlaylistData { name: name.into(), entries: keys(songs).into_iter().map(|k| SyncEntry { key: k.into(), title: None, artist: None, duration_ms: None }).collect() }
+    PlaylistData { name: name.into(), entries: keys(songs).into_iter().map(|k| SyncEntry { key: k.into(), title: None, artist: None, duration_ms: None }).collect(), spotify: None }
 }
 
 #[test]

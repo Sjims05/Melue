@@ -137,6 +137,7 @@ async function save(value: string) {
   <SettingsCard>
     <SettingsRow
       stack
+      setting="sync.status"
       :title="title"
       :description="description"
       :class="canOpen && 'cursor-pointer'"

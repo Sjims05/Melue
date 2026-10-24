@@ -105,7 +105,8 @@ impl Library {
             conn.execute(
                 "DELETE FROM covers WHERE id NOT IN (SELECT cover_id FROM tracks WHERE cover_id IS NOT NULL)
                                      AND id NOT IN (SELECT cover_id FROM albums WHERE cover_id IS NOT NULL)
-                                     AND id NOT IN (SELECT cover_id FROM playlists WHERE cover_id IS NOT NULL)",
+                                     AND id NOT IN (SELECT cover_id FROM playlists WHERE cover_id IS NOT NULL)
+                                     AND id NOT IN (SELECT spotify_cover_id FROM playlists WHERE spotify_cover_id IS NOT NULL)",
                 [],
             )
             .map_err(err)?;

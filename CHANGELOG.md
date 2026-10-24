@@ -3,6 +3,25 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.8.0 (2026-10-24)
+
+Spotify playlists in Melue, and your music folders followed as they change.
+
+- Spotify playlists (Playlists: Add from Spotify): paste a public playlist's link, no sign-in or Premium needed. Its
+  songs are matched to the ones you have; the others show greyed, and their list can be copied. It follows the
+  playlist on Spotify by itself, with Spotify's own picture as its cover (or its songs' covers, if you like).
+- A playlist with more than 100 songs gets its full list from a CSV (Update list: the link is copied and the exporter
+  opens; on a computer Melue picks the download up by itself). A "!" says when it changed on Spotify since.
+- Spotify playlists sync to your other devices like your own playlists, with your changes (songs removed show greyed,
+  with Restore). Stop following Spotify keeps it as your own playlist, on every device.
+- Keep only on this device asks what happens on your other devices: keep their copy, or delete it from them (syncing
+  it again brings it back).
+- On a computer, Melue watches your music folders: a song added, changed or removed shows up by itself, and fills in
+  a playlist's greyed song.
+- Songs added to or removed from a playlist on another device unfold and fold away in place.
+- Toasts can be tapped: "Added to …" opens the playlist with the song pointed out, a song added to the queue opens Up
+  next, and others open where they're about. On a phone, toasts show on Now playing too.
+
 ## 0.7.2 (2026-10-24)
 
 Discord, and smoother queues.

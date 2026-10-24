@@ -465,7 +465,9 @@ export const librarySync = {
   /** Restores a deleted playlist, everywhere. Resolves with its id. */
   restorePlaylist: (syncId: string) => invoke<number>('restore_playlist', { syncId }),
   /** "Only on this device": not synced (the other devices keep theirs), or synced again. */
-  setPlaylistLocalOnly: (id: number, localOnly: boolean) => invoke<void>('set_playlist_local_only', { id, localOnly }),
+  /** `removeElsewhere`: kept only here, and taken off the other devices (syncing it again brings it back). */
+  setPlaylistLocalOnly: (id: number, localOnly: boolean, removeElsewhere = false) =>
+    invoke<void>('set_playlist_local_only', { id, localOnly, removeElsewhere }),
 }
 
 // ---- moving songs to sync

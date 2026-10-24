@@ -261,6 +261,7 @@ pub fn run() {
             library::library_missing_songs,
             library::library_forget_missing,
             library::library_add_spotify_playlist,
+            library::library_set_songs_cover,
             library::library_update_spotify_playlists,
             library::library_import_spotify_csv,
             library::library_import_spotify_csv_file,

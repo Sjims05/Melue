@@ -1,18 +1,20 @@
-//! Playlists across devices: Melue's own playlists (not linked ones, and not those set to "Only on this
-//! device") are kept on the share, one file each, `.melue/playlists/<id>.json`; every device edits the same
+//! Playlists across devices: Melue's own playlists and Spotify playlists (not ones linked to a file, and not
+//! those set to "Only on this device") are kept on the share, one file each, `.melue/playlists/<id>.json`; every device edits the same
 //! one. Each device remembers each playlist as it was at its last sync (the base), so when two devices changed
 //! it while they couldn't sync, both sides' changes are merged (playlist_merge.rs). Changes that don't merge
 //! (both reordered it, renamed it differently, or one deleted it while the other changed it) wait for the
 //! user's choice, per playlist; until then that playlist isn't synced.
 //!
 //! Deleting a synced playlist deletes it everywhere (a deleted file stays on the share for a while, so devices
-//! that were away hear of it); it can be restored for 30 days. A song a device doesn't have yet stays in the
+//! that were away hear of it); it can be restored for 30 days. "Only on this device" leaves the other devices'
+//! copies, or takes it off them too (`unshared`: not kept for restoring there; syncing it again brings it back).
+//!  A song a device doesn't have yet stays in the
 //! playlist there, greyed, at its place, and plays once it's synced. Copies of the share's songs elsewhere
 //! (another music folder) count as the same song (same_song.rs).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -21,11 +23,14 @@ use super::playlist_merge::{decide, Action, ConflictKind, PlaylistData, SyncEntr
 use super::same_song::Songs;
 use super::shared::with_share;
 use crate::library::changes::{self, ChangeReason, LibraryChange};
+use crate::library::spotify::SpotifyRef;
 use crate::library::{err, now_ms, Folder, Library, Result};
 use crate::share::{Share, ShareError};
 
 /// Where the playlist files are on the share.
 pub const DIR: &str = ".melue/playlists";
+/// The playlists that sync (`p`): Melue's own, and Spotify playlists.
+pub const SYNCED: &str = "(p.kind = 'app' OR p.spotify_id IS NOT NULL)";
 pub const CONFLICTS_EVENT: &str = "playlist-conflicts";
 /// How long a deleted playlist can be restored.
 const RESTORABLE_MS: i64 = 30 * 24 * 3600 * 1000;
@@ -40,6 +45,9 @@ pub struct PlaylistFile {
     #[serde(flatten)]
     pub data: PlaylistData,
     pub deleted: bool,
+    /// Deleted by being kept only on one device: the others let it go without keeping it for restoring.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unshared: bool,
     /// The device that wrote it last.
     pub changed_by: String,
     pub saved_at_ms: i64,
@@ -104,12 +112,22 @@ fn new_sync_id() -> String {
 }
 
 impl Library {
-    /// The synced playlists here (app playlists not "Only on this device"): sync id (if synced before) and id.
+    /// The synced playlists here (app and Spotify playlists not "Only on this device"): sync id (if synced before)
+    /// and id.
     fn synced_playlists(&self) -> Result<Vec<(Option<String>, i64, String)>> {
         let conn = self.conn();
-        let mut stmt =
-            conn.prepare("SELECT sync_id, id, name FROM playlists WHERE kind = 'app' AND NOT local_only ORDER BY id").map_err(err)?;
+        let mut stmt = conn
+            .prepare(&format!("SELECT sync_id, id, name FROM playlists p WHERE {SYNCED} AND NOT local_only ORDER BY id"))
+            .map_err(err)?;
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+
+    /// The sync ids of playlists kept only here that are to be taken off the other devices.
+    fn unshare_ids(&self) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT sync_id FROM playlists WHERE unshare AND local_only AND sync_id IS NOT NULL").map_err(err)?;
+        let rows = stmt.query_map([], |r| r.get(0)).map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)
     }
 
@@ -122,20 +140,21 @@ impl Library {
     }
 
     /// A playlist as it's synced: its name, and its songs by key (an entry matched to a copy here keeps the key
-    /// it came with).
+    /// it came with; a Spotify playlist's: greyed ones aren't in its version), and a Spotify playlist's reference.
     pub fn playlist_data(&self, id: i64, songs: &Songs) -> Result<PlaylistData> {
         let conn = self.conn();
         let name: String = conn.query_row("SELECT name FROM playlists WHERE id = ?1", [id], |r| r.get(0)).map_err(err)?;
+        let spotify = crate::library::spotify::spotify_ref(&conn, id)?;
         let mut stmt = conn
             .prepare(
                 "SELECT e.track_id, e.file_entry, coalesce(t.title, e.sync_title), coalesce(t.artist_credit, e.sync_artist),
                         coalesce(t.duration_ms, e.sync_duration_ms)
                  FROM playlist_entries e LEFT JOIN tracks t ON t.id = e.track_id
-                 WHERE e.playlist_id = ?1 ORDER BY e.position, e.id",
+                 WHERE e.playlist_id = ?1 AND e.state IN ('both', 'here_only', 'file_removed') ORDER BY e.position, e.id",
             )
             .map_err(err)?;
         let rows = stmt
-            .query_map([id], |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<String>>(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+            .query_map([id], |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, Option<i64>>(4)?)))
             .map_err(err)?;
         let mut entries = Vec::new();
         for row in rows {
@@ -145,21 +164,36 @@ impl Library {
                 (Some(t), None) => songs.key_of(t),
                 (None, None) => continue,
             };
+            // A Spotify song not here: what it is, from its line.
+            let line = crate::library::spotify::from_line(&key);
+            let title = title.or_else(|| line.as_ref().map(|s| s.title.clone()));
+            let artist = artist.or_else(|| line.as_ref().map(|s| s.artist.clone()));
+            let duration_ms = duration_ms.or_else(|| line.as_ref().and_then(|s| s.duration_ms));
             entries.push(SyncEntry { key, title, artist, duration_ms });
         }
-        Ok(PlaylistData { name, entries })
+        Ok(PlaylistData { name, entries, spotify })
     }
 
     /// Puts `data` into a playlist here (`id`), or makes it (None). Songs this device doesn't have stay in it,
-    /// greyed. Returns the playlist's id.
+    /// greyed. A Spotify playlist follows its reference (spotify.rs); one that stopped following Spotify on another
+    /// device stops here too. Returns the playlist's id.
     fn apply_playlist(&self, id: Option<i64>, sync_id: &str, data: &PlaylistData, songs: &Songs) -> Result<i64> {
+        let following: bool = match id {
+            Some(id) => self.conn().query_row("SELECT spotify_id IS NOT NULL FROM playlists WHERE id = ?1", [id], |r| r.get(0)).map_err(err)?,
+            None => false,
+        };
+        if let Some(reference) = &data.spotify {
+            return self.apply_spotify_playlist(id, sync_id, data, reference, songs);
+        }
+        if let (Some(id), true) = (id, following) {
+            self.unlink_playlist(id)?;
+        }
         let now = now_ms();
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
         let id = match id {
             Some(id) => {
                 tx.execute("UPDATE playlists SET name = ?2, updated_at = ?3 WHERE id = ?1", params![id, data.name, now]).map_err(err)?;
-                tx.execute("DELETE FROM playlist_entries WHERE playlist_id = ?1", [id]).map_err(err)?;
                 id
             }
             None => {
@@ -171,30 +205,44 @@ impl Library {
                 tx.last_insert_rowid()
             }
         };
-        for (position, entry) in data.entries.iter().enumerate() {
-            // The song itself, a copy of it here (keeping the key it came with), or not here (greyed).
-            let (track, file_entry, shown) = match songs.find(entry) {
-                Some((track, true)) => (Some(track), None, None),
-                Some((track, false)) => (Some(track), Some(&entry.key), None),
-                None => (None, Some(&entry.key), Some(entry)),
-            };
-            tx.execute(
-                "INSERT INTO playlist_entries
-                     (playlist_id, position, track_id, file_entry, state, added_at, sync_title, sync_artist, sync_duration_ms)
-                 VALUES (?1, ?2, ?3, ?4, 'both', ?5, ?6, ?7, ?8)",
-                params![
-                    id,
-                    position as i64,
-                    track,
-                    file_entry,
-                    now,
-                    shown.and_then(|e| e.title.as_ref()),
-                    shown.and_then(|e| e.artist.as_ref()),
-                    shown.and_then(|e| e.duration_ms)
-                ],
-            )
-            .map_err(err)?;
-        }
+        let rows: Vec<NewEntry> = data
+            .entries
+            .iter()
+            .map(|entry| {
+                // The song itself, a copy of it here (keeping the key it came with), or not here (greyed).
+                let (track, file_entry, shown) = match songs.find(entry) {
+                    Some((track, true)) => (Some(track), None, None),
+                    Some((track, false)) => (Some(track), Some(entry.key.clone()), None),
+                    None => (None, Some(entry.key.clone()), Some(entry)),
+                };
+                NewEntry { state: "both", track, file_entry, shown }
+            })
+            .collect();
+        write_entries(&tx, id, &rows, songs)?;
+        tx.commit().map_err(err)?;
+        Ok(id)
+    }
+
+    fn apply_spotify_playlist(&self, id: Option<i64>, sync_id: &str, data: &PlaylistData, reference: &SpotifyRef, songs: &Songs) -> Result<i64> {
+        let index = self.track_index()?;
+        let now = now_ms();
+        let mut conn = self.conn();
+        let tx = conn.transaction().map_err(err)?;
+        let id = match id {
+            Some(id) => {
+                tx.execute("UPDATE playlists SET name = ?2, updated_at = ?3 WHERE id = ?1", params![id, data.name, now]).map_err(err)?;
+                id
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO playlists (name, kind, created_at, updated_at, sync_id, file_path) VALUES (?1, 'linked', ?2, ?2, ?3, ?4)",
+                    params![data.name, now, sync_id, format!("spotify:{}", reference.id)],
+                )
+                .map_err(err)?;
+                tx.last_insert_rowid()
+            }
+        };
+        crate::library::spotify::apply_synced(&tx, id, &data.entries, reference, songs, &index)?;
         tx.commit().map_err(err)?;
         Ok(id)
     }
@@ -246,7 +294,7 @@ impl Library {
     pub fn archive_before_delete(&self, id: i64) -> Result<()> {
         let sync_id: Option<String> = self
             .conn()
-            .query_row("SELECT sync_id FROM playlists WHERE id = ?1 AND kind = 'app' AND NOT local_only", [id], |r| r.get(0))
+            .query_row(&format!("SELECT sync_id FROM playlists p WHERE id = ?1 AND {SYNCED} AND NOT local_only"), [id], |r| r.get(0))
             .optional()
             .map_err(err)?
             .flatten();
@@ -295,11 +343,15 @@ impl Library {
         Ok(id)
     }
 
-    /// "Only on this device": the playlist isn't synced any more (the other devices keep theirs), or is again.
-    pub fn set_playlist_local_only(&self, id: i64, local_only: bool) -> Result<()> {
+    /// "Only on this device": the playlist isn't synced any more (the other devices keep theirs, or with
+    /// `remove_elsewhere` it's taken off them at the next sync), or is again.
+    pub fn set_playlist_local_only(&self, id: i64, local_only: bool, remove_elsewhere: bool) -> Result<()> {
         let changed = self
             .conn()
-            .execute("UPDATE playlists SET local_only = ?2 WHERE id = ?1 AND kind = 'app'", params![id, local_only])
+            .execute(
+                "UPDATE playlists AS p SET local_only = ?2, unshare = ?3 WHERE id = ?1 AND (p.kind = 'app' OR p.spotify_id IS NOT NULL)",
+                params![id, local_only, local_only && remove_elsewhere],
+            )
             .map_err(err)?;
         if changed == 0 {
             return Err("only Melue's own playlists are synced".into());
@@ -364,7 +416,8 @@ impl Library {
                 .prepare(
                     "SELECT e.id, e.playlist_id, e.file_entry, e.sync_title, e.sync_artist, e.sync_duration_ms
                      FROM playlist_entries e JOIN playlists p ON p.id = e.playlist_id
-                     WHERE p.kind = 'app' AND e.track_id IS NULL AND e.file_entry IS NOT NULL",
+                     WHERE (p.kind = 'app' OR (p.spotify_id IS NOT NULL AND e.state = 'here_only')) AND e.track_id IS NULL
+                       AND e.file_entry IS NOT NULL",
                 )
                 .map_err(err)?;
             let rows = stmt
@@ -401,6 +454,56 @@ impl Library {
     }
 }
 
+/// A playlist entry as a sync writes it: its state, its song here, its key when it isn't the song's own (a copy, a
+/// song not here, a Spotify line), and what it shows when the song isn't here.
+pub(crate) struct NewEntry<'a> {
+    pub state: &'static str,
+    pub track: Option<i64>,
+    pub file_entry: Option<String>,
+    pub shown: Option<&'a SyncEntry>,
+}
+
+/// Writes a synced playlist's entries as `rows`, in order. The entries of songs that stay are kept (their ids
+/// too): the app's rows for them stay, so the songs added or removed on another device unfold or fold away and
+/// the others stay put.
+pub(crate) fn write_entries(tx: &Transaction, id: i64, rows: &[NewEntry], songs: &Songs) -> Result<()> {
+    let key = |track: Option<i64>, file_entry: &Option<String>| file_entry.clone().or_else(|| track.map(|t| songs.key_of(t)));
+    let mut free: HashMap<Option<String>, VecDeque<i64>> = HashMap::new();
+    {
+        let mut stmt = tx.prepare("SELECT id, track_id, file_entry FROM playlist_entries WHERE playlist_id = ?1 ORDER BY position, id").map_err(err)?;
+        let existing = stmt.query_map([id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?, r.get::<_, Option<String>>(2)?))).map_err(err)?;
+        for row in existing {
+            let (entry, track, file_entry) = row.map_err(err)?;
+            free.entry(key(track, &file_entry)).or_default().push_back(entry);
+        }
+    }
+    let now = now_ms();
+    for (position, row) in rows.iter().enumerate() {
+        let title = row.shown.and_then(|e| e.title.as_ref());
+        let artist = row.shown.and_then(|e| e.artist.as_ref());
+        let duration = row.shown.and_then(|e| e.duration_ms);
+        match free.get_mut(&key(row.track, &row.file_entry)).and_then(VecDeque::pop_front) {
+            Some(entry) => tx.execute(
+                "UPDATE playlist_entries SET position = ?2, track_id = ?3, file_entry = ?4, state = ?5, sync_title = ?6, sync_artist = ?7,
+                     sync_duration_ms = ?8
+                 WHERE id = ?1",
+                params![entry, position as i64, row.track, row.file_entry, row.state, title, artist, duration],
+            ),
+            None => tx.execute(
+                "INSERT INTO playlist_entries
+                     (playlist_id, position, track_id, file_entry, state, added_at, sync_title, sync_artist, sync_duration_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![id, position as i64, row.track, row.file_entry, row.state, now, title, artist, duration],
+            ),
+        }
+        .map_err(err)?;
+    }
+    for entry in free.into_values().flatten() {
+        tx.execute("DELETE FROM playlist_entries WHERE id = ?1", [entry]).map_err(err)?;
+    }
+    Ok(())
+}
+
 /// Every playlist file on the share, by id (unreadable ones left out).
 fn read_playlist_files(share: &dyn Share) -> Result<HashMap<String, PlaylistFile>> {
     let entries = match share.list(DIR) {
@@ -419,10 +522,20 @@ fn read_playlist_files(share: &dyn Share) -> Result<HashMap<String, PlaylistFile
 }
 
 fn write_playlist_file(share: &dyn Share, sync_id: &str, data: Option<&PlaylistData>, name: &str) -> Result<()> {
+    write_file(share, sync_id, data, false, name)
+}
+
+/// A playlist kept only on this device and taken off the others: deleted on the share, `unshared`.
+fn write_unshared_file(share: &dyn Share, sync_id: &str, name: &str) -> Result<()> {
+    write_file(share, sync_id, None, true, name)
+}
+
+fn write_file(share: &dyn Share, sync_id: &str, data: Option<&PlaylistData>, unshared: bool, name: &str) -> Result<()> {
     let file = PlaylistFile {
         id: sync_id.into(),
         data: data.cloned().unwrap_or_default(),
         deleted: data.is_none(),
+        unshared,
         changed_by: name.into(),
         saved_at_ms: now_ms(),
         share_ms: 0,
@@ -440,6 +553,15 @@ pub fn sync_playlists(library: &Library, share: &dyn Share, folder: &Folder, me:
     let waiting = library.conflict_ids()?;
     let local_only = library.local_only_ids()?;
     result.changed.extend(library.fill_in_arrived(&songs)?);
+
+    // Kept only here and taken off the other devices: off the share. Synced again later, it goes up as new.
+    for sync_id in library.unshare_ids()? {
+        if files.get(&sync_id).is_some_and(|f| !f.deleted) {
+            write_unshared_file(share, &sync_id, name)?;
+        }
+        library.set_sync_base(&sync_id, None)?;
+        library.conn().execute("UPDATE playlists SET unshare = 0 WHERE sync_id = ?1", [&sync_id]).map_err(err)?;
+    }
 
     // Playlists here, by sync id. Ones never synced get an id: the share's playlist of the same name when there
     // is one (made on two devices before syncing: merged), or a new one.
@@ -476,6 +598,7 @@ pub fn sync_playlists(library: &Library, share: &dyn Share, folder: &Folder, me:
             Some(f) => Theirs::Live(f.data.clone()),
         };
         let changed_by = file.as_ref().map_or_else(String::new, |f| f.changed_by.clone());
+        let unshared = file.as_ref().is_some_and(|f| f.unshared);
         let base = library.sync_base(&sync_id)?;
         let local_id = here.get(&sync_id).copied();
         let mine = local_id.map(|id| library.playlist_data(id, &songs)).transpose()?;
@@ -493,7 +616,11 @@ pub fn sync_playlists(library: &Library, share: &dyn Share, folder: &Folder, me:
             }
             Action::DeleteHere => {
                 if let (Some(id), Some(data)) = (local_id, &mine) {
-                    library.delete_synced_here(id, &sync_id, data)?;
+                    if unshared {
+                        library.conn().execute("DELETE FROM playlists WHERE id = ?1", [id]).map_err(err)?;
+                    } else {
+                        library.delete_synced_here(id, &sync_id, data)?;
+                    }
                     result.changed.push(id);
                 }
                 library.set_sync_base(&sync_id, None)?;
@@ -552,7 +679,8 @@ pub fn answer_conflict(library: &Library, share: &dyn Share, folder: &Folder, me
             if choice == Choice::Both {
                 // This device's version as a copy (synced as a new playlist).
                 if let Some(mine) = &mine {
-                    let copy = PlaylistData { name: format!("{} ({name})", mine.name), entries: mine.entries.clone() };
+                    // Its own playlist (not following Spotify: one playlist follows it).
+                    let copy = PlaylistData { name: format!("{} ({name})", mine.name), entries: mine.entries.clone(), spotify: None };
                     let copy_id = library.apply_playlist(None, &new_sync_id(), &copy, &songs)?;
                     changed.push(copy_id);
                 }

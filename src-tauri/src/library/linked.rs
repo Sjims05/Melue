@@ -753,6 +753,8 @@ impl Library {
     /// Turns a linked playlist into an app playlist: Melue's version stays (greyed songs removed here or
     /// only suggested go), the file is left alone, no longer followed and not linked again. It stays only on this
     /// device (not synced): the other devices have the file's playlist linked themselves, when they have the file.
+    /// A Spotify playlist stays where it lives (synced: every device's stops following), its songs not here kept
+    /// (greyed: they come in when they're here).
     pub fn unlink_playlist(&self, id: i64) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
@@ -764,18 +766,41 @@ impl Library {
         let changed = tx
             .execute(
                 "UPDATE playlists SET kind = 'app', file_folder_id = NULL, file_path = NULL, file_size = NULL,
-                     file_modified_at = NULL, file_missing_since = NULL, write_back = 0, local_only = 1, updated_at = ?2,
-                     spotify_id = NULL, spotify_total = NULL, spotify_seen = NULL, spotify_changed = 0
+                     file_modified_at = NULL, file_missing_since = NULL, write_back = 0, local_only = (local_only OR NOT ?3),
+                     updated_at = ?2, spotify_id = NULL, spotify_total = NULL, spotify_seen = NULL, spotify_changed = 0
                  WHERE id = ?1 AND kind = 'linked'",
-                params![id, now_ms()],
+                params![id, now_ms(), spotify],
             )
             .map_err(err)?;
         if changed == 0 {
             return Err(format!("no linked playlist {id}"));
         }
-        tx.execute("DELETE FROM playlist_entries WHERE playlist_id = ?1 AND (state IN ('removed_here', 'suggested') OR track_id IS NULL)", [id])
-            .map_err(err)?;
-        tx.execute("UPDATE playlist_entries SET state = 'both', file_entry = NULL WHERE playlist_id = ?1", [id]).map_err(err)?;
+        if spotify {
+            // Its songs not here: greyed, by what they are (their line from Spotify stays their key).
+            tx.execute("DELETE FROM playlist_entries WHERE playlist_id = ?1 AND state IN ('removed_here', 'suggested')", [id]).map_err(err)?;
+            let lines: Vec<(i64, String)> = {
+                let mut stmt = tx
+                    .prepare("SELECT id, file_entry FROM playlist_entries WHERE playlist_id = ?1 AND track_id IS NULL AND file_entry IS NOT NULL")
+                    .map_err(err)?;
+                let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err)?;
+                rows.collect::<rusqlite::Result<_>>().map_err(err)?
+            };
+            for (entry, line) in lines {
+                if let Some(song) = super::spotify::from_line(&line) {
+                    tx.execute(
+                        "UPDATE playlist_entries SET sync_title = ?2, sync_artist = ?3, sync_duration_ms = ?4 WHERE id = ?1",
+                        params![entry, song.title, song.artist, song.duration_ms],
+                    )
+                    .map_err(err)?;
+                }
+            }
+            tx.execute("UPDATE playlist_entries SET state = 'both', file_entry = CASE WHEN track_id IS NULL THEN file_entry END WHERE playlist_id = ?1", [id])
+                .map_err(err)?;
+        } else {
+            tx.execute("DELETE FROM playlist_entries WHERE playlist_id = ?1 AND (state IN ('removed_here', 'suggested') OR track_id IS NULL)", [id])
+                .map_err(err)?;
+            tx.execute("UPDATE playlist_entries SET state = 'both', file_entry = NULL WHERE playlist_id = ?1", [id]).map_err(err)?;
+        }
         tx.execute("DELETE FROM playlist_snapshots WHERE playlist_id = ?1", [id]).map_err(err)?;
         let ids: Vec<i64> = {
             let mut stmt = tx.prepare("SELECT id FROM playlist_entries WHERE playlist_id = ?1 ORDER BY position, id").map_err(err)?;

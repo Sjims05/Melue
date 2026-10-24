@@ -31,6 +31,9 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/020_lyrics_anchors.sql"),
     include_str!("sql/021_unsynced_folder_names.sql"),
     include_str!("sql/022_spotify_playlists.sql"),
+    include_str!("sql/023_unshare_playlists.sql"),
+    include_str!("sql/024_spotify_read_at.sql"),
+    include_str!("sql/025_spotify_covers.sql"),
 ];
 
 /// The newest schema version.

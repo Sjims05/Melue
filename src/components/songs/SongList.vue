@@ -8,6 +8,7 @@
  * Narrow (a phone): the album goes, then the length (container widths, not the window's).
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import { spotlight } from '@/lib/spotlight'
 import { letterOf } from './letters'
 import SongRow from './SongRow.vue'
 import type { Song, SongAction, SongMenuPlace } from './songMenu'
@@ -144,8 +145,11 @@ async function letGo() {
 // ---- Taking songs out (✕, Clear): they fold away (height and look), the songs under them moving up, and only then
 // are they taken out. Each row's fold is undone once the list has changed (a row can be kept and show another song).
 const FOLD = { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' }
+// The songs folding away here: when they leave the list, they've folded already.
+const foldingHere = new Set<string>()
 async function foldAway(keys: Song['id'][]) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return () => {}
+  keys.forEach((key) => foldingHere.add(String(key)))
   const rows = keys
     .map((key) => list.value?.querySelector<HTMLElement>(`:scope > [data-song="${CSS.escape(String(key))}"]`))
     .filter((row): row is HTMLElement => !!row)
@@ -156,6 +160,7 @@ async function foldAway(keys: Song['id'][]) {
   })
   await Promise.all(folds.map((f) => f.finished.catch(() => {})))
   return () => {
+    keys.forEach((key) => foldingHere.delete(String(key)))
     folds.forEach((f) => f.cancel())
     rows.forEach((row) => (row.style.overflow = ''))
   }
@@ -176,38 +181,102 @@ async function foldAwayAll(songs: Song[], done: () => unknown) {
 }
 defineExpose({ foldAwayAll })
 
-// ---- The queue changing (the queue's list): songs coming in (Play next, Add to queue, from either device) unfold into
-// place; songs that moved without being dragged here (on the other device, the queue going on to the next song) glide
-// from where they were to their new places, the others making way. Not the rows shown ahead (after the queue starts
-// over), and not while a song is dragged or just let go (that glides on its own).
+// ---- The queue or a playlist changing: songs coming in (Play next, Add to queue, from another device) unfold into
+// place; songs taken out elsewhere (another device) fold away where they were (a copy of their row, as the row
+// itself is gone); songs that moved without being dragged here (on the other device, the queue going on to the next
+// song) glide from where they were to their new places, the others making way. Not the rows shown ahead (after the
+// queue starts over), and not while a song is dragged or just let go (that glides on its own).
 const keyOf = (s: Song) => String(s.key ?? s.id)
+// Gentler than FOLD (which answers a tap at once): a change from elsewhere starts and ends softly, so it's seen.
+const ARRIVE = { duration: 320, easing: 'cubic-bezier(.4,0,.2,1)' }
+// Started in the next frame, holding its first look until then: the frame that changes the list is a long one (the
+// new rows drawn), and an animation started in it counts from that frame's start, so most of its way would be
+// skipped at once.
+function animateNextFrame(el: HTMLElement, keyframes: Record<string, string | number>[], options: KeyframeAnimationOptions) {
+  const first = keyframes[0]
+  for (const [property, value] of Object.entries(first)) el.style.setProperty(property, String(value))
+  return new Promise<void>((done) =>
+    requestAnimationFrame(() => {
+      const animation = el.animate(keyframes, options)
+      for (const property of Object.keys(first)) el.style.removeProperty(property)
+      animation.finished.catch(() => {}).then(() => done())
+    }),
+  )
+}
 const rowOf = (key: string) => list.value?.querySelector<HTMLElement>(`:scope > [data-song="${CSS.escape(key)}"]`)
 watch(
   () => props.songs.filter((s) => !s.later).map(keyOf),
   async (now, before) => {
-    if (!props.queue || !before || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (!(props.queue || props.reorderable) || !before || matchMedia('(prefers-reduced-motion: reduce)').matches) return
     if (drag.value || settling.value) return
     // Where each row is now, before the list changes (this runs before the page is drawn again).
     const was = new Map(before.map((key) => [key, rowOf(key)?.getBoundingClientRect().top]))
     const had = new Set(before)
     const added = now.filter((key) => !had.has(key))
+    // Taken out elsewhere: a copy of each row, with the song after it that stays (it goes back in before that one).
+    const staying = new Set(now)
+    const gone = before
+      .map((key, i) => ({ key, row: rowOf(key), next: before.slice(i + 1).find((k) => staying.has(k)) }))
+      .filter((g) => !staying.has(g.key) && !foldingHere.has(g.key) && g.row)
+      .map((g) => ({ copy: g.row!.cloneNode(true) as HTMLElement, next: g.next }))
+    // Until the copies are in, the list keeps its height: at the bottom of the page, a row taken out would make the
+    // page shorter and its scroll jump up at once (before the copy could fold).
+    if (gone.length && list.value) list.value.style.minHeight = `${list.value.offsetHeight}px`
     await nextTick()
-    // A whole new queue (another list played): not song by song.
-    if (added.length > 20) return
+    // A whole new queue (another list played) or list: not song by song.
+    if (added.length > 20 || gone.length > 20) {
+      if (list.value) list.value.style.minHeight = ''
+      return
+    }
+    for (const { copy, next } of gone) {
+      copy.removeAttribute('data-song')
+      copy.setAttribute('role', 'presentation')
+      copy.setAttribute('aria-hidden', 'true')
+      copy.style.pointerEvents = 'none'
+      copy.style.overflow = 'hidden'
+      const before = next ? rowOf(next) : null
+      list.value?.insertBefore(copy, before ?? null)
+      const height = copy.offsetHeight
+      animateNextFrame(copy, [{ height: `${height}px`, opacity: 1 }, { height: '0px', opacity: 0 }], { ...ARRIVE, fill: 'forwards' }).then(() =>
+        copy.remove(),
+      )
+    }
+    if (list.value) list.value.style.minHeight = ''
     for (const key of now) {
       const row = rowOf(key)
       if (!row) continue
       if (!had.has(key)) {
         row.style.overflow = 'hidden'
-        const unfold = row.animate([{ height: '0px', opacity: 0 }, { height: `${row.offsetHeight}px`, opacity: 1 }], FOLD)
-        unfold.finished.catch(() => {}).then(() => (row.style.overflow = ''))
+        const height = row.offsetHeight
+        animateNextFrame(row, [{ height: '0px', opacity: 0 }, { height: `${height}px`, opacity: 1 }], ARRIVE).then(() => (row.style.overflow = ''))
         continue
       }
       const from = was.get(key)
       const offset = from == null ? 0 : from - row.getBoundingClientRect().top
-      if (Math.abs(offset) > 1) row.animate([{ translate: `0 ${offset}px` }, { translate: '0 0' }], FOLD)
+      if (Math.abs(offset) > 1) animateNextFrame(row, [{ translate: `0 ${offset}px` }, { translate: '0 0' }], ARRIVE)
     }
   },
+)
+
+// ---- A song pointed out (a toast tapped: lib/spotlight.ts): once it's in this list, scrolled to the middle and lit up a
+// moment (the look of a song being moved), then fading.
+watch(
+  [spotlight, () => props.songs],
+  async ([wanted]) => {
+    if (!wanted) return
+    if (Date.now() > wanted.until) return void (spotlight.value = null)
+    const song = wanted.pick(props.songs)
+    if (!song) return
+    spotlight.value = null
+    const key = song.key ?? song.id
+    await new Promise((done) => setTimeout(done, wanted.delay))
+    const row = rowOf(String(key))
+    if (!row) return
+    row.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' })
+    lifted.value = key
+    setTimeout(() => lifted.value === key && putDown(), 1500)
+  },
+  { immediate: true },
 )
 
 /** A row's place in the order a drag would make (its place as it is, without a drag). */

@@ -6,24 +6,36 @@
 //!
 //! Unofficial: the embed is Spotify's player for websites, not an interface for apps. If Spotify changes it, reading
 //! fails and the playlist stays as it last was.
+//!
+//! A Spotify playlist syncs like Melue's own (playlist_sync.rs): Melue's version (its songs, with your changes) and
+//! its reference (`SpotifyRef`: Spotify's list as last read). The device that reads a change on Spotify first puts it
+//! in; the others take the reference from the share, so they don't add the same songs again.
+//!
+//! Its picture is Spotify's (640 px), downloaded by each device; your own cover goes over it, and it can show its
+//! songs' covers instead (`songs_cover`, synced too).
 
 use std::time::Duration;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use super::linked::{apply_file, TrackIndex};
+use crate::sync::playlist_merge::SyncEntry;
+use crate::sync::playlist_sync::{write_entries, NewEntry};
+use crate::sync::same_song::Songs;
 use super::m3u::{ExtInf, FileLine};
 use super::{err, now_ms, Library, Result};
 
-/// A Spotify playlist as read: its name, its songs (the first 100 at most, from the embed), and how many it has.
-#[derive(Debug, Clone, PartialEq)]
+/// A Spotify playlist as read: its name, its songs (the first 100 at most, from the embed), how many it has, and
+/// its picture's address.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SpotifyList {
     pub name: String,
     pub songs: Vec<SpotifySong>,
     /// The playlist's true number of songs (None: not known; then `songs` is taken as all of them).
     pub total: Option<usize>,
+    pub cover: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,6 +104,12 @@ pub fn parse_embed(html: &str) -> Result<SpotifyList> {
         track_list: Vec<Track>,
     }
     #[derive(Deserialize)]
+    struct Image {
+        url: String,
+        #[serde(rename = "maxWidth")]
+        max_width: Option<u32>,
+    }
+    #[derive(Deserialize)]
     struct Track {
         title: String,
         subtitle: String,
@@ -103,11 +121,19 @@ pub fn parse_embed(html: &str) -> Result<SpotifyList> {
     let json = &json[..json.find("</script>").ok_or("Spotify’s page has changed")?];
     let data: serde_json::Value = serde_json::from_str(json).map_err(|_| "Spotify’s page has changed".to_string())?;
     let entity = data.pointer("/props/pageProps/state/data/entity").ok_or("Spotify didn’t show that playlist (is it public?)")?;
+    // Its picture: the largest (64, 300 and 640 px), or the one the player shows.
+    let images: Vec<Image> = entity.pointer("/visualIdentity/image").and_then(|i| serde_json::from_value(i.clone()).ok()).unwrap_or_default();
+    let cover = images
+        .into_iter()
+        .max_by_key(|i| i.max_width.unwrap_or(0))
+        .map(|i| i.url)
+        .or_else(|| entity.pointer("/coverArt/sources/0/url").and_then(|u| u.as_str()).map(String::from));
     let entity: Entity = serde_json::from_value(entity.clone()).map_err(|_| "Spotify’s page has changed".to_string())?;
     Ok(SpotifyList {
         name: entity.name,
         songs: entity.track_list.into_iter().map(|t| SpotifySong { title: t.title, artist: t.subtitle, duration_ms: t.duration }).collect(),
         total: None,
+        cover,
     })
 }
 
@@ -167,6 +193,124 @@ pub fn parse_csv(text: &str) -> Result<Vec<SpotifySong>> {
     Ok(songs)
 }
 
+/// A Spotify playlist's reference, synced with it: Spotify's list as last read (its lines), its number of songs
+/// there, its first songs and count at its last update (a long one's), the "!", and when a read last changed any of
+/// it (two devices' reads: the newest wins).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpotifyRef {
+    pub id: String,
+    pub lines: Vec<String>,
+    #[serde(default)]
+    pub total: Option<i64>,
+    #[serde(default)]
+    pub seen: Option<String>,
+    #[serde(default)]
+    pub changed: bool,
+    #[serde(default)]
+    pub read_at: i64,
+    /// Its picture's address on Spotify.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
+    /// Its songs' covers shown instead of Spotify's picture.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub songs_cover: bool,
+}
+
+/// Playlist `id`'s Spotify reference (None: not a Spotify playlist).
+pub(crate) fn spotify_ref(conn: &Connection, id: i64) -> Result<Option<SpotifyRef>> {
+    type Row = (Option<String>, Option<i64>, Option<String>, bool, i64, Option<String>, bool);
+    let row: Option<Row> = conn
+        .query_row(
+            "SELECT spotify_id, spotify_total, spotify_seen, spotify_changed, spotify_read_at, spotify_cover_url, songs_cover
+             FROM playlists WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+        )
+        .optional()
+        .map_err(err)?;
+    let Some((Some(spotify), total, seen, changed, read_at, cover, songs_cover)) = row else { return Ok(None) };
+    let mut stmt = conn.prepare("SELECT file_entry FROM playlist_snapshots WHERE playlist_id = ?1 ORDER BY position").map_err(err)?;
+    let lines = stmt.query_map([id], |r| r.get(0)).map_err(err)?.collect::<rusqlite::Result<_>>().map_err(err)?;
+    Ok(Some(SpotifyRef { id: spotify, lines, total, seen, changed, read_at, cover, songs_cover }))
+}
+
+/// After reading Spotify: a reference that changed counts as read now (the share gets it at the next sync).
+fn mark_read(tx: &Transaction, id: i64, before: &Option<SpotifyRef>) -> Result<()> {
+    if spotify_ref(tx, id)? != *before {
+        tx.execute("UPDATE playlists SET spotify_read_at = ?2 WHERE id = ?1", params![id, now_ms()]).map_err(err)?;
+    }
+    Ok(())
+}
+
+/// A synced Spotify playlist as the share has it: Melue's version (`entries`) and its reference. Spotify's songs
+/// are matched here; the reference's songs Melue's version doesn't have are greyed in their place (removed here,
+/// with Restore); songs added in Melue are its own (here_only), and songs gone from Spotify that Melue kept are
+/// marked (file_removed).
+pub(crate) fn apply_synced(tx: &Transaction, id: i64, entries: &[SyncEntry], reference: &SpotifyRef, songs: &Songs, index: &TrackIndex) -> Result<()> {
+    tx.execute(
+        "UPDATE playlists SET kind = 'linked', file_path = ?2, spotify_id = ?3, spotify_total = ?4, spotify_seen = ?5, spotify_changed = ?6,
+             spotify_read_at = ?7, spotify_cover_url = ?8, songs_cover = ?9
+         WHERE id = ?1",
+        params![
+            id,
+            format!("spotify:{}", reference.id),
+            reference.id,
+            reference.total,
+            reference.seen,
+            reference.changed,
+            reference.read_at,
+            reference.cover,
+            reference.songs_cover
+        ],
+    )
+    .map_err(err)?;
+    tx.execute("DELETE FROM playlist_snapshots WHERE playlist_id = ?1", [id]).map_err(err)?;
+    for (position, line) in reference.lines.iter().enumerate() {
+        tx.execute("INSERT INTO playlist_snapshots (playlist_id, position, file_entry) VALUES (?1, ?2, ?3)", params![id, position as i64, line])
+            .map_err(err)?;
+    }
+
+    /// A row of the playlist, and the reference's line it stands for.
+    struct Row<'a> {
+        entry: NewEntry<'a>,
+        line: Option<usize>,
+    }
+    let find = |entry: &str| index.find("", &FileLine { entry: entry.into(), info: None });
+    let mut taken = vec![false; reference.lines.len()];
+    let mut rows: Vec<Row> = Vec::new();
+    for entry in entries {
+        if from_line(&entry.key).is_some() {
+            let line = (0..reference.lines.len()).find(|&i| !taken[i] && reference.lines[i] == entry.key);
+            if let Some(i) = line {
+                taken[i] = true;
+            }
+            let state = if line.is_some() { "both" } else { "file_removed" };
+            rows.push(Row { entry: NewEntry { state, file_entry: Some(entry.key.clone()), track: find(&entry.key), shown: None }, line });
+        } else {
+            // Added in Melue: the song itself, a copy of it here (keeping the key it came with), or not here.
+            let (track, file_entry, shown) = match songs.find(entry) {
+                Some((track, true)) => (Some(track), None, None),
+                Some((track, false)) => (Some(track), Some(entry.key.clone()), None),
+                None => (None, Some(entry.key.clone()), Some(entry)),
+            };
+            rows.push(Row { entry: NewEntry { state: "here_only", file_entry, track, shown }, line: None });
+        }
+    }
+    // The reference's songs Melue's version doesn't have: greyed after the song before them on Spotify.
+    for i in (0..reference.lines.len()).filter(|&i| !taken[i]) {
+        let at = match i {
+            0 => 0,
+            _ => rows.iter().position(|r| r.line == Some(i - 1)).map_or(rows.len(), |p| p + 1),
+        };
+        let line = &reference.lines[i];
+        let entry = NewEntry { state: "removed_here", file_entry: Some(line.clone()), track: find(line), shown: None };
+        rows.insert(at, Row { entry, line: Some(i) });
+    }
+    let rows: Vec<NewEntry> = rows.into_iter().map(|r| r.entry).collect();
+    write_entries(tx, id, &rows, songs)
+}
+
 impl Library {
     /// Adds a Spotify playlist from its link: a linked playlist that follows it (its songs matched to the library).
     /// Returns its id. One with more than 100 songs starts with its first 100; its full list comes from a CSV.
@@ -184,9 +328,10 @@ impl Library {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
         tx.execute(
-            "INSERT INTO playlists (name, kind, created_at, updated_at, file_path, spotify_id, spotify_total, spotify_seen)
-             VALUES (?1, 'linked', ?2, ?2, ?3, ?4, ?5, ?6)",
-            params![list.name, now, format!("spotify:{id}"), id, list.total.map(|t| t as i64), signature(list)],
+            "INSERT INTO playlists (name, kind, created_at, updated_at, file_path, spotify_id, spotify_total, spotify_seen, spotify_read_at,
+                 spotify_cover_url)
+             VALUES (?1, 'linked', ?2, ?2, ?3, ?4, ?5, ?6, ?2, ?7)",
+            params![list.name, now, format!("spotify:{id}"), id, list.total.map(|t| t as i64), signature(list), list.cover],
         )
         .map_err(err)?;
         let playlist = tx.last_insert_rowid();
@@ -211,7 +356,12 @@ impl Library {
     pub fn update_from_list(&self, playlist: i64, seen: Option<String>, list: &SpotifyList, index: &TrackIndex) -> Result<bool> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
-        tx.execute("UPDATE playlists SET spotify_total = ?2 WHERE id = ?1", params![playlist, list.total.map(|t| t as i64)]).map_err(err)?;
+        let before = spotify_ref(&tx, playlist)?;
+        tx.execute(
+            "UPDATE playlists SET spotify_total = ?2, spotify_cover_url = coalesce(?3, spotify_cover_url) WHERE id = ?1",
+            params![playlist, list.total.map(|t| t as i64), list.cover],
+        )
+        .map_err(err)?;
         let changed = if list.complete() {
             let lines: Vec<FileLine> = list.songs.iter().map(line).collect();
             tx.execute("UPDATE playlists SET spotify_seen = ?2, spotify_changed = 0 WHERE id = ?1", params![playlist, signature(list)]).map_err(err)?;
@@ -220,6 +370,7 @@ impl Library {
             let differs = seen.as_deref() != Some(signature(list).as_str());
             tx.execute("UPDATE playlists SET spotify_changed = ?2 WHERE id = ?1 AND spotify_changed != ?2", params![playlist, differs]).map_err(err)? > 0
         };
+        mark_read(&tx, playlist, &before)?;
         tx.commit().map_err(err)?;
         Ok(changed)
     }
@@ -244,6 +395,54 @@ impl Library {
         Ok(changed)
     }
 
+    /// Shows a Spotify playlist's songs' covers instead of Spotify's picture, or Spotify's again (on every device: it
+    /// counts as its reference changing now).
+    pub fn set_songs_cover(&self, playlist: i64, songs: bool) -> Result<()> {
+        let changed = self
+            .conn()
+            .execute(
+                "UPDATE playlists SET songs_cover = ?2, spotify_read_at = ?3, updated_at = ?3 WHERE id = ?1 AND spotify_id IS NOT NULL",
+                params![playlist, songs, now_ms()],
+            )
+            .map_err(err)?;
+        if changed == 0 {
+            return Err(format!("no Spotify playlist {playlist}"));
+        }
+        Ok(())
+    }
+
+    /// Downloads the Spotify playlists' pictures that changed (or are new here). Returns the playlists whose
+    /// picture changed; one that can't be downloaded now is tried again next time.
+    pub fn update_spotify_covers(&self) -> Result<Vec<i64>> {
+        let wanted: Vec<(i64, String)> = {
+            let conn = self.conn();
+            let mut stmt = conn
+                .prepare("SELECT id, spotify_cover_url FROM playlists WHERE spotify_cover_url IS NOT NULL AND spotify_cover_of IS NOT spotify_cover_url")
+                .map_err(err)?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err)?;
+            rows.collect::<rusqlite::Result<_>>().map_err(err)?
+        };
+        let mut changed = Vec::new();
+        for (playlist, url) in wanted {
+            let picture = agent().get(&url).call().map_err(|e| e.to_string()).and_then(|mut r| {
+                r.body_mut().with_config().limit(10 * 1024 * 1024).read_to_vec().map_err(|e| e.to_string())
+            });
+            let cover = match picture.and_then(|bytes| self.cover_for(&bytes)) {
+                Ok(Some(cover)) => cover,
+                Ok(None) => continue,
+                Err(e) => {
+                    eprintln!("melue: spotify playlist {playlist}'s picture: {e}");
+                    continue;
+                }
+            };
+            self.conn()
+                .execute("UPDATE playlists SET spotify_cover_id = ?2, spotify_cover_of = ?3 WHERE id = ?1", params![playlist, cover, url])
+                .map_err(err)?;
+            changed.push(playlist);
+        }
+        Ok(changed)
+    }
+
     /// A long Spotify playlist's full list, from a CSV a website exported: its songs come in as a linked playlist's
     /// file's do, and it counts as up to date (its first songs and count as Spotify has them now, when reachable).
     pub fn import_spotify_csv(&self, playlist: i64, csv: &str, index: &TrackIndex) -> Result<bool> {
@@ -252,6 +451,7 @@ impl Library {
         let now = read_playlist(&id).ok();
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;
+        let before = spotify_ref(&tx, playlist)?;
         let lines: Vec<FileLine> = songs.iter().map(line).collect();
         let changed = apply_file(&tx, playlist, "", &lines, index)?;
         let (total, seen) = match &now {
@@ -263,6 +463,7 @@ impl Library {
             params![playlist, total, seen],
         )
         .map_err(err)?;
+        mark_read(&tx, playlist, &before)?;
         tx.commit().map_err(err)?;
         Ok(changed)
     }
@@ -280,6 +481,10 @@ pub fn start(app: &tauri::AppHandle) {
         loop {
             let library = app.state::<Library>();
             let changed = library.track_index().and_then(|index| library.update_spotify_playlists(&index));
+            let changed = changed.map(|mut ids| {
+                ids.extend(library.update_spotify_covers().unwrap_or_default());
+                ids
+            });
             match changed {
                 Ok(ids) if !ids.is_empty() => super::changes::emit(&app, super::changes::LibraryChange::playlists(super::changes::ChangeReason::Playlists, ids)),
                 Ok(_) => {}
@@ -287,6 +492,18 @@ pub fn start(app: &tauri::AppHandle) {
             }
             std::thread::sleep(UPDATE_EVERY);
         }
+    });
+}
+
+/// Downloads the Spotify playlists' new pictures in the background (one just added, or one a sync brought), and
+/// shows them.
+pub fn update_covers_soon(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("melue-spotify-covers".into()).spawn(move || match app.state::<Library>().update_spotify_covers() {
+        Ok(ids) if !ids.is_empty() => super::changes::emit(&app, super::changes::LibraryChange::playlists(super::changes::ChangeReason::Playlists, ids)),
+        Ok(_) => {}
+        Err(e) => eprintln!("melue: spotify playlists' pictures: {e}"),
     });
 }
 
@@ -364,5 +581,8 @@ mod tests {
         println!("{}: {} songs read, {:?} in all; first: {:?}", list.name, list.songs.len(), list.total, list.songs.first());
         assert_eq!(list.songs.len(), 100);
         assert!(!list.complete());
+        // Its picture: the 640 px one.
+        println!("cover: {:?}", list.cover);
+        assert!(list.cover.is_some_and(|c| c.starts_with("https://")));
     }
 }
