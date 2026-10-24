@@ -3,6 +3,19 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.7.2 (2026-10-24)
+
+Discord, and smoother queues.
+
+- Discord (Settings: Connections; computers): your status says what you're listening to in Melue, with the song, its
+  artist, how far it is and the album's cover (looked up online). Hovering the cover can show this week's listening.
+- Continue: another device playing a song this one doesn't have is continued anyway; the song shows as playing there,
+  and play starts the next song here (Across devices: "Songs this device doesn't have").
+- Connecting to a device that plays while this one doesn't just joins in: what plays there goes on.
+- Up next: tapping a song plays it with the queue as it was; songs added unfold into place, and changes from the other
+  device glide (a song moved, the queue going on).
+- Now playing shows a note where a song has no cover.
+
 ## 0.7.1 (2026-10-24)
 
 Playing on another device, more fully; your songs across devices; sign-ins everywhere.
