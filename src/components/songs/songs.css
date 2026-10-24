@@ -92,16 +92,27 @@
 
   /* The song playing: three bars (PlayingBars.vue moves them: the playground's rise and fall while playing, and
      gravity when it pauses). */
+  /* PlayingBars.vue: each bar a full-height bar sliding in its own rounded box, which shows its top part (round at
+     both ends at any height). Kept apart from the page: moving them lays out and paints nothing else. */
   .song-bars {
     display: inline-flex;
     align-items: flex-end;
     gap: 2px;
     height: 11px;
+    contain: layout paint;
   }
   .song-bars > i {
     width: 3px;
-    height: 2px;
+    height: 11px;
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .song-bars > i > b {
+    display: block;
+    height: 11px;
     border-radius: 1px;
     background: currentColor;
+    transform: translateY(9px);
+    will-change: transform;
   }
 }

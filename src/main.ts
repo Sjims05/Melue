@@ -1,3 +1,4 @@
+import { keyRightClicks } from "@/lib/hotkeys";
 import { createApp } from "vue";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -27,6 +28,8 @@ startHoverTips();
 // error, Copy (lib/copyMenu.ts). Text fields keep the browser's, for copy and paste.
 document.addEventListener("contextmenu", (e) => {
   if ((e.target as Element | null)?.closest?.("input, textarea, [contenteditable]")) return;
+  // Sent by a key (M, Shift+F10): no browser menu comes of it, and Melue's own opens just after.
+  if (keyRightClicks.has(e)) return;
   const taken = e.defaultPrevented;
   e.preventDefault();
   if (!taken) offerCopy(e, isMobile);

@@ -48,7 +48,7 @@ const { main, from, onTop, layerKey, motion } = usePages(scroller)
 startHotkeys()
 // Escape: back from a page on top (a field handles its own Escape first).
 onKeyStroke('Escape', (e) => {
-  if (onTop.value && !(e.target as HTMLElement).closest('input, textarea, [role=dialog], [role=menu]')) goBack()
+  if (onTop.value && !(e.target as HTMLElement | null)?.closest?.('input, textarea, [role=dialog], [role=menu]')) goBack()
 })
 </script>
 

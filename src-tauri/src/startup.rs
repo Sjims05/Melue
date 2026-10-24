@@ -9,6 +9,8 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 static STARTED: OnceLock<Instant> = OnceLock::new();
+/// The parts of setting up, as they're done: what, and when (ms).
+static MARKS: Mutex<Vec<(&'static str, u128)>> = Mutex::new(Vec::new());
 static UI_READY: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 
 /// The longest background work waits for the UI.
@@ -22,6 +24,26 @@ pub fn begin() {
 /// Milliseconds since [`begin`].
 pub fn ms() -> u128 {
     STARTED.get().map_or(0, |s| s.elapsed().as_millis())
+}
+
+/// A part of setting up done now (`what` took it since the one before).
+pub fn mark(what: &'static str) {
+    MARKS.lock().unwrap().push((what, ms()));
+}
+
+/// Set up: in the log, when, and how long each part took ("plugins 400 · window 120 · …").
+pub fn set_up() {
+    let marks = MARKS.lock().unwrap();
+    let mut before = 0;
+    let parts: Vec<String> = marks
+        .iter()
+        .map(|(what, at)| {
+            let took = at - before;
+            before = *at;
+            format!("{what} {took}")
+        })
+        .collect();
+    eprintln!("melue: start-up: set up at {} ms ({} ms)", ms(), parts.join(" · "));
 }
 
 /// Waits until the UI has drawn itself, `at_most` that long.

@@ -76,6 +76,14 @@ const items = computed((): SongMenuItem[] => {
   return [...menu, { action: 'takeOut', label: 'Take out', icon: X, apart: true }]
 })
 const highlighted = computed(() => props.current || props.lifted || menuOpen.value || contextOpen.value)
+// A menu closed: the row stays lit until the focus is back on it (the menu gives it back once it has faded out), so
+// closing with Esc doesn't blink the highlight off and on.
+const HELD_MS = 250
+function menuChanged(which: 'menu' | 'context', open: boolean) {
+  const shown = which === 'menu' ? menuOpen : contextOpen
+  if (open) shown.value = true
+  else setTimeout(() => (shown.value = false), HELD_MS)
+}
 // A greyed song (unavailable, or shown ahead) isn't highlighted, by the pointer or otherwise.
 const greyed = computed(() => props.unavailable || !!props.song.later)
 
@@ -121,11 +129,14 @@ const MUTED =
 const BUTTON =
   'grid size-8 flex-none place-items-center rounded-md outline-none transition-[background-color] hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-background data-[state=open]:text-foreground [&_svg]:size-4'
 // Shown on a highlighted row only.
-const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-data-[highlight]/song:visible in-focus-visible:visible group-has-focus-visible/song:visible'
+// Shown while anything in the row has the focus too (focus-within, not only a visible focus): moving between the row's
+// buttons with the arrows, the next one is shown before it takes the focus.
+const ON_HIGHLIGHT =
+  'song-hover-only invisible group-hover/song:visible group-data-[highlight]/song:visible in-focus-visible:visible group-has-focus-visible/song:visible group-focus-within/song:visible'
 </script>
 
 <template>
-  <ContextMenu :modal="false" @update:open="(open) => (contextOpen = open)">
+  <ContextMenu :modal="false" @update:open="(open) => menuChanged('context', open)">
     <ContextMenuTrigger as-child :disabled="unavailable || phone">
       <div
         v-bind="{ ...$attrs, ...(phone ? press : {}) }"
@@ -212,7 +223,7 @@ const ON_HIGHLIGHT = 'song-hover-only invisible group-hover/song:visible group-d
           <button v-if="phone" type="button" :class="[BUTTON, song.restore && 'opacity-45']" :aria-label="`${song.title}: more`" @click="openRowMenu">
             <Ellipsis />
           </button>
-          <DropdownMenu v-else @update:open="(open) => (menuOpen = open)">
+          <DropdownMenu v-else @update:open="(open) => menuChanged('menu', open)">
             <DropdownMenuTrigger :class="[BUTTON, song.restore && 'opacity-45']" :aria-label="`${song.title}: more`"><Ellipsis /></DropdownMenuTrigger>
             <DropdownMenuContent align="end" class="min-w-48">
               <template v-for="item in items" :key="item.action">

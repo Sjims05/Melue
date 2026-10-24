@@ -115,7 +115,7 @@ pub struct SystemSecrets {
 /// The name Melue's secrets are kept under in the system's store.
 #[cfg(not(target_os = "android"))]
 // Melue Dev (a development build) keeps its own: it never reads or changes the official app's.
-const SERVICE: &str = if cfg!(debug_assertions) { "Melue Dev" } else { "Melue" };
+pub(crate) const SERVICE: &str = if cfg!(debug_assertions) { "Melue Dev" } else { "Melue" };
 
 impl SystemSecrets {
     pub fn new(app: &tauri::AppHandle) -> Self {

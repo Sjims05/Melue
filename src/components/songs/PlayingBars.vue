@@ -5,8 +5,11 @@
  * flat with a small bounce (picked over a plain drop). Playing again makes them rise smoothly from
  * where they are into the bounce. Reduce motion: they stand still (flat while paused).
  *
- * Moved by a small animation loop (not CSS), so each bar can go on from wherever it is; the loop stops once they're
- * flat.
+ * Cheap to show (a song plays for hours): each bar is a full-height bar sliding in its own rounded box (it clips it:
+ * round at both ends at any height, nothing laid out or painted as it moves). The steady bounce is the browser's own
+ * animation of that slide (the same curve, sampled), run without the page (and not drawn while out of view); a small
+ * animation loop only moves them from wherever they are, pausing (gravity) and playing again (catching up: how far
+ * each is from the bounce fades away), and hands over once they're in the bounce.
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -19,35 +22,83 @@ const PHASES = [0, 300, 600] // ms: each bar a third of a cycle on
 const CATCH_UP = 70 // ms: how fast a bar catches up with the bounce (playing again: no jump)
 const GRAVITY = 260 // px/s²
 const BOUNCE = 0.25 // of the speed it lands with
+/** Close enough to the bounce to hand over to its animation (px). */
+const CAUGHT_UP = 0.05
+/** Points of the bounce the animation goes through (straight between them: a smooth curve at 11 px). */
+const SAMPLES = 36
+/** It moves on 20 times a second, not every frame (a phone's own drawing puts each frame on screen: at 11 px, 20 a
+ * second looks the same). */
+const STEPS = Math.round(CYCLE / 50)
 
 const bars = ref<HTMLElement>()
 const still = window.matchMedia('(prefers-reduced-motion: reduce)')
 
-// Each bar's height (px) and speed (px/s, up is positive).
-const state = PHASES.map(() => ({ h: FLOOR, v: 0 }))
+// Each bar's height (px), speed (px/s, up is positive) and, catching up, how far it is from the bounce (px).
+const state = PHASES.map(() => ({ h: FLOOR, v: 0, off: 0 }))
 let frame = 0
 let last = 0
+let catching = false
+/** The bounce's animations, one per bar, while they're in it. */
+let steady: Animation[] = []
 
+const W = (2 * Math.PI) / CYCLE
 /** Where the bounce has a bar now: 30% → 100% → 30%, eased like the playground's (a cosine). */
-const bounce = (t: number, i: number) => HEIGHT * (0.3 + 0.7 * (1 - Math.cos((2 * Math.PI * (t + PHASES[i])) / CYCLE)) / 2)
+const bounce = (t: number, i: number) => HEIGHT * (0.3 + 0.7 * (1 - Math.cos(W * (t + PHASES[i]))) / 2)
+/** How fast it's moving there (px/s, up is positive). */
+const bounceSpeed = (t: number, i: number) => HEIGHT * 0.35 * W * Math.sin(W * (t + PHASES[i])) * 1000
+
+const slide = (h: number) => `translateY(${(HEIGHT - h).toFixed(2)}px)`
+const inners = () => [...(bars.value?.querySelectorAll<HTMLElement>(':scope > i > b') ?? [])]
 
 function draw() {
-  const items = bars.value?.children
-  if (!items) return
-  state.forEach((s, i) => ((items[i] as HTMLElement).style.height = `${s.h.toFixed(2)}px`))
+  inners().forEach((b, i) => (b.style.transform = slide(state[i].h)))
+}
+
+/** The bounce, one cycle from its start: where the slide goes. */
+const KEYFRAMES = Array.from({ length: SAMPLES + 1 }, (_, k) => ({ transform: slide(bounce((k / SAMPLES) * CYCLE, 0)) }))
+
+/** In the bounce now: its animations take over (each bar where the bounce has it). */
+function startSteady() {
+  stopSteady()
+  const now = performance.now()
+  steady = inners().map((b, i) => {
+    const animation = b.animate(KEYFRAMES, { duration: CYCLE, iterations: Infinity, easing: `steps(${STEPS}, jump-none)` })
+    animation.currentTime = (now + PHASES[i]) % CYCLE
+    return animation
+  })
+}
+/** Out of the bounce: each bar where it was in it, moving as it was (for gravity to go on from). */
+function stopSteady() {
+  if (!steady.length) return
+  const now = performance.now()
+  state.forEach((s, i) => {
+    s.h = bounce(now, i)
+    s.v = bounceSpeed(now, i)
+  })
+  steady.forEach((a) => a.cancel())
+  steady = []
+  draw()
 }
 
 function step(now: number) {
   const dt = Math.min(0.05, (now - (last || now)) / 1000)
   last = now
   let moving = !props.paused
+  let caughtUp = !props.paused
+  if (!props.paused && !catching) {
+    // Playing again: from wherever each bar is, how far it is from the bounce (which then fades away).
+    catching = true
+    state.forEach((s, i) => (s.off = s.h - bounce(now, i)))
+  }
+  if (props.paused) catching = false
   state.forEach((s, i) => {
     if (!props.paused) {
-      // Follow the bounce, catching up smoothly (after playing again, from wherever it is).
-      const target = bounce(now, i)
-      const h = s.h + (target - s.h) * (1 - Math.exp((-dt * 1000) / CATCH_UP))
+      // Into the bounce smoothly: on it, plus what's left of how far it was.
+      s.off *= Math.exp((-dt * 1000) / CATCH_UP)
+      const h = Math.max(FLOOR, bounce(now, i) + s.off)
       s.v = dt ? (h - s.h) / dt : 0
       s.h = h
+      if (Math.abs(s.off) > CAUGHT_UP) caughtUp = false
     } else {
       // Gravity: it keeps its speed, slowed (going up) and sped up (coming down); it lands with a small bounce.
       s.v -= GRAVITY * dt
@@ -60,6 +111,11 @@ function step(now: number) {
     }
   })
   draw()
+  if (caughtUp) {
+    frame = 0
+    catching = false
+    return startSteady()
+  }
   frame = moving ? requestAnimationFrame(step) : 0
 }
 
@@ -69,6 +125,8 @@ function run() {
     state.forEach((s, i) => (s.h = props.paused ? FLOOR : HEIGHT * [0.55, 1, 0.75][i]))
     return draw()
   }
+  if (props.paused) stopSteady()
+  else if (steady.length) return
   if (!frame) {
     last = 0
     frame = requestAnimationFrame(step)
@@ -79,15 +137,20 @@ watch(
   () => props.paused,
   () => run(),
 )
+
 onMounted(() => {
   // Shown while already playing: in the bounce at once.
-  if (!props.paused) state.forEach((s, i) => (s.h = bounce(performance.now(), i)))
+  if (!props.paused && !still.matches) state.forEach((s, i) => (s.h = bounce(performance.now(), i)))
   draw()
-  run()
+  if (!props.paused && !still.matches) startSteady()
+  else run()
 })
-onBeforeUnmount(() => cancelAnimationFrame(frame))
+onBeforeUnmount(() => {
+  cancelAnimationFrame(frame)
+  steady.forEach((a) => a.cancel())
+})
 </script>
 
 <template>
-  <span ref="bars" class="song-bars" :aria-label="paused ? 'Paused' : 'Playing'"><i /><i /><i /></span>
+  <span ref="bars" class="song-bars" :aria-label="paused ? 'Paused' : 'Playing'"><i><b /></i><i><b /></i><i><b /></i></span>
 </template>

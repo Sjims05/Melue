@@ -3,6 +3,20 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.8.1 (2026-10-25)
+
+Melue on the keyboard, and lighter on your phone's battery.
+
+- The arrows move around the app (computers): ↑ / ↓ change page, → goes into it (where you were) and the arrows go
+  to the nearest thing that way; ← from the left edge or Esc goes back out. Shift+↑ / ↓ change page from anywhere,
+  Shift+← / → go back or on 5 seconds. In a song, → goes to its buttons (✕ takes it out of Up next).
+- M opens the menu of what's selected, and its items show which one is chosen. Shift+Enter picks a song up to move
+  it in Up next or a playlist (↑ / ↓, then Enter).
+- Much less work while nothing plays (a phone used about a third of a core, now almost nothing), and less while
+  playing: the playing bars, the seek bar and the lyrics move without redrawing the page all the time.
+- Up next no longer jumps on opening Now playing; a song added from a toast is shown there; Space plays and pauses
+  on full-size lyrics; toasts show on a phone's Now playing.
+
 ## 0.8.0 (2026-10-24)
 
 Spotify playlists in Melue, and your music folders followed as they change.

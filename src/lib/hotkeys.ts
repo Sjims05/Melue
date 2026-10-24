@@ -5,14 +5,15 @@
  * its own keys work in it (the arrows scroll the shortcuts list), and an action key closes it first, then acts; a
  * question (role=alertdialog: "Delete …?") has all the keys to itself. Keys with the Windows key or Alt are the
  * system's. Also: Ctrl+↑ / ↓ scroll (smoothly), Tab stays within the page (not the top bar or the player bar), and
- * a page switch puts the focus back at the page's top. ↑ / ↓ switch the main pages (DotsNav.vue), Escape goes back
- * (DesktopShell.vue), Ctrl+Space and / open Search (TopSearch.vue).
+ * a page switch puts the focus back at the page's top. The arrows move around the pages and in them (arrowNav.ts),
+ * Escape goes back (DesktopShell.vue), Ctrl+Space and / open Search (TopSearch.vue).
  */
 import { reactive } from 'vue'
 import { router, MAIN_PAGES } from '@/router'
 import { current, cycleRepeat, like, next, nowPlaying, position, previous, seek, setVolume, toggleShuffle, togglePlay, volumeStep } from '@/player/nowPlaying'
 import { upNextOpen } from '@/player/upNext'
 import { openReport } from '@/lib/report/report'
+import { goTo, pageArea, startArrowNav } from '@/lib/arrowNav'
 
 /** The shortcuts, as the list shows them (`keys`: each a key, or keys pressed together). */
 export const SHORTCUTS: { group: string; items: { keys: string[][]; what: string }[] }[] = [
@@ -20,7 +21,7 @@ export const SHORTCUTS: { group: string; items: { keys: string[][]; what: string
     group: 'Playing',
     items: [
       { keys: [['Space']], what: 'Play / pause' },
-      { keys: [['←'], ['→']], what: 'Back / forward 5 seconds (with Shift: 15)' },
+      { keys: [['Shift', '←'], ['Shift', '→']], what: 'Back / forward 5 seconds (held: on and on)' },
       { keys: [['Ctrl', '←'], ['Ctrl', '→']], what: 'Previous / next song' },
       { keys: [['+'], ['−']], what: 'Volume up / down' },
       { keys: [['L']], what: 'Like the song playing' },
@@ -32,6 +33,9 @@ export const SHORTCUTS: { group: string; items: { keys: string[][]; what: string
     group: 'Going places',
     items: [
       { keys: [['↑'], ['↓']], what: 'The page above / below (Home, Library, Playlists, Now playing, Settings)' },
+      { keys: [['→']], what: 'Into the page (where you were on it)' },
+      { keys: [['←'], ['Esc']], what: 'Back out to the pages (← from the page’s left edge)' },
+      { keys: [['Shift', '↑'], ['Shift', '↓']], what: 'The page above / below, from anywhere' },
       { keys: [['Ctrl', '1–5']], what: 'Those pages, by number' },
       { keys: [['Ctrl', '↑'], ['Ctrl', '↓']], what: 'Scroll up / down' },
       { keys: [['Ctrl', 'Space'], ['/']], what: 'Search' },
@@ -43,13 +47,12 @@ export const SHORTCUTS: { group: string; items: { keys: string[][]; what: string
     ],
   },
   {
-    group: 'In lists',
+    group: 'In a page',
     items: [
-      { keys: [['Tab']], what: 'Through the page: into a list of songs or cards, and on' },
-      { keys: [['↑'], ['↓']], what: 'The song above / below' },
-      { keys: [['←'], ['→']], what: 'The card before / after (↑ / ↓: the row above / below)' },
+      { keys: [['↑'], ['↓'], ['←'], ['→']], what: 'The nearest thing that way: a song, a card, a button, a setting' },
       { keys: [['Enter']], what: 'Play the song, open the card' },
-      { keys: [['Shift', 'F10']], what: 'Its menu (or the Menu key)' },
+      { keys: [['Shift', 'Enter']], what: 'Pick a song up to move it (Up next, a playlist): ↑ / ↓, then Enter (Esc: back)' },
+      { keys: [['M']], what: 'The menu of what’s selected (also Shift+F10, the Menu key)' },
     ],
   },
 ]
@@ -79,12 +82,6 @@ function closeLayer() {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))
 }
 
-/** The page in view: the page opened on top, else the main page. */
-function pageArea(): HTMLElement | null {
-  const all = [...document.querySelectorAll<HTMLElement>('[data-scroller]')].filter((el) => el.offsetParent && !el.closest('[inert]'))
-  return all[all.length - 1] ?? null
-}
-
 /** What Ctrl+↑ / ↓ scroll: the open dialog's scrolling part, else the page in view. */
 function scrollable(): HTMLElement | null {
   const dialog = document.querySelector<HTMLElement>('[role=dialog]')
@@ -108,6 +105,29 @@ function toggleUpNext() {
   router.push({ path: '/now-playing', query: { queue: 'open' } })
   // Once it's open and in view: its first song.
   setTimeout(() => document.querySelector<HTMLElement>('#up-next [role=listitem][tabindex="0"]')?.focus({ preventScroll: true }), 700)
+}
+
+// ---- M (Shift+F10, the Menu key): the menu of what's selected, its first item selected so the arrows go on in it. A
+// button with a menu (⋯) opens it as Enter does; anything else as a right-click there does (a song, a card, a settings
+// row). Nothing selected, or nothing with a menu: nothing happens.
+/** Right-clicks sent by openMenuOf: the app's own right-click handler (main.ts) leaves them alone. Cancelled there, a
+ * menu wouldn't open: it opens a moment after the event, only if nothing cancelled it (which a real right-click allows
+ * for, being over before then). */
+export const keyRightClicks = new WeakSet<Event>()
+
+export function openMenuOf(el: HTMLElement | null): boolean {
+  if (!el || el === document.body) return false
+  const button = el.closest<HTMLElement>('[aria-haspopup=menu]')
+  if (button) {
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }))
+    return true
+  }
+  const at = el.querySelector<HTMLElement>('[data-song-row]') ?? el
+  const box = at.getBoundingClientRect()
+  const click = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: box.left + 24, clientY: box.top + box.height / 2 })
+  keyRightClicks.add(click)
+  at.dispatchEvent(click)
+  return true
 }
 
 // ---- Y: the lyrics full size, and closed again.
@@ -177,17 +197,29 @@ function onKey(e: KeyboardEvent) {
       return act(toggleLyrics)
     case '?':
       return act(() => (shortcuts.open = true))
+    case 'm':
+      // In an open menu, M is its own (it goes to the item starting with M).
+      if (layer) return
+      if (openMenuOf(document.activeElement as HTMLElement | null)) e.preventDefault()
+      return
+  }
+  if ((key === 'ContextMenu' || (key === 'F10' && e.shiftKey)) && !layer) {
+    if (openMenuOf(document.activeElement as HTMLElement | null)) e.preventDefault()
+    return
   }
   // Space and the arrows: not where something has them (a list, a slider, a menu, a dialog), nor on a button (Space
   // presses it).
   if (layer || ownsArrows(e.target)) return
-  const onButton = (e.target as HTMLElement | null)?.closest?.('button, a, [role=button], [role=switch], [role=checkbox]')
+  // Full-size lyrics: Space always plays / pauses (the button that opened them, or one of theirs, may have the focus).
+  const here = router.currentRoute.value
+  const lyricsFull = here.name === 'now-playing' && 'lyrics' in here.query
+  const onButton = !lyricsFull && (e.target as HTMLElement | null)?.closest?.('button, a, [role=button], [role=switch], [role=checkbox]')
   if (key === ' ' && !onButton && state) {
     e.preventDefault()
     togglePlay()
-  } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && state) {
+  } else if ((key === 'ArrowLeft' || key === 'ArrowRight') && e.shiftKey && state) {
     e.preventDefault()
-    seek(Math.max(0, position.value + (key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 15 : 5)))
+    seek(Math.max(0, position.value + (key === 'ArrowLeft' ? -1 : 1) * 5))
   }
 }
 
@@ -213,9 +245,9 @@ function tabKey(e: KeyboardEvent) {
 }
 
 /**
- * Keys in a list (role=list: songs, artists, folders): ↑ / ↓ the item above / below, Home / End the first / last,
- * Enter plays a song row (as a double-click does; links and buttons open as they do), Shift+F10 or the Menu key opens
- * its menu (as a right-click does). A list that draws only the rows on screen: scrolled on to draw the next.
+ * Keys in a list (role=list: songs, artists, folders): Home / End the first / last, Enter plays a song row (as a
+ * double-click does; links and buttons open as they do); M, Shift+F10 or the Menu key opens its menu (openMenuOf). The
+ * arrows: arrowNav.ts.
  */
 function listKey(e: KeyboardEvent) {
   if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) return
@@ -223,81 +255,20 @@ function listKey(e: KeyboardEvent) {
   const list = item?.closest<HTMLElement>('[role=list]')
   if (!item || !list || (e.target as HTMLElement).closest('input, [role=menu]')) return
   const items = () => [...list.querySelectorAll<HTMLElement>('[role=listitem]')].filter((i) => i.closest('[role=list]') === list)
-  const focus = (el: HTMLElement | undefined) => {
-    if (!el) return
-    const target = el.matches('[tabindex], a, button') ? el : (el.querySelector<HTMLElement>('a, button, [tabindex]') ?? el)
-    target.focus({ preventScroll: true })
-    target.scrollIntoView({ block: 'nearest' })
-  }
-  const step = (by: number) => {
-    const all = items()
-    const next = all[all.indexOf(item) + by]
-    if (next) return focus(next)
-    // Not drawn yet (a long list draws what's on screen): scroll a row on, then look again.
-    const scroller = list.closest<HTMLElement>('[data-scroller]')
-    if (!scroller) return
-    scroller.scrollBy({ top: by * item.offsetHeight })
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const again = items()
-      const box = item.getBoundingClientRect()
-      focus(again.find((i) => (by > 0 ? i.getBoundingClientRect().top >= box.bottom - 2 : i.getBoundingClientRect().bottom <= box.top + 2) && i !== item))
-    }))
-  }
   switch (e.key) {
-    case 'ArrowDown':
-      e.preventDefault()
-      return step(1)
-    case 'ArrowUp':
-      e.preventDefault()
-      return step(-1)
     case 'Home':
       e.preventDefault()
-      return focus(items()[0])
+      return goTo(items()[0])
     case 'End':
       e.preventDefault()
-      return focus(items().slice(-1)[0])
+      return goTo(items().slice(-1)[0])
     case 'Enter':
       // A song row (not a link or a button: those open themselves).
       if ((e.target as HTMLElement).matches('a, button')) return
       e.preventDefault()
       item.querySelector('[data-song-row]')?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
       return
-    case 'ContextMenu':
-    case 'F10':
-      if (e.key === 'F10' && !e.shiftKey) return
-      e.preventDefault()
-      {
-        const box = item.getBoundingClientRect()
-        const at = item.querySelector<HTMLElement>('[data-song-row]') ?? item
-        at.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: box.left + 24, clientY: box.top + box.height / 2 }))
-      }
   }
-}
-
-/** Arrows in a grid of cards (.cover-grid): ← / → the card before / after, ↑ / ↓ the one above / below (nearest). */
-function gridKey(e: KeyboardEvent) {
-  if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey || !e.key.startsWith('Arrow')) return
-  const card = (e.target as HTMLElement | null)?.closest?.<HTMLElement>('.cover-card')
-  const grid = card?.closest<HTMLElement>('.cover-grid')
-  if (!card || !grid || (e.target as HTMLElement).closest('input')) return
-  const cards = [...grid.querySelectorAll<HTMLElement>('.cover-card')]
-  const at = cards.indexOf(card)
-  let to: HTMLElement | undefined
-  if (e.key === 'ArrowLeft') to = cards[at - 1]
-  else if (e.key === 'ArrowRight') to = cards[at + 1]
-  else {
-    // The row above or below: the card nearest across in it.
-    const here = card.getBoundingClientRect()
-    const down = e.key === 'ArrowDown'
-    const rows = cards.map((c) => ({ c, box: c.getBoundingClientRect() })).filter(({ box }) => (down ? box.top > here.bottom - 4 : box.bottom < here.top + 4))
-    const rowTop = down ? Math.min(...rows.map((r) => r.box.top)) : Math.max(...rows.map((r) => r.box.top))
-    to = rows
-      .filter((r) => Math.abs(r.box.top - rowTop) < 4)
-      .sort((a, b) => Math.abs(a.box.left - here.left) - Math.abs(b.box.left - here.left))[0]?.c
-  }
-  e.preventDefault()
-  to?.focus()
-  to?.scrollIntoView({ block: 'nearest' })
 }
 
 let started = false
@@ -306,6 +277,7 @@ export function startHotkeys() {
   if (started) return
   started = true
   for (const listener of LISTENERS) window.addEventListener('keydown', listener)
+  startArrowNav()
   // A page switch: the focus back at the page's top (the next Tab starts there; nothing on the old page keeps it).
   stopAfterEach = router.afterEach((to, from) => {
     if (to.path === from.path) return
@@ -314,7 +286,7 @@ export function startHotkeys() {
   })
 }
 
-const LISTENERS = [tabKey, listKey, gridKey, onKey]
+const LISTENERS = [tabKey, listKey, onKey]
 let stopAfterEach: (() => void) | undefined
 
 // Development: a changed file reloads this module (or one it uses); the keys move to the new one. Left alone, the old

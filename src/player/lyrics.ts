@@ -127,20 +127,41 @@ export function nudgeTap(line: number, byMs: number) {
   setTiming({ anchors })
 }
 
-/** Milliseconds into the song, every frame while the caller is shown (not while its page is kept aside). */
+/**
+ * Milliseconds into the song, 20 times a second while the caller is shown (not while its page is kept aside) and the
+ * song plays (the line and the word sung: words come a few times a second); paused, once for where it stands (a pause,
+ * a seek, another song). Not every frame: that keeps the page drawing 60 times a second.
+ */
+const CLOCK_MS = 50
 export function useLyricsClock() {
   const ms = ref(0)
-  let frame = 0
-  const step = () => {
+  let timer = 0
+  let shown = false
+  const read = () => {
     const s = nowPlaying.state
-    if (s && !document.hidden) {
-      const moved = s.isPlaying ? Math.min(5000, performance.now() - nowPlaying.stateAt) : 0
-      ms.value = Math.min((s.duration || Infinity) * 1000, s.currentTime * 1000 + moved)
-    }
-    frame = requestAnimationFrame(step)
+    if (!s) return
+    const moved = s.isPlaying ? Math.min(5000, performance.now() - nowPlaying.stateAt) : 0
+    ms.value = Math.min((s.duration || Infinity) * 1000, s.currentTime * 1000 + moved)
   }
-  const start = () => (cancelAnimationFrame(frame), (frame = requestAnimationFrame(step)))
-  const stop = () => cancelAnimationFrame(frame)
+  const step = () => {
+    if (!document.hidden) read()
+    timer = nowPlaying.state?.isPlaying ? window.setTimeout(step, CLOCK_MS) : 0
+  }
+  const start = () => {
+    shown = true
+    clearTimeout(timer)
+    step()
+  }
+  const stop = () => {
+    shown = false
+    clearTimeout(timer)
+    timer = 0
+  }
+  // Played, paused or moved (the player's state came): going again, or read once.
+  watch(
+    () => [nowPlaying.state?.isPlaying, nowPlaying.stateAt],
+    () => shown && start(),
+  )
   start()
   onActivated(start)
   onDeactivated(stop)

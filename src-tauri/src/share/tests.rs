@@ -136,25 +136,30 @@ fn the_flaky_share_fails_when_told_to() {
 
 // ---- the real NAS (opt-in)
 
-/// The test login from melue/.env (the spike's), or None.
-fn nas() -> Option<(SmbConfig, String)> {
-    let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../.env")).ok()?;
-    let value = |key: &str| {
-        text.lines()
-            .filter_map(|line| line.split_once('='))
-            .find(|(k, _)| k.trim() == key)
-            .map(|(_, v)| v.trim().trim_matches('"').trim_matches('\'').to_string())
+/// The share the development app is connected to: its library's share setting (read only), and the password from
+/// the system's secure store, where the app keeps it. Err: why it can't be used (no development app here, no SMB
+/// share set up, its password not kept). The test works in a folder of its own on it, removed afterwards.
+fn nas() -> Result<(SmbConfig, String), String> {
+    use super::secrets::{PasswordStore, SERVICE};
+    use super::setup::{ShareSettings, ShareSetup, PASSWORD_KEY};
+    let appdata = std::env::var_os("APPDATA").ok_or("no APPDATA folder")?;
+    let library = std::path::PathBuf::from(appdata).join(crate::IDENTITY).join("library.db");
+    let conn = rusqlite::Connection::open_with_flags(&library, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("the development app's library ({}): {e}", library.display()))?;
+    let json: String = conn
+        .query_row("SELECT value FROM settings WHERE key = ?1", [crate::library::sync::SHARE_SETTING], |r| r.get(0))
+        .map_err(|e| format!("no share set up in the development app: {e}"))?;
+    let settings: ShareSettings = serde_json::from_str(&json).map_err(|e| format!("its share setting: {e}"))?;
+    let ShareSetup::Smb { host, share, folder, user, password_store, home_host } = settings.setup else {
+        return Err("its share isn't an SMB share".into());
     };
-    let config = SmbConfig {
-        host: value("VITE_SMB_HOST")?,
-        share: value("VITE_SMB_SHARE")?,
-        folder: value("VITE_SMB_MUSIC_PATH").unwrap_or_default(),
-        user: value("VITE_SMB_USER")?,
-        password: value("VITE_SMB_PASS")?,
-        ..Default::default()
-    };
-    let folder = format!("melue-test-{}-{}", std::process::id(), crate::library::testkit::unique());
-    Some((config, folder))
+    if password_store != PasswordStore::Secure {
+        return Err("its share's password isn't kept (asked for each time)".into());
+    }
+    let password = keyring::Entry::new(SERVICE, PASSWORD_KEY).and_then(|entry| entry.get_password()).map_err(|e| format!("its share's password: {e}"))?;
+    let config = SmbConfig { host, home_host, share, folder, user, password, ..Default::default() };
+    let test_folder = format!("melue-test-{}-{}", std::process::id(), crate::library::testkit::unique());
+    Ok((config, test_folder))
 }
 
 /// Removes the test folder afterwards, also when the test fails.
@@ -177,9 +182,9 @@ impl Drop for CleanUp<'_> {
 }
 
 #[test]
-#[ignore = "uses the real NAS from melue/.env (run: cargo test real_nas -- --ignored); works only in its own test folder"]
+#[ignore = "uses the share the development app is connected to (run: cargo test real_nas -- --ignored); works only in its own test folder"]
 fn the_real_nas_does_everything() {
-    let (config, folder) = nas().expect("melue/.env with the VITE_SMB_* settings");
+    let (config, folder) = nas().unwrap_or_else(|why| panic!("the share the development app is connected to: {why}"));
     let share = SmbShare::new(config.clone()).unwrap();
     share.check().unwrap();
     let clean_up = CleanUp { share: &share, folder: &folder };
@@ -219,9 +224,9 @@ fn the_real_nas_does_everything() {
 }
 
 #[test]
-#[ignore = "uses the real NAS from melue/.env (run: cargo test real_nas -- --ignored); works only in its own test folder"]
+#[ignore = "uses the share the development app is connected to (run: cargo test real_nas -- --ignored); works only in its own test folder"]
 fn the_real_nas_says_when_its_music_changes() {
-    let (config, folder) = nas().expect("melue/.env with the VITE_SMB_* settings");
+    let (config, folder) = nas().unwrap_or_else(|why| panic!("the share the development app is connected to: {why}"));
     let share = SmbShare::new(config).unwrap();
     let _clean_up = CleanUp { share: &share, folder: &folder };
     let (changed, noticed) = std::sync::mpsc::channel();

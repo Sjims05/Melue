@@ -61,10 +61,11 @@ const state = computed(() => nowPlaying.state)
 const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 // Up next: opened with its chevron, or by the player bar's queue button.
-// The player bar's queue button (?queue=open) opens it, and the page scrolls down to it from the first frame it shows
-// (as it slides in), so it's clear where Up next is on the page. Aimed again each frame: Up next is still opening, so
-// how far the page can scroll grows as it goes. It goes only as far as it takes to show all of Up next (the player
-// stays in view above a short one), or its top just under the top bar when it's taller than the window.
+// The player bar's queue button (?queue=open) opens it, and the page shows it: coming from another page, already
+// there as the page slides in (scrolling as well, everything would rise twice over); here already, scrolled down to
+// it smoothly. Aimed again each frame: Up next is still opening, so how far the page can scroll grows as it goes. It
+// goes only as far as it takes to show all of Up next (the player stays in view above a short one), or its top just
+// under the top bar when it's taller than the window.
 const router = useRouter()
 
 // Lyrics: read for each song that plays; full size as a step in the history (back, Escape or ✕ closes it).
@@ -80,7 +81,9 @@ if (route.query.queue === 'open') open.value = true
 const upNextPanel = ref<HTMLElement>()
 const SCROLL_MS = 600
 const ROOM = 16
-async function showQueue() {
+/** How long Up next takes to open (its grid-rows transition): followed that long when the page comes in. */
+const OPENING_MS = 340
+async function showQueue(arriving: boolean) {
   if (route.query.queue !== 'open') return
   open.value = true
   router.replace({ query: {} })
@@ -93,20 +96,23 @@ async function showQueue() {
     const from = scroller.scrollTop
     const ease = (t: number) => 1 - Math.pow(1 - t, 3)
     const step = (now: number) => {
-      const t = Math.min(1, (now - start) / SCROLL_MS)
+      const t = arriving ? 1 : Math.min(1, (now - start) / SCROLL_MS)
       const box = panel.getBoundingClientRect()
       const view = scroller.getBoundingClientRect()
       const top = box.top - view.top + scroller.scrollTop - ROOM
       const allShown = box.bottom - view.top + scroller.scrollTop + ROOM - scroller.clientHeight
       const to = Math.max(from, Math.min(top, allShown))
       scroller.scrollTop = from + (to - from) * ease(t)
-      if (t < 1) requestAnimationFrame(step)
+      if (t < 1 || (arriving && now - start < OPENING_MS)) requestAnimationFrame(step)
     }
     step(start)
   })
 }
-watch(() => route.query.queue, showQueue)
-onActivated(showQueue)
+watch(
+  () => route.query.queue,
+  () => showQueue(false),
+)
+onActivated(() => showQueue(true))
 
 // The volume moves with the slider at once; the player follows.
 const volume = ref<number | null>(null)
@@ -209,8 +215,8 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
               <p class="mt-1 truncate text-lg text-muted-foreground phone:pr-0! phone:text-base" :class="twoLines && 'pr-[232px]'"><template v-for="(part, i) in currentArtistParts" :key="i"><RouterLink v-if="part.artist" :to="`/artist/${part.artist}`" class="hover:text-foreground hover:underline">{{ part.text }}</RouterLink><template v-else>{{ part.text }}</template></template></p>
             </div>
           </Transition>
-          <!-- Not on a phone: its own volume buttons. -->
-          <div class="absolute right-0 bottom-0 flex h-7 items-center gap-3 phone:hidden">
+          <!-- Not on a phone: its own volume buttons. The arrows pass over the player's controls (their keys do them). -->
+          <div class="absolute right-0 bottom-0 flex h-7 items-center gap-3 phone:hidden" data-arrows-skip>
             <Transition name="fade">
               <span v-if="volumeShown" class="min-w-8 text-right text-sm text-muted-foreground tabular-nums">{{ volumeLabel(shownVolume) }}</span>
             </Transition>
@@ -219,13 +225,13 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
           </div>
         </div>
         </SongMenuArea>
-        <div>
+        <div data-arrows-skip>
           <Slider :value="position" :max="state.duration || 1" label="Seek" @change="seek" />
           <div class="mt-1 flex justify-between text-sm text-muted-foreground tabular-nums">
             <span>{{ time(position) }}</span><span>{{ time(state.duration) }}</span>
           </div>
         </div>
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between" data-arrows-skip>
           <button type="button" :class="[BIG, tone(state.shuffle)]" :aria-pressed="state.shuffle" aria-label="Shuffle" @click="toggleShuffle">
             <Shuffle />
             <span v-if="state.shuffle" class="absolute bottom-0 size-1 rounded-full bg-current" />

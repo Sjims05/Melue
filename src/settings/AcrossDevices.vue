@@ -205,20 +205,24 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
       <div v-if="devices.length" class="mt-5">
         <SettingsLabel>Your devices</SettingsLabel>
         <SettingsCard>
+          <!-- Each row in a plain box the list can animate (a row's own root is its right-click menu), separated like
+               rows (settings-reveal). -->
           <TransitionGroup name="drop">
-            <SettingsRow v-for="d in devices" :key="d.id" :description="deviceLine(d)">
-              <template #lead><IconTile :icon="d.kind === 'phone' ? Smartphone : Monitor" /></template>
-              <template #title>{{ d.name }} <SettingsBadge v-if="d.this" class="ml-1.5">This device</SettingsBadge></template>
-              <StatusDot :kind="d.online ? 'ok' : 'off'" />
-              <DropdownMenu v-if="!d.this && !d.online">
-                <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="icon-sm" :aria-label="`${d.name}: more`"><Ellipsis /></Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem variant="destructive" @select="forgetting = d">Forget…</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SettingsRow>
+            <div v-for="d in devices" :key="d.id" class="settings-reveal">
+              <SettingsRow :description="deviceLine(d)">
+                <template #lead><IconTile :icon="d.kind === 'phone' ? Smartphone : Monitor" /></template>
+                <template #title>{{ d.name }} <SettingsBadge v-if="d.this" class="ml-1.5">This device</SettingsBadge></template>
+                <StatusDot :kind="d.online ? 'ok' : 'off'" />
+                <DropdownMenu v-if="!d.this && !d.online">
+                  <DropdownMenuTrigger as-child>
+                    <Button variant="ghost" size="icon-sm" :aria-label="`${d.name}: more`"><Ellipsis /></Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem variant="destructive" @select="forgetting = d">Forget…</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </SettingsRow>
+            </div>
           </TransitionGroup>
         </SettingsCard>
       </div>

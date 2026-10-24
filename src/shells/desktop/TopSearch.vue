@@ -11,7 +11,8 @@ const router = useRouter()
 const open = () => router.push({ name: 'search' })
 
 onKeyStroke((e) => {
-  const typing = (e.target as HTMLElement).closest('input, textarea, [contenteditable]')
+  // A key can come from the page itself (not an element: Escape sent to close a menu), which has no closest().
+  const typing = (e.target as HTMLElement | null)?.closest?.('input, textarea, [contenteditable]')
   if ((e.code === 'Space' && e.ctrlKey && !e.altKey && !e.metaKey) || (e.key === '/' && !typing)) {
     e.preventDefault()
     open()

@@ -68,9 +68,11 @@ pub fn run() {
         })
         .setup(|app| {
             use tauri::Manager;
+            startup::mark("plugins");
             // Desktop: the window first (desktop.rs), so a slow start-up never leaves it hidden.
             #[cfg(desktop)]
             desktop::show_at_start(app.handle());
+            startup::mark("window");
             // The music library, in the app's data folder.
             let library = library::Library::open(&app.path().app_data_dir()?.join("library.db"))?;
             // A fresh install on a computer starts with the Music folder (folders.rs).
@@ -79,6 +81,7 @@ pub fn run() {
                 eprintln!("melue: can't add the Music folder: {e}");
             }
             app.manage(library);
+            startup::mark("library");
             // Scanning: once now (start-up, in the background), and after changes on Android.
             app.manage(library::scanner::Scanner::default());
             library::scanner::start(app.handle());
@@ -140,13 +143,16 @@ pub fn run() {
                 let app = app.handle().clone();
                 move || sync::scheduler::cancel(&app)
             });
+            startup::mark("background work");
             // Desktop: the tray, starting with the system (desktop.rs).
             #[cfg(desktop)]
             desktop::setup(app.handle())?;
+            startup::mark("tray");
             // Discord: "Listening to Melue" (when switched on).
             #[cfg(desktop)]
             discord::start(app.handle());
-            eprintln!("melue: start-up: set up at {} ms", startup::ms());
+            startup::mark("discord");
+            startup::set_up();
             Ok(())
         })
         // Desktop: back into the window counts as coming back to the app (a sync if the last is a while ago).

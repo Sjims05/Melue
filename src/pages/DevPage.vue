@@ -1,18 +1,16 @@
 <script setup lang="ts">
 /**
- * Melue Dev only (lib/devBuild.ts; the official app has no such page): the test pass before a release
- * (dev/testPass.ts), and tools that make things happen now instead of waiting for them (a sync, an update, an error,
- * the sync's notification on a phone).
+ * Melue Dev only (lib/devBuild.ts; the official app has no such page): tools that make things happen now instead of
+ * waiting for them (a sync, an update, an error, the sync's notification on a phone).
  */
 import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
 import { Sparkles } from '@lucide/vue'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { PageHeader } from '@/components/page'
 import { onPageLoad } from '@/components/page/pageLoading'
-import { Segmented, SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
+import { SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
 import { Button } from '@/components/ui/button'
-import { TEST_PASS, loadTestPass, resetTestPass, setTest, testPass, type TestState } from '@/dev/testPass'
 import { librarySync, moving, playbackSync, syncing } from '@/library/sync'
 import { isAndroid } from '@/platform'
 import { openReport } from '@/lib/report/report'
@@ -27,20 +25,6 @@ const result = ref<{ ok: boolean; text: string } | null>(null)
 
 onPageLoad(async () => {
   version.value = await getVersion().catch(() => '')
-  await loadTestPass()
-})
-
-const STATES = [
-  ['untested', '–'],
-  ['passed', 'Passed'],
-  ['failed', 'Failed'],
-  ['you', 'You'],
-] as const satisfies readonly (readonly [TestState, string])[]
-
-const summary = computed(() => {
-  const all = Object.values(testPass)
-  const count = (state: TestState) => all.filter((t) => t.state === state).length
-  return `${count('passed')} passed · ${count('failed')} failed · ${count('untested')} to test · ${count('you')} yours`
 })
 
 /** Runs a tool, saying what came of it. */
@@ -138,25 +122,7 @@ const TOOLS: { title: string; description: string; run: () => Promise<unknown> |
 
 <template>
   <div>
-    <PageHeader title="Dev" :subtitle="`Melue Dev ${version} · tests and tools`" />
-
-    <SettingsHeading title="Test pass" :description="summary" />
-    <template v-for="group in TEST_PASS" :key="group.group">
-      <h3 class="mt-4 mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{{ group.group }}</h3>
-      <SettingsCard>
-        <SettingsRow v-for="item in group.items" :key="item.id" :title="item.what" :description="testPass[item.id]?.note || item.how" wide>
-          <Segmented
-            v-if="testPass[item.id]"
-            :model-value="testPass[item.id].state"
-            :options="STATES"
-            @update:model-value="(state: TestState) => setTest(item.id, state)"
-          />
-        </SettingsRow>
-      </SettingsCard>
-    </template>
-    <div class="mt-3 flex justify-end">
-      <Button variant="ghost" size="sm" class="text-muted-foreground" @click="resetTestPass">Start the pass again</Button>
-    </div>
+    <PageHeader title="Dev" :subtitle="`Melue Dev ${version} · tools`" />
 
     <SettingsHeading title="Tools" description="Things that happen by themselves, now" />
     <SettingsCard>

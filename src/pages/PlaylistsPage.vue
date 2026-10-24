@@ -97,8 +97,13 @@ const choosing = ref<PlaylistConflict | null>(null)
     <section class="mb-10">
       <div class="mb-2 flex items-center gap-2">
         <h2 class="text-xl font-semibold">Your playlists</h2>
-        <Button variant="ghost" size="icon-sm" aria-label="New playlist" title="New playlist" @click="create"><Plus /></Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Add from Spotify" title="Add from Spotify" @click="addingSpotify = true"><AudioLines /></Button>
+        <!-- Its two ways to add one, together. -->
+        <div class="flex items-center">
+          <Button variant="ghost" size="icon-sm" aria-label="New playlist" title="New playlist" @click="create"><Plus class="text-muted-foreground" /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Add from Spotify" title="Add from Spotify" @click="addingSpotify = true">
+            <AudioLines class="text-muted-foreground" />
+          </Button>
+        </div>
       </div>
       <!-- What it shows changing (the list, nothing yet, a problem): a fade. -->
       <Transition name="part" mode="out-in">

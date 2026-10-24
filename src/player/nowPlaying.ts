@@ -39,6 +39,8 @@ export const nowPlaying = reactive({
 
 let started = false
 let lastQueueKey = ''
+/** How often the position moves on while playing. */
+const TICK_MS = 250
 
 /** Once (the app's frame): follows the player, its queue and the likes. */
 export async function startNowPlaying() {
@@ -49,13 +51,21 @@ export async function startNowPlaying() {
     if (change.reason === 'likes') nowPlaying.liked = new Set(await library.likedIds().catch(() => []))
   })
   await player.onState(applyState)
-  // Every frame while playing, also with the window in the background (on a second screen: WebView2 is told not to
-  // pause it, tauri.windows.conf.json); not while the window is hidden (in the tray), where nothing shows.
-  const frame = () => {
-    if (nowPlaying.state?.isPlaying && !document.hidden) nowPlaying.tick++
-    requestAnimationFrame(frame)
+  // A few times a second while playing, also with the window in the background (on a second screen: WebView2 is told
+  // not to pause it, tauri.windows.conf.json); not while the window is hidden (in the tray), where nothing shows. Not
+  // every frame: that keeps the page drawing 60 times a second (a third of a phone's core paused, two cores playing),
+  // and a seek bar moves well under a pixel in a quarter of a second (the times, once a second).
+  let timer = 0
+  const ticking = () => {
+    const wanted = !!nowPlaying.state?.isPlaying && !document.hidden
+    if (wanted && !timer) timer = window.setInterval(() => nowPlaying.tick++, TICK_MS)
+    else if (!wanted && timer) {
+      clearInterval(timer)
+      timer = 0
+    }
   }
-  requestAnimationFrame(frame)
+  watch(() => nowPlaying.state?.isPlaying, ticking, { immediate: true })
+  document.addEventListener('visibilitychange', ticking)
   // Another device's playback loaded here (synced playback, following it): what's playing now.
   playbackSync.onFollowed(() => syncNowPlaying().catch(() => {})).catch(() => {})
   // Continued from another device whose song isn't here: that song shows until this one plays.

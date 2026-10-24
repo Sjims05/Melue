@@ -142,6 +142,54 @@ async function letGo() {
   } else putDown()
   requestAnimationFrame(() => requestAnimationFrame(() => (settling.value = false)))
 }
+// ---- Moving with the keyboard (Shift+Enter on a song): picked up (the dragged look), ↑ / ↓ move it a place at a time,
+// the others making room; Enter (or Shift+Enter) puts it down, gliding into place; Esc puts it back. While it's picked
+// up, Enter only puts it down (it never plays), and the list keeps the arrows (data-moving: lib/arrowNav.ts).
+const keyMoving = ref(false)
+function lastPlace() {
+  const later = props.songs.findIndex((s) => s.later)
+  return (later < 0 ? props.songs.length : later) - 1
+}
+function moveKey(e: KeyboardEvent, index: number) {
+  if (!(props.queue || props.reorderable) || e.ctrlKey || e.altKey || e.metaKey) return
+  const d = drag.value
+  if (!keyMoving.value || !d) {
+    if (e.key === 'Enter' && e.shiftKey && e.target === e.currentTarget && !props.songs[index].later && !drag.value) {
+      e.preventDefault()
+      const row = e.currentTarget as HTMLElement
+      drag.value = { from: index, to: index, startY: 0, dy: 0, centers: [], height: row.offsetHeight }
+      lifted.value = props.songs[index].key ?? props.songs[index].id
+      keyMoving.value = true
+    }
+    return
+  }
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    d.to = Math.min(lastPlace(), Math.max(0, d.to + (e.key === 'ArrowDown' ? 1 : -1)))
+    d.dy = (d.to - d.from) * d.height
+    const row = e.currentTarget as HTMLElement
+    // In view as it goes (once it has moved there).
+    setTimeout(() => row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 200)
+  } else if (e.key === 'Enter' || e.key === 'Escape') {
+    if (e.key === 'Escape') {
+      d.to = d.from
+      d.dy = 0
+    }
+    putDownKeys()
+  }
+}
+async function putDownKeys() {
+  const d = drag.value
+  if (!d) return
+  const key = String(props.songs[d.from].key ?? props.songs[d.from].id)
+  keyMoving.value = false
+  await letGo()
+  // Moved, its row was put elsewhere in the page: the keyboard stays on it.
+  await nextTick()
+  list.value?.querySelector<HTMLElement>(`:scope > [data-song="${CSS.escape(key)}"]`)?.focus({ preventScroll: true })
+}
+
 // ---- Taking songs out (✕, Clear): they fold away (height and look), the songs under them moving up, and only then
 // are they taken out. Each row's fold is undone once the list has changed (a row can be kept and show another song).
 const FOLD = { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' }
@@ -209,8 +257,12 @@ watch(
   async (now, before) => {
     if (!(props.queue || props.reorderable) || !before || matchMedia('(prefers-reduced-motion: reduce)').matches) return
     if (drag.value || settling.value) return
-    // Where each row is now, before the list changes (this runs before the page is drawn again).
-    const was = new Map(before.map((key) => [key, rowOf(key)?.getBoundingClientRect().top]))
+    // Where each row is now in the list, before it changes (this runs before the page is drawn again): in the list, not
+    // on the screen, so the page scrolling or sliding in doesn't count as songs moving. Not on screen (its page away):
+    // nothing to animate from.
+    if (!list.value?.offsetParent) return
+    const listTop = (el: HTMLElement | null | undefined) => el && list.value ? el.getBoundingClientRect().top - list.value.getBoundingClientRect().top : undefined
+    const was = new Map(before.map((key) => [key, listTop(rowOf(key))]))
     const had = new Set(before)
     const added = now.filter((key) => !had.has(key))
     // Taken out elsewhere: a copy of each row, with the song after it that stays (it goes back in before that one).
@@ -252,7 +304,7 @@ watch(
         continue
       }
       const from = was.get(key)
-      const offset = from == null ? 0 : from - row.getBoundingClientRect().top
+      const offset = from == null ? 0 : from - (listTop(row) ?? from)
       if (Math.abs(offset) > 1) animateNextFrame(row, [{ translate: `0 ${offset}px` }, { translate: '0 0' }], ARRIVE)
     }
   },
@@ -312,7 +364,7 @@ const focused = ref<number | null>(null)
 </script>
 
 <template>
-  <div ref="list" class="@container" :class="{ 'song-on-card': onCard, 'song-strong': queue }" role="list">
+  <div ref="list" class="@container" :data-moving="keyMoving || undefined" :class="{ 'song-on-card': onCard, 'song-strong': queue }" role="list">
     <template v-for="{ song, index, heading } in rows" :key="song.key ?? song.id">
       <div v-if="heading" class="mt-4 mb-1 px-2 text-sm font-semibold text-muted-foreground first:mt-0">{{ heading }}</div>
       <!-- While a song is picked up and placed, the others don't light up under the pointer (song-quiet: their hover
@@ -323,13 +375,18 @@ const focused = ref<number | null>(null)
         :class="[
           lifted !== null && lifted !== (song.key ?? song.id) && 'song-quiet',
           drag?.from === index
-            ? 'z-10 bg-card shadow-lg transition-[scale,box-shadow] duration-200 ease-[cubic-bezier(.2,.8,.2,1)]'
+            ? [
+                'z-10 bg-card shadow-lg duration-200 ease-[cubic-bezier(.2,.8,.2,1)]',
+                // Moved with the keys: it glides a place at a time (with the pointer, it follows it).
+                keyMoving ? 'transition-[scale,box-shadow,translate]' : 'transition-[scale,box-shadow]',
+              ]
             : !settling && 'transition-[translate] duration-200 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
         ]"
         :style="{ translate: moved(index), scale: drag?.from === index ? LIFT : undefined }"
         :data-song="song.key ?? song.id"
         :tabindex="index === (focused ?? 0) ? 0 : -1"
         @focus="focused = index"
+        @keydown="moveKey($event, index)"
         @pointerdown="grab($event, index)"
         @pointermove="follow"
         @pointerup="letGo"

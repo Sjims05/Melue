@@ -1,7 +1,7 @@
 {
   "name": "melue",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.8.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "tauri": "tauri",
     "android:test": "tauri-android-test",
     "android:install": "tauri-android-test --install",
+    "clean": "node scripts/clean.mjs",
     "icons": "tauri-icons"
   },
   "dependencies": {

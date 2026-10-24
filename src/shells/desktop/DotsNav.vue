@@ -2,32 +2,19 @@
 /**
  * The side dots (Melue's design, the app playground's): one per main page (Home, Library, Playlists, Now playing,
  * Settings; Dev in dev builds). The current page's dot is bright, with its name next to it; the others show theirs on
- * hover. ↑ and ↓ move between them (not while typing). A page opened on top (an artist, Search) slides over them.
+ * hover. ↑ and ↓ move between them while nothing in the page is selected (lib/arrowNav.ts). A page opened on top (an
+ * artist, Search) slides over them.
  */
-import { onKeyStroke } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { MAIN_PAGES } from '@/router'
 
 const route = useRoute()
-const router = useRouter()
 // The main page shown: under a page on top, still the one it was opened from (the dots stay as they were under it).
 const mainPath = ref(route.meta.main ? route.path : '/')
 watch(() => route.path, (path) => route.meta.main && (mainPath.value = path))
 const current = computed(() => MAIN_PAGES.findIndex((p) => p.path === mainPath.value))
 
-function step(e: KeyboardEvent, by: number) {
-  // Not with other keys held (Windows+↑ is the window's), not while a dialog or menu is open, and not where the arrows
-  // move within something (a song list, cards, segments, a menu, a field, a button opening a menu: ↓ opens it).
-  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
-  if (document.querySelector('[role=dialog], [role=alertdialog], [role=menu]')) return
-  const own = 'input, textarea, [contenteditable], [role=menu], [role=listbox], [role=list], [role=radiogroup], [role=slider], .cover-grid, [aria-haspopup], [data-own-keys]'
-  if (!route.meta.main || (e.target as HTMLElement).closest(own)) return
-  const next = MAIN_PAGES[current.value + by]
-  if (!next) return
-  e.preventDefault()
-  router.push(next.path)
-}
 // A dot clicked keeps the focus; once the page changes (the arrows, a link) it lets go, or it would keep its name shown.
 watch(
   () => route.path,
@@ -36,8 +23,6 @@ watch(
     if (active?.closest('nav[aria-label=Pages]')) active.blur()
   },
 )
-onKeyStroke('ArrowDown', (e) => step(e, 1))
-onKeyStroke('ArrowUp', (e) => step(e, -1))
 </script>
 
 <template>
