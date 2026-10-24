@@ -183,3 +183,13 @@ fn a_song_put_in_the_synced_folder_by_hand_isnt_on_the_share() {
     let paths: Vec<String> = t.library.synced_songs(&synced).unwrap().into_iter().map(|(_, p)| p).collect();
     assert_eq!(paths, ["Synced.wav"]);
 }
+
+#[test]
+fn a_song_only_on_that_device_goes_out_as_the_one_after_it() {
+    let paths: HashMap<i64, String> = [(1, "a.mp3"), (3, "c.mp3"), (4, "d.mp3")].into_iter().map(|(id, p)| (id, p.to_string())).collect();
+    let queue = [Some(1), Some(2), Some(3), Some(4)];
+    // Song 2 isn't on the share: the queue's songs that are, from c (the one after it).
+    assert_eq!(next_on_share(&queue, 1, &paths), Some((vec!["a.mp3".into(), "c.mp3".into(), "d.mp3".into()], 1)));
+    // Nothing on the share after it: nothing to continue.
+    assert_eq!(next_on_share(&[Some(1), Some(2)], 1, &paths), None);
+}

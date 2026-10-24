@@ -82,6 +82,18 @@ pub fn sync_set_settings(app: AppHandle, library: tauri::State<'_, Library>, set
     library.sync_settings()
 }
 
+/// Continued from another device whose song isn't here: what it plays (null: nothing stands in).
+#[tauri::command]
+pub fn playback_stand_in(app: AppHandle) -> Option<handoff::StandIn> {
+    handoff::stand_in(&app)
+}
+
+/// This device plays (or something else was picked): the stand-in goes.
+#[tauri::command]
+pub fn playback_stand_in_done(app: AppHandle) {
+    handoff::stand_in_done(&app);
+}
+
 /// Synced playback's settings: ask, follow or off, and this device's name.
 #[tauri::command(async)]
 pub fn playback_sync_settings(app: AppHandle) -> Result<PlaybackSettings, String> {

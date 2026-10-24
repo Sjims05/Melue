@@ -173,7 +173,9 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
     <div v-if="current && state" class="grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,384px)_minmax(0,1fr)] 3xl:grid-cols-[384px_minmax(0,1fr)_384px]">
       <!-- The cover; its right-click (a long press on a phone) is the song's menu, like a list page's header. -->
       <SongMenuArea :song="current" :items="menu" @action="(action) => songAction(current!, action)">
-        <div class="relative aspect-square w-full overflow-hidden rounded-xl bg-well">
+        <div class="relative grid aspect-square w-full place-items-center overflow-hidden rounded-xl bg-well text-muted-foreground">
+          <!-- No cover (a song only on the other device, or one without): the note, as the mini player shows it. -->
+          <Music v-if="!currentCoverLarge" class="size-1/4" />
           <Transition name="fade">
             <img v-if="currentCoverLarge" :key="currentCoverLarge" :src="currentCoverLarge" alt="" class="absolute inset-0 size-full object-cover" draggable="false" />
           </Transition>
@@ -342,11 +344,11 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
       <div class="grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(.2,.8,.2,1)]" :class="open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
         <!-- Clipped as it opens and closes; open, with room around it for a picked-up song (it grows) and its shadow. -->
         <div class="min-h-0" :class="open ? 'overflow-clip [overflow-clip-margin:32px]' : 'overflow-hidden'">
+          <!-- There even when empty, so the first song added unfolds into it like the others (SongList). -->
           <SongList
-            v-if="upNextShown.length"
             ref="upNextList"
             class="px-2 transition-[padding] duration-[260ms] ease-[cubic-bezier(.2,.8,.2,1)]"
-            :class="emptying ? 'pb-0' : 'pb-3'"
+            :class="emptying || !upNextShown.length ? 'pb-0' : 'pb-3'"
             :songs="upNextShown.map((u) => u.song)"
             queue
             plays-next

@@ -25,7 +25,7 @@ export const SYNC_DEFAULTS: SyncSettings = {
 }
 
 /** An empty name goes back to the system's name. */
-export const PLAYBACK_DEFAULTS: PlaybackSettings = { mode: 'ask', deviceName: '', continueWithinMinutes: 10 }
+export const PLAYBACK_DEFAULTS: PlaybackSettings = { mode: 'ask', deviceName: '', continueWithinMinutes: 10, songsNotHere: true }
 
 export const QUEUE_FOLLOW_DEFAULTS: QueueFollow = { enabled: true, removedCurrent: 'finish', removedItems: 'remove', newItems: 'inPlace', order: 'playlist' }
 

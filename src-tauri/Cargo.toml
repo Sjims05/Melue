@@ -72,6 +72,8 @@ tauri-plugin-autostart = "2"
 # Updating itself from Melue's GitHub releases (stable ones only), signed (update.rs), and restarting after.
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# Discord: "Listening to Melue" (discord.rs), through the Discord app on the same computer.
+discord-rich-presence = "1.1"
 # One Melue at a time: opening it again (it may be in the tray) shows the running one.
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 

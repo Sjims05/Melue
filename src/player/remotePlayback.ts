@@ -37,6 +37,10 @@ export async function playOn(device: Device) {
     const connected = await remote.playOn(device.id)
     playingOn.device = { id: connected.id, name: connected.name }
     playingOn.reconnecting = false
+    // Its state came in as the connection opened (before this device counted as connected): shown at once, not at its
+    // next change.
+    const now = await remote.status().catch(() => null)
+    if (now?.[1]) playingOn.state = now[1]
     await syncNowPlaying().catch(() => {})
     toast(`Playing on ${connected.name}`, MonitorSpeaker)
   } catch (e) {

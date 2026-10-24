@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { watch } from 'vue'
 import { library, type PlayerSettings, type QueueFollow } from '@/library'
+import { discord, type DiscordSettings } from '@/library/discord'
 import { applyPlayerSettings } from '@/library/playback'
 import { playbackSync, syncing, sync, type PlaybackSettings, type SyncSettings } from '@/library/sync'
 import { appearance } from '@/lib/appearance'
@@ -42,6 +43,7 @@ function fieldOf<T extends object>(get: () => Promise<T>, save: (all: T) => Prom
 const syncField = fieldOf<SyncSettings>(syncing.settings, syncing.setSettings, (all) => syncSettings.value && (syncSettings.value = all))
 const playbackField = fieldOf<PlaybackSettings>(playbackSync.settings, playbackSync.setSettings)
 const followField = fieldOf<QueueFollow>(library.queueFollow, library.setQueueFollow)
+const discordField = fieldOf<DiscordSettings>(discord.settings, discord.setSettings)
 const playerField = (key: keyof PlayerSettings): Adapter => ({
   read: async () => (await library.playerSettings())[key],
   write: async (value) => {
@@ -66,6 +68,7 @@ const topSize: Adapter = {
 const ADAPTERS: Record<string, Adapter> = {
   'playback.mode': playbackField('mode'),
   'playback.continueWithinMinutes': playbackField('continueWithinMinutes'),
+  'playback.songsNotHere': playbackField('songsNotHere'),
   'sync.atStart': syncField('atStart'),
   'sync.onChange': syncField('onChange'),
   'sync.onReturnAfterMinutes': syncField('onReturnAfterMinutes'),
@@ -74,6 +77,8 @@ const ADAPTERS: Record<string, Adapter> = {
   'sync.askBeforeRemoving': syncField('askBeforeRemoving'),
   'sync.moveNewSongs': syncField('moveNewSongs'),
   'sync.songsOnMoreDevices': syncField('songsOnMoreDevices'),
+  'discord.enabled': discordField('enabled'),
+  'discord.weekly': discordField('weekly'),
   'lyrics.online': { read: readLyricsOnline, write: (on) => setLyricsOnline(on as boolean) },
   'mobile.level': {
     read: async () => {

@@ -68,9 +68,10 @@ pub async fn remote_connect(app: AppHandle, id: String) -> Result<Connected, Str
         control::end_sessions_saying(|from| if from == id { format!("{name} plays here now") } else { format!("{name} plays on {target} now") });
     }
     let serial = NEXT_SERIAL.fetch_add(1, Ordering::SeqCst);
+    // The last device's state goes before this connection opens (its first state can come in at once).
+    *app.state::<Remote>().1.lock().unwrap() = None;
     let (connected, link) = open(&app, &id, serial).await?;
     let remote = app.state::<Remote>();
-    *remote.1.lock().unwrap() = None;
     // While playing there, Continue doesn't offer (or follow) that device's playback here, and rests altogether.
     handoff::ignore(&id, i64::MAX);
     if remote.0.lock().unwrap().replace(Current { id, serial, link: Some(link) }).is_none() {
@@ -212,11 +213,25 @@ async fn reconnect(app: AppHandle, id: String, serial: u64) {
     }
 }
 
-/// Connect device: plays what plays here on device `id` (from where it is) and pauses here. Nothing playing here:
-/// just connected, to control what plays there.
+/// Connect device: plays what plays here on device `id` (from where it is) and pauses here. Paused here while it
+/// plays there: just connected (a quiet join: what plays there goes on), to control it from here.
 #[tauri::command]
 pub async fn remote_play_on(app: AppHandle, id: String) -> Result<Connected, String> {
     let connected = remote_connect(app.clone(), id).await?;
+    // Its first state (it says it at once on connecting): playing there and not here, this device just joins in
+    // (what plays there goes on; this one becomes its remote), nothing is sent over.
+    let mut there_playing = None;
+    for _ in 0..20 {
+        if let Some((_, state)) = app.state::<Remote>().1.lock().unwrap().as_ref() {
+            there_playing = Some(state.playing);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let here_playing = app.native_audio().get_state().map(|s| s.is_playing).unwrap_or(false);
+    if there_playing == Some(true) && !here_playing {
+        return Ok(connected);
+    }
     let here = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let library = here.state::<Library>();

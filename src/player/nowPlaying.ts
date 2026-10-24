@@ -10,7 +10,7 @@
  * (moving, taking out, adding) is done on that device for now.
  */
 import { CircleAlert, MonitorSpeaker } from '@lucide/vue'
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, shallowRef, watch } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 import { artistParts, type Song } from '@/components/songs'
 import { listen } from '@tauri-apps/api/event'
@@ -18,7 +18,7 @@ import { coverUrl, library, type Track } from '@/library'
 import { onlyHere } from '@/library/onlyHere'
 import { setLiked } from '@/library/playback'
 import { toast } from '@/lib/toast'
-import { playbackSync } from '@/library/sync'
+import { playbackSync, type StandIn } from '@/library/sync'
 import { player, type PlayerQueue, type PlayerState, type PlayerTrack, type RepeatMode } from '@/platform'
 import { remote, type RemoteCommand, type RemoteState } from '@/library/remote'
 import { playingOn } from './playingOn'
@@ -58,6 +58,8 @@ export async function startNowPlaying() {
   requestAnimationFrame(frame)
   // Another device's playback loaded here (synced playback, following it): what's playing now.
   playbackSync.onFollowed(() => syncNowPlaying().catch(() => {})).catch(() => {})
+  // Continued from another device whose song isn't here: that song shows until this one plays.
+  followStandIn().catch(() => {})
   // Another device playing here changed the player (Connect device): read again, at once and once it has settled (a
   // queue just loaded takes a moment to start).
   listen('remote-changed-here', () => {
@@ -223,8 +225,36 @@ export function songOf(item: PlayerTrack): Song {
 export const current = computed(() => {
   const q = nowPlaying.queue
   const item = q && q.currentIndex >= 0 ? q.items[q.currentIndex] : null
+  // Continued from another device whose song isn't here: that song, until this one plays.
+  const stand = standIn.value
+  if (stand && item && item.id === stand.waiting && !nowPlaying.state?.isPlaying) {
+    return { id: -1, title: stand.title ?? 'A song', artist: stand.artist ?? '', duration: 0, liked: false, localOnly: false, later: `Only on ${stand.device}` } as Song
+  }
   return item ? songOf(item) : null
 })
+
+// ---- Continue: a song this device doesn't have (sync/handoff.rs: StandIn)
+
+/** Continued from another device whose song isn't here: what it plays (the player waits on the next song here). */
+export const standIn = shallowRef<StandIn | null>(null)
+let followingStandIn = false
+/** Once (the app's frame): follows the stand-in; it goes once this device plays, or plays something else. */
+export async function followStandIn() {
+  if (followingStandIn) return
+  followingStandIn = true
+  await playbackSync.onStandIn((s) => (standIn.value = s)).catch(() => {})
+  standIn.value = await playbackSync.standIn().catch(() => null)
+  watch(
+    () => [nowPlaying.state?.isPlaying, nowPlaying.state?.currentId] as const,
+    ([playing, id]) => {
+      const stand = standIn.value
+      if (stand && (playing || (id != null && id !== stand.waiting))) {
+        standIn.value = null
+        playbackSync.standInDone().catch(() => {})
+      }
+    },
+  )
+}
 /** The page of the list the queue plays from ("Playing from …" links to it), or null. */
 export const fromPage = computed((): RouteLocationRaw | null => {
   const [kind, id] = (nowPlaying.queue?.sourceId ?? '').split(':')
@@ -346,13 +376,32 @@ export async function like(id: number, liked: boolean) {
  * the songs before it behind, and with shuffle on, shuffle everything after it again.)
  */
 export async function playFromUpNext(index: number) {
-  // On another device: it plays that song of its queue.
-  if (playingOn.device) return control({ cmd: 'skipTo', index }, () => player.skipTo(index))
+  const q = nowPlaying.queue
   const at = upNext.value.findIndex((u) => u.index === index)
-  if (at < 0) return
-  if (at > 0) await moveInUpNext(at, 0)
-  await shown(player.next())
-  if (!nowPlaying.state?.isPlaying) await shown(player.play())
+  if (!q || at < 0) return
+  // The song first in Up next, then on to it: the queue stays as it was (with shuffle too), nothing skipped over.
+  const order = q.playOrder.length ? q.playOrder : q.items.map((_, i) => i)
+  const start = order.indexOf(q.currentIndex) + 1
+  const moved = [...order]
+  moved.splice(start, 0, ...moved.splice(start + at, 1))
+  // Shown at once as it ends up (not the steps): the tapped song playing, the songs under it moved up.
+  if (nowPlaying.state?.shuffle) nowPlaying.queue = { ...q, playOrder: moved, currentIndex: index }
+  else {
+    const items = moved.map((i) => q.items[i])
+    nowPlaying.queue = { ...q, items, currentIndex: items.indexOf(q.items[index]), playOrder: items.map((_, i) => i) }
+  }
+  if (nowPlaying.state) {
+    nowPlaying.state = { ...nowPlaying.state, currentTime: 0, currentId: q.items[index].id, queueIndex: nowPlaying.queue!.currentIndex }
+    nowPlaying.stateAt = performance.now()
+  }
+  // On another device: one step there (its next state is the result).
+  if (playingOn.device) return control({ cmd: 'jump', index, path: pathThere(index) }, () => player.getState())
+  // Here: the two steps, the queue read once at the end.
+  await holdingQueue(async () => {
+    if (at > 0) await player.moveInPlayOrder(start + at, start)
+    await player.next()
+    if (!(await player.getState()).isPlaying) await player.play()
+  })
 }
 /** Up next: move a song (places in Up next: in the play order, so it works with shuffle too), take one out, or empty it. */
 export async function moveInUpNext(from: number, to: number) {

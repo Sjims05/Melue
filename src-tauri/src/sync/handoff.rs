@@ -79,6 +79,10 @@ pub struct Playback {
     pub shuffle: bool,
     /// "off", "all" or "one".
     pub repeat: String,
+    /// The song playing isn't on the share (it's only on that device): `queue` has the songs that are, and `index`
+    /// is the one after it (the file's title and artist say what plays).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub only_there: bool,
 }
 
 /// What to do with another device's playback.
@@ -103,11 +107,14 @@ pub struct PlaybackSettings {
     /// Ask: continue without asking when the other device's playback is at most this many minutes old (it's
     /// most likely a switch from that device to this one). None: always ask. Default 10.
     pub continue_within_minutes: Option<u32>,
+    /// Another device plays a song this one doesn't have (only there, or not synced yet): continue anyway, that song
+    /// shown, the next one here waiting (default on). Off: such playback isn't continued.
+    pub songs_not_here: bool,
 }
 
 impl Default for PlaybackSettings {
     fn default() -> Self {
-        Self { mode: Mode::Ask, device_name: None, continue_within_minutes: Some(10) }
+        Self { mode: Mode::Ask, device_name: None, continue_within_minutes: Some(10), songs_not_here: true }
     }
 }
 
@@ -118,7 +125,35 @@ pub struct Handoff {
     last: Mutex<Option<(Playback, i64)>>,
     /// Another device's playback waiting for an answer.
     offer: Mutex<Option<PlaybackFile>>,
+    /// Continued from another device whose song isn't here: what it plays, shown until this device plays.
+    stand_in: Mutex<Option<StandIn>>,
     checks: Mutex<Option<Sender<()>>>,
+}
+
+/// The song another device plays that isn't here (Continue: songs this device doesn't have): shown as playing there,
+/// while the player waits on the next song here (`waiting`, its id). Gone once this device plays.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StandIn {
+    pub title: Option<String>,
+    pub artist: Option<String>,
+    pub device: String,
+    pub waiting: Option<i64>,
+}
+
+/// The stand-in changed (null: none).
+pub const STAND_IN_EVENT: &str = "playback-stand-in";
+
+/// The stand-in now (the app asks at start).
+pub fn stand_in(app: &AppHandle) -> Option<StandIn> {
+    app.state::<Handoff>().stand_in.lock().unwrap().clone()
+}
+
+/// The stand-in's over (this device plays, or something else was picked).
+pub fn stand_in_done(app: &AppHandle) {
+    if app.state::<Handoff>().stand_in.lock().unwrap().take().is_some() {
+        let _ = app.emit(STAND_IN_EVENT, None::<StandIn>);
+    }
 }
 
 // ---- the rules (plain functions, tested in handoff_tests.rs)
@@ -322,13 +357,45 @@ pub fn queue_here(library: &Library, folder: &Folder, other: &Playback) -> Resul
     Ok(Some((items, index)))
 }
 
-/// What plays, on the share's terms, from the queue's item ids (None: the song isn't on the share).
+/// What plays, on the share's terms, from the queue's item ids. A song that isn't on the share (only here): the
+/// queue's songs that are, from the one after it (`only_there`). None: nothing of the queue from there on is.
 pub fn playback_on_share(library: &Library, folder: &Folder, ids: &[Option<i64>], index: usize, position_s: f64, modes: (bool, bool, &str)) -> Result<Option<Playback>> {
     let paths: HashMap<i64, String> = library.synced_songs(folder)?.into_iter().collect();
-    let Some((queue, index)) = on_share(ids, index, &paths) else { return Ok(None) };
     let (playing, shuffle, repeat) = modes;
     let repeat = if repeat.is_empty() { "off" } else { repeat };
-    Ok(Some(Playback { queue, index, position_s: position_s.max(0.0), playing, shuffle, repeat: repeat.into() }))
+    if let Some((queue, index)) = on_share(ids, index, &paths) {
+        return Ok(Some(Playback { queue, index, position_s: position_s.max(0.0), playing, shuffle, repeat: repeat.into(), only_there: false }));
+    }
+    let Some((queue, next)) = next_on_share(ids, index, &paths) else { return Ok(None) };
+    Ok(Some(Playback { queue, index: next, position_s: 0.0, playing, shuffle, repeat: repeat.into(), only_there: true }))
+}
+
+/// The queue's songs on the share, and the place among them of the first one after song `index` (which isn't).
+pub fn next_on_share(ids: &[Option<i64>], index: usize, paths: &HashMap<i64, String>) -> Option<(Vec<String>, usize)> {
+    let path = |id: &Option<i64>| id.and_then(|id| paths.get(&id).cloned());
+    ids.get(index + 1..)?.iter().find(|id| path(id).is_some())?;
+    let before = ids[..=index].iter().filter(|id| path(id).is_some()).count();
+    Some((ids.iter().filter_map(path).collect(), before))
+}
+
+/// The songs here for another device's playback, and the song to start on; when the song it plays isn't here (only
+/// there, or not synced yet), the next one that is, waiting (true: a stand-in shows the song playing there).
+pub fn queue_here_or_next(library: &Library, folder: &Folder, other: &Playback) -> Result<Option<(Vec<tauri_plugin_native_audio::QueueItem>, usize, bool)>> {
+    if !other.only_there {
+        if let Some((items, index)) = queue_here(library, folder, other)? {
+            return Ok(Some((items, index, false)));
+        }
+    }
+    let songs: HashMap<String, i64> = library.synced_songs(folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
+    let id = |path: &String| songs.get(&key(path)).copied();
+    // The first song here from the one after it (only there: `index` is that one already).
+    let from = if other.only_there { other.index } else { other.index + 1 };
+    let Some(next) = other.queue.iter().enumerate().skip(from).find_map(|(i, p)| id(p).map(|_| i)) else { return Ok(None) };
+    let playing = id(&other.queue[next]).expect("found");
+    let ids: Vec<i64> = other.queue.iter().filter_map(id).collect();
+    let items = library.queue_items_for(&ids)?;
+    let Some(index) = items.iter().position(|item| item.id == Some(playing)) else { return Ok(None) };
+    Ok(Some((items, index, true)))
 }
 
 // ---- with the app
@@ -464,10 +531,12 @@ fn look(app: &AppHandle) -> Result<()> {
     if before.is_playing {
         return Ok(());
     }
-    // A song that isn't here yet (not synced) can't be continued.
+    // A song that isn't here (only there, or not synced yet): continued from the next one that is (the setting), or not.
     let Some(folder) = library.synced_folder()? else { return Ok(()) };
-    if queue_here(&library, &folder, &other.state)?.is_none() {
-        return Ok(());
+    match queue_here_or_next(&library, &folder, &other.state)? {
+        None => return Ok(()),
+        Some((_, _, true)) if !settings.songs_not_here => return Ok(()),
+        Some(_) => {}
     }
     let handoff = app.state::<Handoff>();
     if continues_by_itself(&settings, other.share_ms, now_on_share) {
@@ -494,9 +563,14 @@ fn look(app: &AppHandle) -> Result<()> {
 fn load(app: &AppHandle, other: &PlaybackFile) -> Result<()> {
     let library = app.state::<Library>();
     let folder = library.synced_folder()?.ok_or("no share is set up")?;
-    let (items, index) = queue_here(&library, &folder, &other.state)?.ok_or("that song isn't here (not synced yet?)")?;
+    let (items, index, standing_in) = queue_here_or_next(&library, &folder, &other.state)?.ok_or("that song isn't here (not synced yet?)")?;
+    let waiting = items.get(index).and_then(|item| item.id);
     let player = app.native_audio();
-    player.set_queue(items, index, other.state.position_s, None)?;
+    // Its song not here: the next one waits from its start, the other device's song shown in its place.
+    player.set_queue(items, index, if standing_in { 0.0 } else { other.state.position_s }, None)?;
+    let stand_in = standing_in.then(|| StandIn { title: other.title.clone(), artist: other.artist.clone(), device: other.device_name.clone(), waiting });
+    *app.state::<Handoff>().stand_in.lock().unwrap() = stand_in.clone();
+    let _ = app.emit(STAND_IN_EVENT, stand_in);
     player.set_shuffle(other.state.shuffle)?;
     player.set_repeat_mode(&other.state.repeat)?;
     mark_answered(&library, other)?;
@@ -514,6 +588,10 @@ pub fn offer(app: &AppHandle) -> Option<PlaybackFile> {
 /// The offered song here (its id, for its cover), if this device has it.
 pub fn offer_song(app: &AppHandle) -> Result<Option<i64>> {
     let Some(other) = offer(app) else { return Ok(None) };
+    // Its song only on that device: not here (the place is the song after it).
+    if other.state.only_there {
+        return Ok(None);
+    }
     let library = app.state::<Library>();
     let Some(folder) = library.synced_folder()? else { return Ok(None) };
     let Some(path) = other.state.queue.get(other.state.index) else { return Ok(None) };

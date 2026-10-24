@@ -10,6 +10,7 @@
  */
 import { Ellipsis, Monitor, Smartphone } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { onBeforeUnmount, ref } from 'vue'
 import { Chevron, ConfirmDialog, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot, Stepper } from '@/components/settings'
@@ -135,6 +136,16 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
             :options="WITHIN"
             @update:model-value="(minutes) => save({ continueWithinMinutes: minutes || null })"
           />
+        </SettingsRow>
+      </Reveal>
+      <Reveal :show="settings.mode !== 'off'">
+        <SettingsRow
+          title="Songs this device doesn’t have"
+          :description="settings.songsNotHere ? 'Continued anyway: play starts the next song here' : 'Not continued'"
+          detail
+          v-bind="resetPlayback('songsNotHere')"
+        >
+          <Switch :model-value="settings.songsNotHere" @update:model-value="(songsNotHere) => save({ songsNotHere })" />
         </SettingsRow>
       </Reveal>
       <!-- The name's row stays: its line changes, and the field with Cancel and Save unfolds under it. -->

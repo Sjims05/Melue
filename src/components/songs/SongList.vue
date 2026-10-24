@@ -7,7 +7,7 @@
  *
  * Narrow (a phone): the album goes, then the length (container widths, not the window's).
  */
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { letterOf } from './letters'
 import SongRow from './SongRow.vue'
 import type { Song, SongAction, SongMenuPlace } from './songMenu'
@@ -175,6 +175,40 @@ async function foldAwayAll(songs: Song[], done: () => unknown) {
   undo()
 }
 defineExpose({ foldAwayAll })
+
+// ---- The queue changing (the queue's list): songs coming in (Play next, Add to queue, from either device) unfold into
+// place; songs that moved without being dragged here (on the other device, the queue going on to the next song) glide
+// from where they were to their new places, the others making way. Not the rows shown ahead (after the queue starts
+// over), and not while a song is dragged or just let go (that glides on its own).
+const keyOf = (s: Song) => String(s.key ?? s.id)
+const rowOf = (key: string) => list.value?.querySelector<HTMLElement>(`:scope > [data-song="${CSS.escape(key)}"]`)
+watch(
+  () => props.songs.filter((s) => !s.later).map(keyOf),
+  async (now, before) => {
+    if (!props.queue || !before || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    if (drag.value || settling.value) return
+    // Where each row is now, before the list changes (this runs before the page is drawn again).
+    const was = new Map(before.map((key) => [key, rowOf(key)?.getBoundingClientRect().top]))
+    const had = new Set(before)
+    const added = now.filter((key) => !had.has(key))
+    await nextTick()
+    // A whole new queue (another list played): not song by song.
+    if (added.length > 20) return
+    for (const key of now) {
+      const row = rowOf(key)
+      if (!row) continue
+      if (!had.has(key)) {
+        row.style.overflow = 'hidden'
+        const unfold = row.animate([{ height: '0px', opacity: 0 }, { height: `${row.offsetHeight}px`, opacity: 1 }], FOLD)
+        unfold.finished.catch(() => {}).then(() => (row.style.overflow = ''))
+        continue
+      }
+      const from = was.get(key)
+      const offset = from == null ? 0 : from - row.getBoundingClientRect().top
+      if (Math.abs(offset) > 1) row.animate([{ translate: `0 ${offset}px` }, { translate: '0 0' }], FOLD)
+    }
+  },
+)
 
 /** A row's place in the order a drag would make (its place as it is, without a drag). */
 function placeOf(index: number): number {

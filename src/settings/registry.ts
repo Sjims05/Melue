@@ -25,6 +25,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: '10 min',
     help: 'With Ask: if the other device played this recently, Melue continues right away (paused) instead of asking. Never: it always asks.',
   },
+  'playback.songsNotHere': {
+    title: 'Songs this device doesn’t have',
+    default: 'On',
+    help: 'Another device plays a song this one doesn’t have (only on that device, or not synced yet): Melue continues anyway. The song shows as playing there, and play here starts the next song this device has. Off: such playback isn’t continued.',
+  },
   'playback.deviceName': {
     title: 'This device’s name',
     default: 'the system’s name',
@@ -240,6 +245,16 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: '5%',
     help: 'Playing on a computer from this phone (Connect device), how much one press of the phone’s volume buttons changes the computer’s volume. The phone’s own volume stays as it is.',
     perDevice: true,
+  },
+  'discord.enabled': {
+    title: 'Discord',
+    default: 'Off',
+    help: 'Your Discord status says “Listening to Melue”, with the song, its artist, how far it is and its cover, while Melue plays on a computer that has Discord open. The cover is looked up online (MusicBrainz’s Cover Art Archive, by the artist and album); without one it shows Melue’s logo.',
+  },
+  'discord.weekly': {
+    title: 'This week’s listening',
+    default: 'Off',
+    help: 'Hovering the cover in your Discord status shows how many songs you played this week (on all your devices, counted as the Top songs lists count them), and the artist you played most.',
   },
   'reports.screenshot': {
     title: 'Keep a screenshot with reports',

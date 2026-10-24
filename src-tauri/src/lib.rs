@@ -2,6 +2,7 @@
 mod desktop;
 mod dev;
 mod connections;
+mod discord;
 mod github;
 mod library;
 mod logging;
@@ -140,6 +141,9 @@ pub fn run() {
             // Desktop: the tray, starting with the system (desktop.rs).
             #[cfg(desktop)]
             desktop::setup(app.handle())?;
+            // Discord: "Listening to Melue" (when switched on).
+            #[cfg(desktop)]
+            discord::start(app.handle());
             eprintln!("melue: start-up: set up at {} ms", startup::ms());
             Ok(())
         })
@@ -227,6 +231,8 @@ pub fn run() {
             sync::commands::sync_settings,
             sync::commands::sync_set_settings,
             sync::commands::playback_sync_settings,
+            sync::commands::playback_stand_in,
+            sync::commands::playback_stand_in_done,
             sync::commands::playback_sync_set_settings,
             sync::commands::playback_offer,
             sync::commands::playback_offer_song,
@@ -252,6 +258,9 @@ pub fn run() {
             library::library_status,
             library::library_missing_songs,
             library::library_forget_missing,
+            discord::discord_settings,
+            discord::discord_set_settings,
+            discord::discord_status,
             library::library_lyrics,
             library::library_set_lyrics_timing,
             library::library_lyrics_other_version,

@@ -309,6 +309,18 @@ impl AppHost {
                 places.sort_by(|a, b| b.index.cmp(&a.index));
                 places.iter().try_for_each(|place| player.remove_from_queue(place.index))
             }
+            Command::Jump { index, path } => {
+                self.check_places(&[Place { index, path }])?;
+                let queue = player.get_queue()?;
+                let order: Vec<i64> = if queue.play_order.is_empty() { (0..queue.items.len() as i64).collect() } else { queue.play_order };
+                let place = order.iter().position(|&i| i == index as i64).ok_or("that song isn't in the queue")?;
+                let start = order.iter().position(|&i| i == queue.current_index).map_or(0, |p| p + 1);
+                if place > start {
+                    player.move_in_play_order(place, start)?;
+                }
+                player.next()?;
+                player.play()
+            }
             Command::Move { from, to, path } => {
                 let queue = player.get_queue()?;
                 let index = queue.play_order.get(from).map_or(from, |&i| i as usize);

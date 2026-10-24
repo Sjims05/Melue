@@ -42,6 +42,8 @@ export type RemoteCommand =
   | { cmd: 'load'; queue: string[]; index: number; position: number; playing: boolean }
   /** Up next there: songs out (their places in its queue, and which songs: their paths on the share, to check). */
   | { cmd: 'remove'; places: { index: number; path: string | null }[] }
+  /** Up next there: its song at `index` (of the queue's list) plays now, the queue staying as it was. */
+  | { cmd: 'jump'; index: number; path: string | null }
   /** Up next there: a song from place `from` of the play order to place `to`. */
   | { cmd: 'move'; from: number; to: number; path: string | null }
 

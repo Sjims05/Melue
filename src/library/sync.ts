@@ -377,9 +377,23 @@ export interface PlaybackSettings {
    * likely a switch from it to this one). null: always ask. Default 10.
    */
   continueWithinMinutes: number | null
+  /** Another device plays a song this one doesn't have: continue anyway, that song shown, the next one here waiting. */
+  songsNotHere: boolean
+}
+
+/** Continued from another device whose song isn't here: what it plays, while the player waits on `waiting` (an id). */
+export interface StandIn {
+  title: string | null
+  artist: string | null
+  device: string
+  waiting: number | null
 }
 
 export const playbackSync = {
+  /** The stand-in now (null: none), when it changes, and that it's over (this device plays). */
+  standIn: () => invoke<StandIn | null>('playback_stand_in'),
+  onStandIn: (listener: (standIn: StandIn | null) => void) => listen<StandIn | null>('playback-stand-in', (e) => listener(e.payload)),
+  standInDone: () => invoke<void>('playback_stand_in_done'),
   settings: () => invoke<PlaybackSettings>('playback_sync_settings'),
   setSettings: (settings: PlaybackSettings) => invoke<PlaybackSettings>('playback_sync_set_settings', { settings }),
   /** Another device's playback waiting for an answer, if any. */

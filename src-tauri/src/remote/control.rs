@@ -51,6 +51,9 @@ pub enum Command {
     Add { songs: Vec<String>, list: Option<SharedList>, next: bool },
     /// Up next there: these songs out of the queue.
     Remove { places: Vec<Place> },
+    /// Up next there: its song at `index` (of the queue's list; `path`: which song) plays now, the queue staying as it
+    /// was (moved to the front of Up next, then on to it, in one go: one state comes back).
+    Jump { index: usize, path: Option<String> },
     /// Up next there: the song at place `from` of the play order to place `to` (`path`: which song that is).
     Move { from: usize, to: usize, path: Option<String> },
 }

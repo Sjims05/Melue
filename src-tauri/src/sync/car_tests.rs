@@ -31,7 +31,7 @@ fn desktop_played(share: &TestShare) {
         device_name: "TROLLGANG".into(),
         saved_at_ms: now_ms(),
         share_ms: 0,
-        state: Playback { queue: vec!["A.wav".into(), "B.wav".into()], index: 1, position_s: 42.0, playing: false, shuffle: true, repeat: "all".into() },
+        state: Playback { queue: vec!["A.wav".into(), "B.wav".into()], index: 1, position_s: 42.0, playing: false, shuffle: true, repeat: "all".into(), ..Default::default() },
         title: Some("B".into()),
         artist: Some("Band".into()),
     };

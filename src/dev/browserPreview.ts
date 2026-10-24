@@ -63,7 +63,7 @@ const layoutStatus = (): LayoutStatus => settings.shareLayout === 'artistAlbum'
   : { layout: 'oneFolder', applied: false, toMove: 3, examples: [{ from: 'ABBA/Waterloo/Waterloo.mp3', to: 'Waterloo.mp3' }] }
 let reorganised = false
 
-let playback: PlaybackSettings = { mode: 'ask', deviceName: 'TROLLGANG', continueWithinMinutes: 10 }
+let playback: PlaybackSettings = { mode: 'ask', deviceName: 'TROLLGANG', continueWithinMinutes: 10, songsNotHere: true }
 
 // The player: eight songs from Liked songs, the first playing (its state only changes through the controls here).
 const QUEUE_SONGS: [string, string, string, number][] = [
