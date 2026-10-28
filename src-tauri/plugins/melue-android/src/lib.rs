@@ -173,6 +173,14 @@ mod android {
 
         /// Hands a downloaded APK to Android's installer (the user confirms). Err("allow"): the user has to allow
         /// Melue to install apps first (Android's screen for it is open).
+        /// The status and navigation bars' icons for Melue's theme (light icons while it's dark).
+        pub fn set_bar_icons(&self, dark: bool) -> Result<(), String> {
+            self.0
+                .run_mobile_plugin::<serde_json::Value>("setBarIcons", serde_json::json!({ "dark": dark }))
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        }
+
         pub fn install_apk(&self, path: &str) -> Result<(), String> {
             self.0
                 .run_mobile_plugin::<serde_json::Value>("installApk", serde_json::json!({ "path": path }))

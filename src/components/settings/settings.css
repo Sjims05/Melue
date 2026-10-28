@@ -23,9 +23,10 @@
     min-width: 0;
   }
 
-  /* Rows in a card are separated by lines in the page's colour (flat cards: no borders). */
+  /* Rows in a card are separated by lines in the page's colour (flat cards: no borders). --separator-color: another
+     colour (the Dev page's card borders). */
   .settings-row + .settings-row {
-    border-top: var(--separator) solid var(--background);
+    border-top: var(--separator) solid var(--separator-color, var(--background));
   }
 
   /* A card's details line (2026-10-17): a separator like the others, across the whole card (its details sit
@@ -33,7 +34,7 @@
   .settings-details-line {
     height: var(--separator);
     margin-inline: -1rem;
-    background: var(--background);
+    background: var(--separator-color, var(--background));
   }
 
   /* Something that slides open and closed in a card (Reveal.vue): separated like a row. Its rows are set here, not as
@@ -48,7 +49,7 @@
     clip-path: inset(-16px -8px 0 -8px);
   }
   .settings-row + .settings-reveal, .settings-reveal + .settings-row, .settings-reveal + .settings-reveal {
-    border-top: var(--separator) solid var(--background);
+    border-top: var(--separator) solid var(--separator-color, var(--background));
   }
   /* A setting opened from its link (settings/settingsMenu.ts: goToSetting): it lights up, then fades back. */
   .settings-flash {

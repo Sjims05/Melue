@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/page'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { librarySync, moving, playbackSync, syncing } from '@/library/sync'
 import { isAndroid } from '@/platform'
 import { openReport } from '@/lib/report/report'
@@ -23,6 +24,7 @@ import { SETTINGS } from '@/settings/registry'
 import { offloadChoiceFor } from '@/settings/offloadSupport'
 import OffloadSetting from '@/settings/OffloadSetting.vue'
 import type { OffloadFormat } from '@/platform/player/Player'
+import { applyColorPreset, COLOR_PRESETS, devColors, resetDevColors } from '@/lib/devColors'
 
 const version = ref('')
 
@@ -54,6 +56,10 @@ const phone = ref<Phone>('some')
 const previewOn = ref(true)
 const previewAbout = ref(false)
 const offloadInfo = SETTINGS['player.offloadWithGaps']
+
+// ---- The light theme's page and card colours (lib/devColors.ts): the preset they match, if any.
+const presetNow = computed(() => (devColors.on ? COLOR_PRESETS.find((p) => p[2] === devColors.page && p[3] === devColors.card)?.[0] : 'now'))
+const pick = (which: 'page' | 'card', e: Event) => Object.assign(devColors, { [which]: (e.target as HTMLInputElement).value, on: true })
 const previewChoice = computed(() => offloadChoiceFor(PHONE_FORMATS[phone.value]))
 /** What the last tool did, or why it couldn't. */
 const result = ref<{ ok: boolean; text: string } | null>(null)
@@ -166,6 +172,40 @@ const TOOLS: { title: string; description: string; run: () => Promise<unknown> |
           <Button variant="outline" size="sm" @click="tool(t.title, t.run)">Run</Button>
         </SettingsRow>
       </template>
+    </SettingsCard>
+    <SettingsHeading title="Light theme colours" description="The page and its cards, until Melue restarts (the light theme)" />
+    <SettingsCard>
+      <SettingsRow title="Presets" description="The ones tried; Now is the app's" wide>
+        <div class="flex flex-wrap gap-1.5">
+          <Button v-for="p in COLOR_PRESETS" :key="p[0]" size="sm" :variant="presetNow === p[0] ? 'default' : 'outline'" @click="applyColorPreset(p[0])">
+            {{ p[1] }}
+          </Button>
+        </div>
+      </SettingsRow>
+      <SettingsRow v-for="which in ['page', 'card'] as const" :key="which" :title="which === 'page' ? 'Page' : 'Cards'" :description="devColors[which]">
+        <input
+          type="color"
+          class="h-8 w-12 cursor-pointer rounded-md border bg-transparent"
+          :value="devColors[which]"
+          :aria-label="which === 'page' ? 'Page colour' : 'Card colour'"
+          @input="pick(which, $event)"
+        />
+      </SettingsRow>
+      <SettingsRow title="Borders on cards" description="A thin line around each card">
+        <Switch v-model="devColors.borders" />
+      </SettingsRow>
+      <SettingsRow v-if="devColors.borders" title="Lines between settings" description="Border colour: as thin as the border (1 px, not 2)" detail wide>
+        <Segmented
+          v-model="devColors.lines"
+          :options="[
+            ['page', 'Page colour'],
+            ['border', 'Border colour'],
+          ]"
+        />
+      </SettingsRow>
+      <SettingsRow title="Back to the app's" description="Removes the colours and borders picked here">
+        <Button variant="outline" size="sm" :disabled="!devColors.on && !devColors.borders" @click="resetDevColors">Reset</Button>
+      </SettingsRow>
     </SettingsCard>
     <SettingsHeading title="Battery-saving playback" description="The setting in Settings, Audio, as it looks on other phones" />
     <Segmented v-model="phone" :options="PHONES" class="mb-3" />

@@ -32,6 +32,19 @@ fn app_is_dev() -> bool {
 }
 
 
+/// A phone: the status and navigation bars' icons follow Melue's theme (light icons while it's dark), not the phone's.
+/// Elsewhere nothing.
+#[tauri::command]
+fn set_bar_icons(_app: tauri::AppHandle, _dark: bool) {
+    #[cfg(target_os = "android")]
+    {
+        use tauri_plugin_melue_android::MelueAndroidExt;
+        if let Err(e) = _app.melue_android().set_bar_icons(_dark) {
+            eprintln!("melue: bar icons: {e}");
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Android: Melue's messages to Android's log and a log file on the phone (logging.rs).
@@ -189,6 +202,7 @@ pub fn run() {
             phone_update::update_install_downloaded,
             logging::log_show,
             app_is_dev,
+            set_bar_icons,
             remote::remote_settings,
             remote::remote_set_settings,
             remote::presence::remote_devices,

@@ -3,6 +3,19 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 1.0.0 (2026-10-28)
+
+Melue 1.0: your own music on your computer and your phone, finished and documented.
+
+- A new front page on GitHub: what Melue does, with screenshots of both, where to download it, how to set it up,
+  what goes online, and answers to common questions. Melue is now open source under the MIT license.
+- The light theme's page is a softer grey, a little lighter than before, so the white cards stand out without
+  contrast that's too strong.
+- On a phone, the status bar and navigation bar icons follow Melue's theme: dark icons on the light theme, where
+  they used to stay white and disappear.
+- Melue now reports its real version in its log and to the services it uses (it said 0.6.3).
+- Melue can be built from source without the release signing key.
+
 ## 0.8.2 (2026-10-28)
 
 Steadier and lighter, after a full check of the app.

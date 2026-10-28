@@ -195,6 +195,26 @@ class MelueAndroidPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @InvokeArg
+    class BarsArgs {
+        var dark: Boolean = true
+    }
+
+    /**
+     * The status bar's and navigation bar's icons for Melue's theme, not the phone's: dark icons while Melue is light
+     * (edge to edge, the bars show Melue's page behind them; they'd follow the phone's own theme otherwise).
+     */
+    @Command
+    fun setBarIcons(invoke: Invoke) {
+        val dark = invoke.parseArgs(BarsArgs::class.java).dark
+        activity.runOnUiThread {
+            val bars = androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            bars.isAppearanceLightStatusBars = !dark
+            bars.isAppearanceLightNavigationBars = !dark
+        }
+        invoke.resolve()
+    }
+
+    @InvokeArg
     class ApkArgs {
         var path: String = ""
     }

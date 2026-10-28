@@ -14,6 +14,8 @@ import { PLAYLIST_PICKER } from '@/components/songs'
 import { followOnlyHere } from '@/library/onlyHere'
 import { followSharedSettings } from '@/settings/sharedSettings'
 import { PHONE } from '@/lib/phone'
+import { isDark } from '@/lib/theme'
+import { invoke } from '@tauri-apps/api/core'
 import NowPlayingPage from '@/pages/NowPlayingPage.vue'
 import { startNowPlaying } from '@/player/nowPlaying'
 import { playlistPicker } from '@/player/playlistPicker'
@@ -31,6 +33,8 @@ import ReportDialog from '@/components/report/ReportDialog.vue'
 import RemoteAsk from '@/components/player/RemoteAsk.vue'
 
 const route = useRoute()
+// The phone's status and navigation bars: icons for Melue's theme (dark icons while it's light), not the phone's.
+watch(isDark, (dark) => invoke('set_bar_icons', { dark }).catch(() => {}), { immediate: true })
 // What's playing; the song menus' Add to playlist; which songs are only on this device.
 startNowPlaying()
 followOnlyHere()
