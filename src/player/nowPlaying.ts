@@ -68,6 +68,8 @@ export async function startNowPlaying() {
   document.addEventListener('visibilitychange', ticking)
   // Another device's playback loaded here (synced playback, following it): what's playing now.
   playbackSync.onFollowed(() => syncNowPlaying().catch(() => {})).catch(() => {})
+  // Another device cleared its player, and this one follows it: cleared here (by Melue), shown.
+  playbackSync.onCleared(() => syncNowPlaying().catch(() => {})).catch(() => {})
   // Continued from another device whose song isn't here: that song shows until this one plays.
   followStandIn().catch(() => {})
   // Another device playing here changed the player (Connect device): read again, at once and once it has settled (a
@@ -386,9 +388,13 @@ export const cycleRepeat = () => {
   const mode = REPEAT_NEXT[nowPlaying.state?.repeatMode ?? 'off']
   return control({ cmd: 'repeat', mode }, () => player.setRepeatMode(mode))
 }
-/** The player bar's ✕: stops and empties the player (the bar stays, empty). */
+/**
+ * The player bar's ✕ (a phone's Clear the player): stops and empties the player, and forgets the queue, so nothing
+ * comes back at the next start. Playing on another device: that device's player is cleared.
+ */
 export async function clearPlayer() {
-  await player.dispose()
+  if (playingOn.device) return void (await control({ cmd: 'clear' }, () => player.getState()))
+  await player.clear()
   applyState(await player.getState())
   await refreshQueue()
 }

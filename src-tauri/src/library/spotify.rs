@@ -286,7 +286,10 @@ pub(crate) fn apply_synced(tx: &Transaction, id: i64, entries: &[SyncEntry], ref
                 taken[i] = true;
             }
             let state = if line.is_some() { "both" } else { "file_removed" };
-            rows.push(Row { entry: NewEntry { state, file_entry: Some(entry.key.clone()), track: find(&entry.key), shown: None }, line });
+            // Its song chosen by hand on a device (Find song): that song, where this device has it.
+            let chosen = entry.chosen.as_ref().and_then(|key| songs.find(&SyncEntry { key: key.clone(), chosen: None, ..entry.clone() })).map(|(track, _)| track);
+            let track = chosen.or_else(|| find(&entry.key));
+            rows.push(Row { entry: NewEntry { state, file_entry: Some(entry.key.clone()), track, shown: None, chosen: chosen.is_some() }, line });
         } else {
             // Added in Melue: the song itself, a copy of it here (keeping the key it came with), or not here.
             let (track, file_entry, shown) = match songs.find(entry) {
@@ -294,7 +297,7 @@ pub(crate) fn apply_synced(tx: &Transaction, id: i64, entries: &[SyncEntry], ref
                 Some((track, false)) => (Some(track), Some(entry.key.clone()), None),
                 None => (None, Some(entry.key.clone()), Some(entry)),
             };
-            rows.push(Row { entry: NewEntry { state: "here_only", file_entry, track, shown }, line: None });
+            rows.push(Row { entry: NewEntry { state: "here_only", file_entry, track, shown, chosen: false }, line: None });
         }
     }
     // The reference's songs Melue's version doesn't have: greyed after the song before them on Spotify.
@@ -304,7 +307,7 @@ pub(crate) fn apply_synced(tx: &Transaction, id: i64, entries: &[SyncEntry], ref
             _ => rows.iter().position(|r| r.line == Some(i - 1)).map_or(rows.len(), |p| p + 1),
         };
         let line = &reference.lines[i];
-        let entry = NewEntry { state: "removed_here", file_entry: Some(line.clone()), track: find(line), shown: None };
+        let entry = NewEntry { state: "removed_here", file_entry: Some(line.clone()), track: find(line), shown: None, chosen: false };
         rows.insert(at, Row { entry, line: Some(i) });
     }
     let rows: Vec<NewEntry> = rows.into_iter().map(|r| r.entry).collect();

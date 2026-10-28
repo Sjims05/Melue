@@ -90,13 +90,15 @@ fn what_gets_saved() {
 #[test]
 fn the_newest_other_device_is_offered() {
     let files = || vec![file("me", 400, &["a"]), file("phone", 500, &["a"]), file("laptop", 700, &["b"]), file("empty", 800, &[])];
-    // Mine and empty ones don't count.
-    assert_eq!(newest_other(files(), "me", 0).map(|f| f.device_id), Some("laptop".into()));
+    // Mine doesn't count; a player cleared there (an empty queue) does: it's what that device did last.
+    assert_eq!(newest_other(files(), "me", 0).map(|f| f.device_id), Some("empty".into()));
+    let played = || files().into_iter().filter(|f| f.device_id != "empty").collect::<Vec<_>>();
+    assert_eq!(newest_other(played(), "me", 0).map(|f| f.device_id), Some("laptop".into()));
     // Only when newer than the last one answered...
-    assert_eq!(newest_other(files(), "me", 600).map(|f| f.device_id), Some("laptop".into()));
-    assert_eq!(newest_other(files(), "me", 700), None);
+    assert_eq!(newest_other(played(), "me", 600).map(|f| f.device_id), Some("laptop".into()));
+    assert_eq!(newest_other(played(), "me", 700), None);
     // ...and than what was played here.
-    let mut played_here = files();
+    let mut played_here = played();
     played_here[0].share_ms = 750;
     assert_eq!(newest_other(played_here, "me", 0), None);
     assert_eq!(newest_other(Vec::new(), "me", 0), None);

@@ -216,6 +216,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: 'Primary',
     help: 'The queue under the player on Now playing: a panel in the primary colour (white in dark mode, black in light mode, so it stands out), or a card like the others.',
   },
+  'display.hideEmptyMiniPlayer': {
+    title: 'Hide the player when nothing is loaded',
+    default: 'Off',
+    help: 'On a phone, the mini player above the bottom bar: off, it always shows (empty, saying nothing is playing, when the player is cleared or Melue just started); on, it slides away until something plays, for a little more room.',
+  },
   'display.homeCardsPrimary': {
     title: 'Home’s Playing and Continue cards',
     default: 'Primary',
@@ -243,13 +248,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     title: 'Volume steps on a phone',
     default: '10 levels',
     help: 'Playing on a phone (Connect device), how far one step of the volume slider, the mouse wheel or the + and − keys moves its volume, in its levels. Some phones have many fine levels (160, say) while their buttons move 10 at a time; this makes the slider step like the buttons. Phones with 30 levels or fewer step through each one.',
-    perDevice: true,
   },
   'remote.buttonStep': {
     title: 'Volume buttons on another device',
     default: '5%',
     help: 'Playing on a computer from this phone (Connect device), how much one press of the phone’s volume buttons changes the computer’s volume. The phone’s own volume stays as it is.',
-    perDevice: true,
   },
   'discord.enabled': {
     title: 'Discord',
@@ -265,13 +268,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     title: 'Keep a screenshot with reports',
     default: 'Off',
     help: 'When you report a bug, Melue takes a picture of the window as it was and keeps it with the report on your share (and on this device until it gets there), for you to look at. It is never sent: the public report describes the screen in words instead.',
-    perDevice: true,
   },
   'updates.ask': {
     title: 'Ask when an update is found',
     default: 'On',
     help: 'When Melue finds a newer version, it asks whether to update now. Off: it only says so in About, under Updates.',
-    perDevice: true,
   },
   'display.closeWindow': {
     title: 'Closing the window',

@@ -2,7 +2,7 @@
  * A song's menu (its ⋯ button and right-click): what it offers depends on the song and where it is (in a playlist,
  * on a desktop, with a share). The same items for both menus.
  */
-import { CloudUpload, Disc3, FolderOpen, Heart, ListEnd, ListMusic, ListX, User } from '@lucide/vue'
+import { CloudUpload, Disc3, FolderOpen, Heart, ListEnd, ListMusic, ListX, Search, User } from '@lucide/vue'
 import { NextIcon } from '@/components/player/icons'
 import type { MenuItem } from '@/components/covers/coverMenu'
 
@@ -48,6 +48,7 @@ export type SongAction =
   | 'showInFolder'
   | 'moveToSync'
   | 'removeFromPlaylist'
+  | 'findSong'
   | 'takeOut'
   | 'restore'
 
@@ -63,6 +64,17 @@ export interface SongMenuPlace {
 
 /** One item in a song's menu (the same shape as a cover card's). */
 export type SongMenuItem = MenuItem<SongAction>
+
+/**
+ * A playlist's song that isn't here (greyed): only what makes sense for it, Find song (one of your songs for it) and
+ * Remove from playlist.
+ */
+export function unavailableSongMenu(): SongMenuItem[] {
+  return [
+    { action: 'findSong', label: 'Find song', icon: Search },
+    { action: 'removeFromPlaylist', label: 'Remove from playlist', icon: ListX, danger: true, apart: true },
+  ]
+}
 
 export function songMenu(song: Song, place: SongMenuPlace = {}): SongMenuItem[] {
   const items: SongMenuItem[] = [

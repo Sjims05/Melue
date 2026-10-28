@@ -5,10 +5,12 @@
  * sign-out) is every device's: it goes through the share, encrypted (src-tauri connections.rs). Discord: "Listening
  * to Melue" in your Discord status (computers; library/discord.ts), and this week's listening on hover.
  */
+import { KeyRound } from '@lucide/vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { settingsArrived } from './sharedSettings'
 import { Switch } from '@/components/ui/switch'
 import { discord, type DiscordSettings } from '@/library/discord'
 import { isDesktop } from '@/platform'
@@ -16,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Reveal, SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { everyWhileShown } from '@/lib/whileShown'
+import { closeToast, toast } from '@/lib/toast'
 
 const account = ref<string | null>(null)
 /** Signing in: the code to enter on GitHub, and where. */
@@ -39,6 +42,8 @@ async function loadDiscord() {
   if (isDesktop) discordStatus.value = await discord.status().catch(() => 'off' as const)
 }
 onPageLoad(loadDiscord)
+// Changed on another device: shown here too.
+watch(settingsArrived, loadDiscord)
 // Discord opened or closed meanwhile: the line follows (Melue looks every few seconds, while this is shown).
 everyWhileShown(() => isDesktop && discordSettings.value?.enabled && loadDiscord(), 5_000)
 const discordLine = computed(() => {
@@ -57,12 +62,17 @@ onBeforeUnmount(() => void stopListening.then((stop) => stop()))
 
 async function start() {
   error.value = ''
+  let note: number | undefined
   try {
     signIn.value = await invoke<{ code: string; url: string }>('github_sign_in_start')
-    await navigator.clipboard.writeText(signIn.value.code).catch(() => {})
+    const copied = await navigator.clipboard.writeText(signIn.value.code).then(() => true, () => false)
+    // Hard to miss, until it's done: the code to enter on GitHub (the page opens).
+    note = toast(`Enter ${signIn.value.code} on GitHub${copied ? ': copied' : ''}`, KeyRound, undefined, undefined, true)
     await openGitHub()
     account.value = await invoke<string>('github_sign_in_wait')
+    toast(`Signed in to GitHub as ${account.value}`, KeyRound)
   } catch (e) {
+    if (note !== undefined) closeToast(note)
     const why = String(e)
     if (why === 'expired') error.value = 'The code ran out before it was entered: sign in again'
     else if (why === 'denied') error.value = 'GitHub said no (the request was cancelled there)'

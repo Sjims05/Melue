@@ -5,6 +5,11 @@
  * row moves the ticked songs to sync. The ⋯ menu has the folder's actions: Move all to sync, Switch off / on, Rename
  * (opens in place), Remove.
  *
+ * A computer without a share: a network folder (a NAS) is offered as the share when it's added, and from its ⋯ menu
+ * (Use as my share): copied to this PC (synced) or played straight from it (streamed), or kept as a plain folder. A
+ * folder the last scan couldn't open says so (a network folder Windows isn't signed in to: set the share up with the
+ * NAS's user and password instead).
+ *
  * Copies of synced songs are handled on the status card above (Melue counts them for the whole library).
  */
 import { Cloud, CloudUpload, Ellipsis, FilePlus, Folder, Plus, Smartphone } from '@lucide/vue'
@@ -14,17 +19,17 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Chevron, ConfirmDialog, EditRow, IconTile, Reveal, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library, type MusicFolder } from '@/library'
-import { describeSyncFailure, moving, sync, type LocalSong } from '@/library/sync'
+import { describeSyncFailure, moving, share, sync, type LocalSong } from '@/library/sync'
 import { isAndroid, isDesktop, isMobile, storage } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { adding, pickSongs } from './addSongs'
-import { size, whereOriginalsGo } from './format'
+import { readablePath, size, whereOriginalsGo } from './format'
 import { libraryState, onlyHereSongs, refreshLibrary, startLibraryState } from './libraryState'
 
 const open = ref<number | null>(null)
 const renaming = ref<number | null>(null)
 const picked = reactive(new Set<number>())
-const asking = ref<{ what: 'move'; songs: LocalSong[] } | { what: 'remove'; folder: MusicFolder } | null>(null)
+const asking = ref<{ what: 'move'; songs: LocalSong[] } | { what: 'remove' | 'share'; folder: MusicFolder } | null>(null)
 const error = ref('')
 
 onPageLoad(startLibraryState)
@@ -50,10 +55,26 @@ function line(folder: MusicFolder) {
   const share = libraryState.shareFolders.get(folder.id)
   if (share) return SHARE_LINE[share]
   if (!folder.enabled) return 'Switched off: its songs are hidden'
+  const failed = libraryState.folderErrors.get(folder.id)
+  if (failed) {
+    return folder.network
+      ? 'Can’t open it: this computer isn’t signed in to it. Set it up as your share with the NAS’s user and password instead'
+      : `Can’t open it: ${failed}`
+  }
   const where = folder.kind === 'android_media' ? ' · all music on this phone' : folder.synced ? ' · your share, copied here' : folder.network ? ' · on the network' : ''
   const [here, onAll] = [onlyHereIn(folder).length, onAllIn(folder).length]
-  return `${plural(folder.tracks, 'song')}${where}${here ? ` · ${here} only here` : ''}${onAll ? ` · ${onAll} on all your devices` : ''}`
+  const skipped = syncedInside(folder)
+  return `${plural(folder.tracks, 'song')}${where}${here ? ` · ${here} only here` : ''}${onAll ? ` · ${onAll} on all your devices` : ''}${skipped ? ` · ${skipped.name} inside it is left out: it's your synced music` : ''}`
 }
+// A folder with your synced music inside it (Music around Music\Melue): the scan skips that part, so its songs
+// aren't in the library twice; its line says so (the count can drop when the share is set up).
+const inside = (child: string, parent: string) => {
+  const plain = (path: string) => path.replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase()
+  return plain(child).startsWith(`${plain(parent)}\\`)
+}
+const syncedInside = (folder: MusicFolder) =>
+  folder.kind === 'path' && !folder.synced ? folders.value.find((f) => f.synced && f.kind === 'path' && inside(f.location, folder.location)) : undefined
+
 const tile = (folder: MusicFolder) => (folder.synced ? Cloud : folder.kind === 'android_media' ? Smartphone : Folder)
 
 // Opening a folder: only one with songs to move.
@@ -93,10 +114,23 @@ async function act(action: () => Promise<unknown>) {
   await refreshLibrary()
 }
 
+// A computer without a share: a network folder can be the share (synced or streamed).
+const canBeShare = (folder: MusicFolder) => isDesktop && folder.network && !folder.synced && !sync.available
 const addFolder = () =>
   act(async () => {
     const location = await storage.pickMusicFolder()
-    if (location) await library.addFolder(isAndroid ? 'android_tree' : 'path', location)
+    if (!location) return
+    const folder = await library.addFolder(isAndroid ? 'android_tree' : 'path', location)
+    if (canBeShare(folder)) asking.value = { what: 'share', folder }
+  })
+// Used as the share: copied here (the folder itself leaves the list: its songs come back as your synced music), or
+// played straight from it (the folder becomes the synced one).
+const useAsShare = (folder: MusicFolder, stream: boolean) =>
+  act(async () => {
+    await share.setUp({ kind: 'drive', path: folder.location, stream }).catch((error) => {
+      throw { kind: 'setup', error }
+    })
+    if (!stream) await library.removeFolder(folder.id)
   })
 const move = (songs: LocalSong[]) =>
   act(async () => {
@@ -126,12 +160,26 @@ const ask = computed(() => {
   if (a?.what === 'remove') {
     return { title: `Remove ${a.folder.name}?`, text: 'Its songs leave your library on this device. The files stay where they are.', action: 'Remove', danger: true }
   }
+  if (a?.what === 'share') {
+    return {
+      title: `Use ${a.folder.name} as your share?`,
+      text: 'It’s on your network. As your share it keeps your devices in step: songs, playlists, likes and settings.',
+      action: 'Continue',
+      danger: false,
+      choices: [
+        { title: 'Keep copies on this PC', detail: 'Songs are copied to Music\\Melue, so they play when the NAS is off. This folder leaves the list: its songs come back as your synced music.' },
+        { title: 'Play straight from the NAS', detail: 'No copies here: songs play only while the NAS can be reached.' },
+        { title: 'Just a music folder', detail: 'Nothing syncs. You can still use it as your share later, from its ⋯ menu.' },
+      ],
+    }
+  }
   return null
 })
-function confirm() {
+function confirm(choice: number) {
   const a = asking.value
   if (a?.what === 'move') move(a.songs)
   else if (a?.what === 'remove') remove(a.folder)
+  else if (a?.what === 'share' && choice < 2) useAsShare(a.folder, choice === 1)
 }
 </script>
 
@@ -139,7 +187,12 @@ function confirm() {
   <SettingsLabel mark="This device">Music folders</SettingsLabel>
   <SettingsCard>
     <template v-for="folder in folders" :key="folder.id">
-      <SettingsRow :description="line(folder)" :dim="!folder.enabled" @click="toggle(folder, $event)">
+      <SettingsRow :dim="!folder.enabled" @click="toggle(folder, $event)">
+        <!-- Where it is (in full: two folders can share a name), then what's in it. -->
+        <template #description>
+          <span v-if="folder.kind !== 'android_media'" class="block break-all">{{ readablePath(folder.location) }}</span>
+          <span class="block">{{ line(folder) }}</span>
+        </template>
         <template #lead>
           <!-- In the tile's place, so the name doesn't move when the folder opens. -->
           <span v-if="open === folder.id" class="grid size-[34px] flex-none place-items-center">
@@ -160,6 +213,7 @@ function confirm() {
             <DropdownMenuItem v-if="sync.available && folder.enabled && onlyHereIn(folder).length" @select="asking = { what: 'move', songs: onlyHereIn(folder) }">
               Move all to sync
             </DropdownMenuItem>
+            <DropdownMenuItem v-if="canBeShare(folder)" @select="asking = { what: 'share', folder }">Use as my share…</DropdownMenuItem>
             <DropdownMenuItem v-if="!folder.synced" @select="switchFolder(folder)">{{ folder.enabled ? 'Switch off' : 'Switch on' }}</DropdownMenuItem>
             <DropdownMenuItem @select="renaming = renaming === folder.id ? null : folder.id">Rename</DropdownMenuItem>
             <DropdownMenuItem v-if="!folder.synced" variant="destructive" @select="asking = { what: 'remove', folder }">Remove…</DropdownMenuItem>
@@ -236,6 +290,7 @@ function confirm() {
     :text="ask.text"
     :action="ask.action"
     :danger="ask.danger"
+    :choices="ask.choices"
     @update:open="asking = null"
     @confirm="confirm"
   />

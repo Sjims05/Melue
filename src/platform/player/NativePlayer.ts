@@ -13,6 +13,7 @@ export class NativePlayer implements Player {
   initialize = () => audio.initialize()
   getState = () => audio.getState()
   dispose = () => audio.dispose()
+  clear = () => audio.clear()
   onState = async (listener: Parameters<Player['onState']>[0]) => {
     const stop = await audio.addStateListener(listener)
     // The plugin sends state when it changes; a paused, restored queue doesn't, so start with the current one.

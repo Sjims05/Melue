@@ -12,7 +12,8 @@ import { Ellipsis, Monitor, Smartphone } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import { settingsArrived } from './sharedSettings'
 import { Chevron, ConfirmDialog, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot, Stepper } from '@/components/settings'
 import { usePhone } from '@/lib/phone'
 import { playingOn } from '@/player/playingOn'
@@ -87,14 +88,19 @@ async function forget() {
   }
 }
 
-onPageLoad(async () => {
+async function loadSettings() {
   try {
     ;[settings.value, remoteSettings.value] = await Promise.all([playbackSync.settings(), remote.settings()])
   } catch (e) {
     error.value = `Can’t read these settings: ${e}`
   }
+}
+onPageLoad(async () => {
+  await loadSettings()
   await loadDevices()
 })
+// Changed on another device: shown here too.
+watch(settingsArrived, loadSettings)
 
 async function save(change: Partial<PlaybackSettings>) {
   if (!settings.value) return
@@ -176,6 +182,7 @@ const resetPlayback = <K extends keyof PlaybackSettings>(key: K) => ({
         :reset="() => setAllow('on')"
         :is-default="remoteSettings.allow === 'on'"
       >
+        <template #title>Let other devices play here <SettingsBadge class="ml-1.5">This device</SettingsBadge></template>
         <Segmented :model-value="remoteSettings.allow" :options="ALLOWS" @update:model-value="setAllow" />
       </SettingsRow>
       <SettingsRow

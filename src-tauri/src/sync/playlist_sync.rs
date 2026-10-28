@@ -148,17 +148,21 @@ impl Library {
         let mut stmt = conn
             .prepare(
                 "SELECT e.track_id, e.file_entry, coalesce(t.title, e.sync_title), coalesce(t.artist_credit, e.sync_artist),
-                        coalesce(t.duration_ms, e.sync_duration_ms)
+                        coalesce(t.duration_ms, e.sync_duration_ms), e.chosen
                  FROM playlist_entries e LEFT JOIN tracks t ON t.id = e.track_id
                  WHERE e.playlist_id = ?1 AND e.state IN ('both', 'here_only', 'file_removed') ORDER BY e.position, e.id",
             )
             .map_err(err)?;
         let rows = stmt
-            .query_map([id], |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, Option<i64>>(4)?)))
+            .query_map([id], |r| {
+                Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, Option<i64>>(4)?, r.get::<_, bool>(5)?))
+            })
             .map_err(err)?;
         let mut entries = Vec::new();
         for row in rows {
-            let (track, file_entry, title, artist, duration_ms) = row.map_err(err)?;
+            let (track, file_entry, title, artist, duration_ms, chosen) = row.map_err(err)?;
+            // A song chosen by hand for a Spotify line: which one, for the other devices.
+            let chosen = if chosen && file_entry.is_some() { track.map(|t| songs.key_of(t)) } else { None };
             let key = match (track, file_entry) {
                 (_, Some(key)) => key,
                 (Some(t), None) => songs.key_of(t),
@@ -169,7 +173,7 @@ impl Library {
             let title = title.or_else(|| line.as_ref().map(|s| s.title.clone()));
             let artist = artist.or_else(|| line.as_ref().map(|s| s.artist.clone()));
             let duration_ms = duration_ms.or_else(|| line.as_ref().and_then(|s| s.duration_ms));
-            entries.push(SyncEntry { key, title, artist, duration_ms });
+            entries.push(SyncEntry { key, title, artist, duration_ms, chosen });
         }
         Ok(PlaylistData { name, entries, spotify })
     }
@@ -215,7 +219,7 @@ impl Library {
                     Some((track, false)) => (Some(track), Some(entry.key.clone()), None),
                     None => (None, Some(entry.key.clone()), Some(entry)),
                 };
-                NewEntry { state: "both", track, file_entry, shown }
+                NewEntry { state: "both", track, file_entry, shown, chosen: false }
             })
             .collect();
         write_entries(&tx, id, &rows, songs)?;
@@ -422,7 +426,7 @@ impl Library {
                 .map_err(err)?;
             let rows = stmt
                 .query_map([], |r| {
-                    let entry = SyncEntry { key: r.get(2)?, title: r.get(3)?, artist: r.get(4)?, duration_ms: r.get(5)? };
+                    let entry = SyncEntry { key: r.get(2)?, title: r.get(3)?, artist: r.get(4)?, duration_ms: r.get(5)?, chosen: None };
                     Ok((r.get(0)?, r.get(1)?, entry))
                 })
                 .map_err(err)?;
@@ -461,6 +465,8 @@ pub(crate) struct NewEntry<'a> {
     pub track: Option<i64>,
     pub file_entry: Option<String>,
     pub shown: Option<&'a SyncEntry>,
+    /// Its song chosen by hand (Find song).
+    pub chosen: bool,
 }
 
 /// Writes a synced playlist's entries as `rows`, in order. The entries of songs that stay are kept (their ids
@@ -485,15 +491,15 @@ pub(crate) fn write_entries(tx: &Transaction, id: i64, rows: &[NewEntry], songs:
         match free.get_mut(&key(row.track, &row.file_entry)).and_then(VecDeque::pop_front) {
             Some(entry) => tx.execute(
                 "UPDATE playlist_entries SET position = ?2, track_id = ?3, file_entry = ?4, state = ?5, sync_title = ?6, sync_artist = ?7,
-                     sync_duration_ms = ?8
+                     sync_duration_ms = ?8, chosen = ?9
                  WHERE id = ?1",
-                params![entry, position as i64, row.track, row.file_entry, row.state, title, artist, duration],
+                params![entry, position as i64, row.track, row.file_entry, row.state, title, artist, duration, row.chosen],
             ),
             None => tx.execute(
                 "INSERT INTO playlist_entries
-                     (playlist_id, position, track_id, file_entry, state, added_at, sync_title, sync_artist, sync_duration_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![id, position as i64, row.track, row.file_entry, row.state, now, title, artist, duration],
+                     (playlist_id, position, track_id, file_entry, state, added_at, sync_title, sync_artist, sync_duration_ms, chosen)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![id, position as i64, row.track, row.file_entry, row.state, now, title, artist, duration, row.chosen],
             ),
         }
         .map_err(err)?;

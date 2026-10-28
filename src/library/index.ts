@@ -448,6 +448,8 @@ export const library = {
     invoke<number[]>('library_add_to_playlist', { id, tracks, position }),
   /** Removes entries (by entry id: one copy of a song that's in twice). */
   removeFromPlaylist: (id: number, entries: number[]) => invoke<void>('library_remove_from_playlist', { id, entries }),
+  /** Find song: `track` for the playlist's entry `entry` (one not here); kept, and synced to the other devices. */
+  choosePlaylistSong: (id: number, entry: number, track: number) => invoke<void>('library_choose_playlist_song', { id, entry, track }),
   moveInPlaylist: (id: number, entry: number, position: number) =>
     invoke<void>('library_move_in_playlist', { id, entry, position }),
   /** Linked: takes a greyed song (removed here, or suggested by the file) into Melue's version. */

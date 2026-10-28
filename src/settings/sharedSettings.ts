@@ -11,19 +11,29 @@
 import { readLyricsOnline, setLyricsOnline } from './lyricsSetting'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import { library, type PlayerSettings, type QueueFollow } from '@/library'
 import { discord, type DiscordSettings } from '@/library/discord'
 import { applyPlayerSettings } from '@/library/playback'
 import { playbackSync, syncing, sync, type PlaybackSettings, type SyncSettings } from '@/library/sync'
-import { appearance } from '@/lib/appearance'
-import { listPlay } from '@/lib/listPlay'
-import { themeMode, themeTimes, type ThemeMode } from '@/lib/theme'
+import { appearance, APPEARANCE_DEFAULTS } from '@/lib/appearance'
+import { listPlay, LIST_PLAY_DEFAULTS } from '@/lib/listPlay'
+import { THEME_TIMES_DEFAULT, themeMode, themeTimes, type ThemeMode } from '@/lib/theme'
+import { PLAYBACK_DEFAULTS, PLAYER_DEFAULTS, QUEUE_FOLLOW_DEFAULTS, SYNC_DEFAULTS } from './defaults'
+import { readScreenshotSetting, reporting, setKeepScreenshots } from '@/lib/report/report'
+import { readAskForUpdates, setAskForUpdates } from '@/lib/updates'
+import { remote, type RemoteSettings } from '@/library/remote'
 import { playerSettings } from './playerSettings'
 import { SETTINGS } from './registry'
 import { syncSettings } from './syncSettings'
 
 /** Melue's setting with the ids set to "This device only" (the right-click menu, settingsMenu.ts). */
+
+/**
+ * Counts settings set here from another device (or by the start-up check): settings sections that read their values
+ * once (when shown) watch it and read them again, so a setting changed elsewhere shows without a restart.
+ */
+export const settingsArrived = ref(0)
 export const DEVICE_ONLY = 'device_only_settings'
 
 type Adapter = { read: () => unknown | Promise<unknown>; write: (value: unknown) => void | Promise<void> }
@@ -44,6 +54,7 @@ const syncField = fieldOf<SyncSettings>(syncing.settings, syncing.setSettings, (
 const playbackField = fieldOf<PlaybackSettings>(playbackSync.settings, playbackSync.setSettings)
 const followField = fieldOf<QueueFollow>(library.queueFollow, library.setQueueFollow)
 const discordField = fieldOf<DiscordSettings>(discord.settings, discord.setSettings)
+const remoteField = fieldOf<RemoteSettings>(remote.settings, remote.setSettings)
 const playerField = (key: keyof PlayerSettings): Adapter => ({
   read: async () => (await library.playerSettings())[key],
   write: async (value) => {
@@ -118,6 +129,52 @@ const ADAPTERS: Record<string, Adapter> = {
   'display.upNextPrimary': own(appearance, 'upNextPrimary'),
   'display.homeCardsPrimary': own(appearance, 'homeCardsPrimary'),
   'display.startOn': own(appearance, 'startOn'),
+  'display.hideEmptyMiniPlayer': own(appearance, 'hideEmptyMiniPlayer'),
+  'remote.phoneStep': remoteField('phoneStep'),
+  'remote.buttonStep': remoteField('buttonStep'),
+  'reports.screenshot': { read: async () => (await readScreenshotSetting(), reporting.keepScreenshots), write: (on) => setKeepScreenshots(on as boolean) },
+  'updates.ask': { read: readAskForUpdates, write: (ask) => setAskForUpdates(ask as boolean) },
+}
+
+/**
+ * Each shared setting's default (where the app knows it). A setting shared for the first time that isn't at its default
+ * was chosen on this device: it counts as changed now, so it wins over another device's untouched default (set up the
+ * share after changing settings, or add a device later, and the settings you chose go to the others).
+ */
+const DEFAULTS: Record<string, unknown> = {
+  'playback.mode': PLAYBACK_DEFAULTS.mode,
+  'playback.continueWithinMinutes': PLAYBACK_DEFAULTS.continueWithinMinutes,
+  'playback.songsNotHere': PLAYBACK_DEFAULTS.songsNotHere,
+  'sync.atStart': SYNC_DEFAULTS.atStart,
+  'sync.onChange': SYNC_DEFAULTS.onChange,
+  'sync.onReturnAfterMinutes': SYNC_DEFAULTS.onReturnAfterMinutes,
+  'sync.everyMinutes': SYNC_DEFAULTS.everyMinutes,
+  'sync.removeGone': SYNC_DEFAULTS.removeGone,
+  'sync.askBeforeRemoving': SYNC_DEFAULTS.askBeforeRemoving,
+  'sync.moveNewSongs': SYNC_DEFAULTS.moveNewSongs,
+  'sync.songsOnMoreDevices': SYNC_DEFAULTS.songsOnMoreDevices,
+  'lyrics.online': true,
+  'mobile.level': !SYNC_DEFAULTS.syncOnMetered ? 'nothing' : SYNC_DEFAULTS.copyOnMetered ? 'all' : 'small',
+  'mobile.limit': SYNC_DEFAULTS.mobileLimitMb,
+  'mobile.monthStarts': SYNC_DEFAULTS.mobileMonthStarts,
+  'mobile.askOver': SYNC_DEFAULTS.mobileAskOverMb,
+  'mobile.atLimit': SYNC_DEFAULTS.mobileAskAtLimit,
+  ...Object.fromEntries(Object.entries(QUEUE_FOLLOW_DEFAULTS).map(([key, value]) => [`queue.${key}`, value])),
+  'queue.playFromStart': LIST_PLAY_DEFAULTS.playFromStart,
+  'queue.songPlays': LIST_PLAY_DEFAULTS.songPlays,
+  ...Object.fromEntries(Object.entries(PLAYER_DEFAULTS).map(([key, value]) => [`player.${key}`, value])),
+  'playlists.topSize': 50,
+  'display.theme': 'system',
+  'display.darkFrom': THEME_TIMES_DEFAULT.dark,
+  'display.lightFrom': THEME_TIMES_DEFAULT.light,
+  'display.upNextPrimary': APPEARANCE_DEFAULTS.upNextPrimary,
+  'display.homeCardsPrimary': APPEARANCE_DEFAULTS.homeCardsPrimary,
+  'display.startOn': APPEARANCE_DEFAULTS.startOn,
+  'display.hideEmptyMiniPlayer': APPEARANCE_DEFAULTS.hideEmptyMiniPlayer,
+  'remote.phoneStep': 10,
+  'remote.buttonStep': 5,
+  'reports.screenshot': false,
+  'updates.ask': true,
 }
 
 /** A setting's value here (one shared across devices; undefined for others). */
@@ -153,12 +210,17 @@ async function check(start = false) {
   const known = (await invoke<Record<string, unknown> | null>('shared_settings')) ?? {}
   const first = start || Object.keys(known).length === 0
   const changes: Record<string, unknown> = {}
+  // Shared for the first time but not at its default: chosen here, so changed now (see DEFAULTS).
+  const chosen: Record<string, unknown> = {}
   for (const id of await sharedIds()) {
     if (start && id in known) continue
     const value = await Promise.resolve(ADAPTERS[id].read()).catch(() => undefined)
-    if (value !== undefined && !(id in known && same(known[id], value))) changes[id] = value
+    if (value === undefined || (id in known && same(known[id], value))) continue
+    if (first && !(id in known) && id in DEFAULTS && !same(DEFAULTS[id], value)) chosen[id] = value
+    else changes[id] = value
   }
   if (Object.keys(changes).length) await invoke('record_shared_settings', { changes, first })
+  if (Object.keys(chosen).length) await invoke('record_shared_settings', { changes: chosen, first: false })
 }
 
 /**
@@ -181,6 +243,7 @@ async function checkAll(shared: Record<string, unknown>) {
   } finally {
     applying = false
   }
+  if (fixed.length) settingsArrived.value++
   await invoke('shared_settings_checked', { fixed }).catch(() => {})
 }
 
@@ -194,6 +257,7 @@ async function apply(settings: Record<string, unknown>) {
   } finally {
     applying = false
   }
+  settingsArrived.value++
 }
 
 /**

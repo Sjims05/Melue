@@ -471,6 +471,14 @@ pub fn library_remove_from_playlist(app: AppHandle, library: State<'_, Library>,
     write_back(&app, &library, id)
 }
 
+/// Find song: `track` for the playlist's entry `entry` (one the automatic match left out).
+#[tauri::command(async)]
+pub fn library_choose_playlist_song(app: AppHandle, library: State<'_, Library>, id: i64, entry: i64, track: i64) -> Result<()> {
+    let track = library.choose_playlist_song(id, entry, track)?;
+    changes::emit(&app, LibraryChange::playlist(id, vec![track]));
+    write_back(&app, &library, id)
+}
+
 #[tauri::command(async)]
 pub fn library_move_in_playlist(app: AppHandle, library: State<'_, Library>, id: i64, entry: i64, position: usize) -> Result<()> {
     let track = library.move_in_playlist(id, entry, position)?;

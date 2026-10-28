@@ -402,6 +402,8 @@ export const playbackSync = {
   onOffer: (listener: (offer: PlaybackFile) => void) => listen<PlaybackFile>('playback-offer', (e) => listener(e.payload)),
   /** Calls `listener` when another device's playback was loaded without asking ("follow", or recent enough). */
   onFollowed: (listener: (other: PlaybackFile) => void) => listen<PlaybackFile>('playback-followed', (e) => listener(e.payload)),
+  /** Calls `listener` when another device cleared its player and this one follows it ("follow"). */
+  onCleared: (listener: (other: PlaybackFile) => void) => listen<PlaybackFile>('playback-cleared', (e) => listener(e.payload)),
   /** The offered song on this device (its id), if it has it. */
   offerSong: () => invoke<number | null>('playback_offer_song'),
   /** Continue: the other device's queue, loaded paused at its position. */

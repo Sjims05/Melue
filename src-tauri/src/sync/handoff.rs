@@ -16,6 +16,10 @@
 //!
 //! Only songs on the share are carried over (the synced folder's): a song that's only on one device isn't
 //! saved, and songs another device has that aren't here (not synced yet) are left out of its queue.
+//!
+//! Clearing the player (its ✕, or the phone's Clear the player) is saved too, as an empty queue: a device that
+//! follows (and isn't playing) clears its player as well; one that asks offers nothing (there's nothing to continue,
+//! and nothing older is offered in its place).
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -37,6 +41,8 @@ pub const DIR: &str = ".melue/playback";
 pub const OFFER_EVENT: &str = "playback-offer";
 /// Sent when another device's playback was loaded without asking ("follow", or recent enough).
 pub const FOLLOWED_EVENT: &str = "playback-followed";
+/// Another device cleared its player, and this one follows it: cleared here (the app shows it).
+pub const CLEARED_EVENT: &str = "playback-cleared";
 const SETTINGS: &str = "playback_sync";
 const DEVICE_ID: &str = "device_id";
 /// The newest other device's playback answered (Continue or Not now): its time on the share.
@@ -243,14 +249,11 @@ pub fn share_clock_ahead(files: &[PlaybackFile], me: &str) -> i64 {
 }
 
 /// The other device's playback to offer: the newest on the share's clock, if it's newer than this device's
-/// own and than `answered_ms` (the last one answered).
+/// own and than `answered_ms` (the last one answered). An empty queue is a player cleared there.
 pub fn newest_other(files: Vec<PlaybackFile>, me: &str, answered_ms: i64) -> Option<PlaybackFile> {
     let mine = files.iter().find(|f| f.device_id == me).map_or(0, |f| f.share_ms);
     let after = mine.max(answered_ms);
-    files
-        .into_iter()
-        .filter(|f| f.device_id != me && !f.state.queue.is_empty() && f.share_ms > after)
-        .max_by_key(|f| f.share_ms)
+    files.into_iter().filter(|f| f.device_id != me && f.share_ms > after).max_by_key(|f| f.share_ms)
 }
 
 // ---- this device
@@ -506,7 +509,20 @@ fn save(app: &AppHandle, force: bool) -> Result<()> {
         *glanced = Some((glance, state.current_time, now));
     }
     let Some(folder) = library.synced_folder()? else { return Ok(()) };
-    let Some((playback, (title, artist))) = playing_here(app, &library, &folder)? else { return Ok(()) };
+    let (playback, (title, artist)) = match playing_here(app, &library, &folder)? {
+        Some(here) => here,
+        // Nothing in the player: cleared, after something was (an empty queue tells the others). Not at start.
+        None if state.queue_length == 0 => {
+            let cleared = Playback { repeat: state.repeat_mode.clone(), shuffle: state.shuffle, ..Playback::default() };
+            let mut last = handoff.last.locked();
+            if last.as_ref().is_none_or(|(was, _)| was.queue.is_empty()) {
+                *last = Some((cleared, now));
+                return Ok(());
+            }
+            (cleared, (None, None))
+        }
+        None => return Ok(()),
+    };
     {
         let mut last = handoff.last.locked();
         // Melue just started: the player's queue from last time isn't something new to tell the others.
@@ -564,6 +580,19 @@ fn look(app: &AppHandle) -> Result<()> {
     // Never interrupt: playing here wins (and soon saves, which makes it the newest).
     let before = app.native_audio().get_state()?;
     if before.is_playing {
+        return Ok(());
+    }
+    // Cleared there: followed, it's cleared here too, its saved queue as well (at start-up too, before or after the
+    // player restores it); asked, there's nothing to offer. Answered once done (a clear that fails is tried again).
+    if other.state.queue.is_empty() {
+        let handoff = app.state::<Handoff>();
+        if settings.mode == Mode::Follow {
+            app.native_audio().clear()?;
+            *handoff.last.locked() = Some((other.state.clone(), now_ms()));
+            let _ = app.emit(CLEARED_EVENT, &other);
+        }
+        *handoff.offer.locked() = None;
+        mark_answered(&library, &other)?;
         return Ok(());
     }
     // A song that isn't here (only there, or not synced yet): continued from the next one that is (the setting), or not.

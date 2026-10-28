@@ -25,6 +25,7 @@ import ConflictDialog from './playlists/ConflictDialog.vue'
 import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
 import SpotifyUpdateDialog from './playlists/SpotifyUpdateDialog.vue'
+import FindSongDialog from './playlists/FindSongDialog.vue'
 import { playlistCover, playlistKind, playlistLine, playlistLink, playlistWhere } from './playlists/playlists'
 import { onLibraryChange } from '@/library/changes'
 
@@ -127,9 +128,12 @@ async function move(from: number, to: number) {
   await library.moveInPlaylist(id, entry.id, position)
   await load()
 }
+// Find song: one of your songs for one that isn't here (FindSongDialog.vue).
+const finding = ref<{ entry: number; title: string; artist: string } | null>(null)
 async function act(song: Song, action: SongAction) {
   const entry = entryOf(song)
-  if (action === 'restore' && entry) {
+  if (action === 'findSong' && entry) finding.value = { entry: entry.id, title: song.title, artist: song.artist }
+  else if (action === 'restore' && entry) {
     await library.restorePlaylistEntry(id, entry.id)
     await load()
   } else if (action === 'removeFromPlaylist') await remove(song)
@@ -232,6 +236,15 @@ const updatingSpotify = ref(false)
 
       <PlaylistDialogs v-model="asking" @confirm="confirm" />
       <SpotifyUpdateDialog v-if="playlist.spotify" v-model:open="updatingSpotify" :playlist="playlist" />
+      <FindSongDialog
+        :open="!!finding"
+        :playlist="id"
+        :entry="finding?.entry ?? null"
+        :title="finding?.title ?? ''"
+        :artist="finding?.artist ?? ''"
+        @update:open="(open) => !open && (finding = null)"
+        @chosen="load"
+      />
       <CoverCropDialog
         v-if="covering"
         :name="covering.name"

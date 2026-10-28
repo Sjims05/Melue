@@ -12,7 +12,7 @@ import { DropValue, resetTo, Reveal, Segmented, SettingsCard, SettingsHeading, S
 import { library } from '@/library'
 import { APPEARANCE_DEFAULTS, appearance } from '@/lib/appearance'
 import { THEME_TIMES_DEFAULT, themeMode, themeTimes, type ThemeMode } from '@/lib/theme'
-import { isDesktop } from '@/platform'
+import { isDesktop, isMobile } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 
 const THEMES = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light'], ['adaptive', 'Adaptive']] as const
@@ -159,6 +159,16 @@ async function setClose(mode: Close) {
       :is-default="appearance.startOn === APPEARANCE_DEFAULTS.startOn"
     >
       <DropValue v-model="appearance.startOn" :options="STARTS" />
+    </SettingsRow>
+    <SettingsRow
+      v-if="isMobile"
+      title="Hide the player when nothing is loaded"
+      description="The mini player slides away until something plays"
+      setting="display.hideEmptyMiniPlayer"
+      :reset="() => (appearance.hideEmptyMiniPlayer = APPEARANCE_DEFAULTS.hideEmptyMiniPlayer)"
+      :is-default="appearance.hideEmptyMiniPlayer === APPEARANCE_DEFAULTS.hideEmptyMiniPlayer"
+    >
+      <Switch v-model="appearance.hideEmptyMiniPlayer" />
     </SettingsRow>
   </SettingsCard>
 

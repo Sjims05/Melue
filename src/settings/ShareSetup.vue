@@ -25,7 +25,7 @@ import {
   SettingsRow,
   SettingsTip,
 } from '@/components/settings'
-import { describeSetupError, share, syncing, type PasswordStore, type SetupError, type ShareInfo, type SyncFolderChoice } from '@/library/sync'
+import { describeSetupError, share, sync, syncing, type PasswordStore, type SetupError, type ShareInfo, type SyncFolderChoice } from '@/library/sync'
 import { isAndroid, isDesktop, storage } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { lastPart, middle, readablePath, shareName } from './format'
@@ -54,13 +54,16 @@ const removing = ref(false)
 const details = ref(false)
 const error = ref('')
 
-onPageLoad(async () => {
+async function loadInfo() {
   try {
     info.value = await share.info()
   } catch (e) {
     error.value = `Can’t read the share: ${describeSetupError(e)}`
   }
-})
+}
+onPageLoad(loadInfo)
+// Set up or removed elsewhere too (a network folder used as the share: MusicFolders.vue).
+watch(() => sync.available, loadInfo)
 
 /** How the address was read: \\nas\music\Rock, smb://nas/music or nas/music all give nas → music → Rock. */
 const parsed = computed(() => {
@@ -221,7 +224,7 @@ function toggleDetails(event: Event) {
             <Segmented v-model="form.store" :options="STORES" />
           </SettingsRow>
         </Reveal>
-        <SettingsRow title="Synced music goes to" :description="syncFolder ? middle(readablePath(syncFolder.location), 44) : 'Choose a folder on this phone'">
+        <SettingsRow title="Synced music goes to" :description="syncFolder ? middle(readablePath(syncFolder.location), 44) : 'Choose a folder on this phone: a new one in Music named Melue, say'">
           <Button variant="outline" size="sm" @click="chooseFolder">{{ syncFolder ? 'Change' : 'Choose folder' }}</Button>
         </SettingsRow>
         <Reveal :show="!!thereLine">

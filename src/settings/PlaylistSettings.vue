@@ -4,7 +4,8 @@
  * deleted in the last 30 days (Restore, on every device), and playlist files you let go of (Follow again: linked as a
  * new playlist). Hiding, deleting and stopping following say where to find these.
  */
-import { computed, onActivated, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onUnmounted, ref, watch } from 'vue'
+import { settingsArrived } from './sharedSettings'
 import { Button } from '@/components/ui/button'
 import { SettingsCard, SettingsLabel, SettingsRow, SettingsTip, Stepper } from '@/components/settings'
 import { AUTO_PLAYLIST_SIZES, library, type AutoPlaylist, type DeletedLinkedPlaylist, type LetGoFile } from '@/library'
@@ -27,6 +28,8 @@ const read = async () => {
   ])
 }
 onPageLoad(() => read().catch((e) => (error.value = `Can’t read the playlists: ${e}`)))
+// Changed on another device (Top songs lists hold): shown here too.
+watch(settingsArrived, () => read().catch(() => {}))
 // Kept up to date: a playlist deleted or let go of elsewhere shows here at once.
 onActivated(() => read().catch(() => {}))
 const stop = library.onChange((change) => change.reason === 'playlists' && read().catch(() => {}))

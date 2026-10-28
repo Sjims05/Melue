@@ -5,7 +5,8 @@
  *
  * `?status=` picks the share's state: synced (default), syncing, error, password, none, streamed. `?output=unplugged`:
  * the chosen output device (headphones) isn't connected. `?library=empty`: no music folders yet. `?player=empty`:
- * nothing in the queue (otherwise eight songs from Liked songs, the first playing 54 s in).
+ * nothing in the queue (otherwise eight songs from Liked songs, the first playing 54 s in). `?pick=network`: Add folder
+ * picks a folder on a NAS (\\nas\music); with `?nas=offline` this computer can't open it (its scan fails).
  */
 import { emit } from '@tauri-apps/api/event'
 import { mockIPC } from '@tauri-apps/api/mocks'
@@ -232,6 +233,9 @@ const libraryStatus = (): LibraryStatus => ({
   albums: folders.length ? 98 : 0, artists: folders.length ? 64 : 0, playlists: folders.length ? 12 : 0,
 })
 const changed = () => emit('library-changed', { reason: 'folders', tracks: [], sources: [] })
+const query = new URLSearchParams(location.search)
+const NAS = '\\\\nas\\music'
+const onNas = (location: string) => location.startsWith('\\\\')
 
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
@@ -239,6 +243,10 @@ const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 async function pretendScan() {
   await emit('library-scan', { phase: 'started' })
   await wait(600)
+  for (const f of folders) {
+    const error = f.network && query.get('nas') === 'offline' ? `${f.location} isn't there (unplugged, or moved?)` : null
+    await emit('library-scan', { phase: 'folder', folderId: f.id, name: f.name, summary: error ? null : {}, error })
+  }
   for (let done = 0; done <= 1200; done += 300) {
     await emit('library-scan', { phase: 'tags', done, total: 1200 })
     await wait(500)
@@ -318,7 +326,10 @@ export function installBrowserPreview() {
           // "wrong" as the password shows the error under the password field; host "nowhere" can't be reached.
           if (setup.kind === 'smb' && setup.host === 'nowhere') throw { kind: 'share', error: { kind: 'unreachable', detail: 'timed out' } }
           if (a.password === 'wrong') throw { kind: 'share', error: { kind: 'login', detail: 'denied' } }
+          // A network drive played straight from: that folder is the synced one.
+          if (setup.kind === 'drive' && setup.stream) folders = folders.map((f) => (f.location === setup.path ? { ...f, synced: true, name: 'Share' } : f))
           info = { ...info, settings: { ...setup, syncFolderId: 3 }, syncFolder: folders.find((f) => f.synced) ?? null }
+          await emit('library-changed', { reason: 'sync', tracks: [], sources: [] })
           return info
         }
         case 'share_remove': info = { ...info, settings: null }; return info
@@ -374,11 +385,16 @@ export function installBrowserPreview() {
         case 'library_clean_covers': await wait(600); coversBytes -= 6_000_000; return 8
         case 'library_status': return libraryStatus()
         case 'library_folders': return folders
+        // Songs all your devices have, offered for the share: none in the preview.
+        case 'sync_to_share': return []
         case 'library_scan': return pretendScan()
         case 'library_add_folder': {
-          const added = folder(Date.now(), String(a.location).split(/[\/]/).pop() || 'Folder', String(a.location), 0)
+          const location = String(a.location)
+          const tracks = onNas(location) && query.get('nas') !== 'offline' ? 640 : 0
+          const added = { ...folder(Date.now(), location.split(/[\\/]/).pop() || 'Folder', location, tracks), network: onNas(location) }
           folders = [...folders, added]
           await changed()
+          void pretendScan()
           return added
         }
         case 'library_remove_folder': folders = folders.filter((f) => f.id !== a.id); await changed(); return null
@@ -411,7 +427,7 @@ export function installBrowserPreview() {
           await changed()
           return { moved: ids.length, alreadyThere: 0, failed: [], cancelled: false }
         }
-        case 'plugin:dialog|open': return 'E:\Downloads\New music'
+        case 'plugin:dialog|open': return query.get('pick') === 'network' ? NAS : 'E:\Downloads\New music'
         case 'plugin:native-audio|get_state':
         case 'plugin:native-audio|initialize': return playerState
         case 'plugin:native-audio|get_queue': return playerQueue()

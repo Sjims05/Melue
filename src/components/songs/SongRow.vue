@@ -23,7 +23,7 @@ import AddToPlaylist from './AddToPlaylist.vue'
 import { artistParts } from './artistParts'
 import { Button } from '@/components/ui/button'
 import PlayingBars from './PlayingBars.vue'
-import { songMenu, type Song, type SongAction, type SongMenuItem, type SongMenuPlace } from './songMenu'
+import { songMenu, unavailableSongMenu, type Song, type SongAction, type SongMenuItem, type SongMenuPlace } from './songMenu'
 import { useLongPress } from '@/lib/longPress'
 import { openMenu } from '@/lib/menuDrawer'
 
@@ -67,10 +67,14 @@ const props = defineProps<{
 const emit = defineEmits<{ play: [via: 'button' | 'doubleClick']; pause: []; like: [liked: boolean]; remove: []; action: [action: SongAction] }>()
 
 const phone = usePhone()
+// A playlist's song that isn't here: its menu (⋯, right-click, a long press) has Find song and Remove from playlist.
+const findable = computed(() => !!props.unavailable && !!props.place?.inPlaylist && !props.song.restore && !props.song.later)
 const menuOpen = ref(false)
 const contextOpen = ref(false)
 // A phone has no room for ✕ on the row: it's in ⋯ instead ("Take out"; a playlist's has Remove from playlist already).
 const items = computed((): SongMenuItem[] => {
+  // Not here, in a playlist: Find song and Remove from playlist only.
+  if (findable.value) return unavailableSongMenu()
   const menu = songMenu(props.song, props.place)
   if (!phone || !props.removable || props.song.later || menu.some((i) => i.action === 'removeFromPlaylist')) return menu
   return [...menu, { action: 'takeOut', label: 'Take out', icon: X, apart: true }]
@@ -100,7 +104,7 @@ const length = computed(() => {
 function openRowMenu() {
   openMenu({ title: props.song.title, subtitle: props.song.artist, cover: { image: props.song.cover }, items: items.value, pick: (a) => pick(a as SongAction), song: props.song })
 }
-const press = useLongPress((e) => !(e.target as HTMLElement).closest('.song-handle') && !props.unavailable && openRowMenu())
+const press = useLongPress((e) => !(e.target as HTMLElement).closest('.song-handle') && (!props.unavailable || findable.value) && openRowMenu())
 
 function pick(action: SongAction) {
   if (action === 'takeOut') emit('remove')
@@ -140,7 +144,7 @@ const ON_HIGHLIGHT =
 
 <template>
   <ContextMenu :modal="false" @update:open="(open) => menuChanged('context', open)">
-    <ContextMenuTrigger as-child :disabled="unavailable || phone">
+    <ContextMenuTrigger as-child :disabled="(unavailable && !findable) || phone">
       <div
         v-bind="{ ...$attrs, ...(phone ? press : {}) }"
         class="flex h-[68px] items-center gap-4 rounded-lg px-4 text-left select-none *:transition-opacity *:duration-300 phone:h-[60px] phone:gap-3 phone:px-1"

@@ -357,6 +357,23 @@ impl Library {
     /// Removes entries from a playlist (by entry id); the songs that were removed. In a linked playlist,
     /// songs the file has stay greyed ("removed here", restorable); a song suggested by the file is turned
     /// down the same way.
+    /// Find song: one of your songs for a playlist entry the automatic match left out (a Spotify playlist's song you
+    /// have in another version, say). Kept when the playlist updates (an entry keeps its song), and synced. Returns
+    /// the song.
+    pub fn choose_playlist_song(&self, id: i64, entry: i64, track: i64) -> Result<i64> {
+        let mut conn = self.conn();
+        let tx = conn.transaction().map_err(err)?;
+        let changed = tx
+            .execute("UPDATE playlist_entries SET track_id = ?3, chosen = 1 WHERE id = ?2 AND playlist_id = ?1", params![id, entry, track])
+            .map_err(err)?;
+        if changed == 0 {
+            return Err("that song isn't in the playlist any more".into());
+        }
+        tx.execute("UPDATE playlists SET updated_at = ?2 WHERE id = ?1", params![id, now_ms()]).map_err(err)?;
+        tx.commit().map_err(err)?;
+        Ok(track)
+    }
+
     pub fn remove_from_playlist(&self, id: i64, entries: &[i64]) -> Result<Vec<i64>> {
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(err)?;

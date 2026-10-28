@@ -54,12 +54,12 @@ fn info(app: &AppHandle) -> Result<ShareInfo, SetupError> {
     })?
 }
 
-/// Desktop: Music/Melue (not created until it's used).
+/// Desktop: Music/Melue, or Music/Melue Dev for Melue Dev (not created until it's used).
 fn default_folder(app: &AppHandle) -> Option<String> {
     if cfg!(target_os = "android") {
         return None;
     }
-    app.path().audio_dir().ok().map(|music| music.join("Melue").to_string_lossy().into_owned())
+    app.path().audio_dir().ok().map(|music| music.join(setup::SYNC_FOLDER_NAME).to_string_lossy().into_owned())
 }
 
 /// Tells the UI (and Android Auto, and the queue) that the share or its folder changed, and scans the folder.

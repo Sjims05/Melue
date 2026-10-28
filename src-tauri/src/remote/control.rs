@@ -28,6 +28,8 @@ use crate::guard::Locked;
 pub enum Command {
     Play,
     Pause,
+    /// Clear the player there (its ✕, or a phone's Clear the player): stopped, the queue empty and forgotten.
+    Clear,
     Next,
     Previous,
     /// Seconds into the song.

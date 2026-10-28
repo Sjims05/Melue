@@ -43,5 +43,6 @@ fn the_shares_clock_from_this_devices_own_file() {
 #[test]
 fn library_files_are_told_apart() {
     assert!(is_library_file(".melue/library/abc.json") && is_library_file(".melue/playlists/abc.json"));
+    assert!(is_library_file(".melue/connections.json") && is_library_file(".melue/settings.json"));
     assert!(!is_library_file(".melue/playback/abc.json") && !is_library_file("Artist/song.mp3"));
 }

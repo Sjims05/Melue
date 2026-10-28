@@ -388,7 +388,9 @@ pub struct LibrarySync {
 
 /// Whether a changed file on the share is library data or a playlist.
 pub fn is_library_file(path: &str) -> bool {
+    // The sign-ins too (connections.rs): one made on another device arrives in seconds, not at the next sync.
     path == super::settings_sync::FILE
+        || path == crate::connections::FILE
         || [DIR, super::playlist_sync::DIR, super::cover_sync::DIR].iter().any(|dir| path.strip_prefix(dir).is_some_and(|rest| rest.starts_with('/') && rest.ends_with(".json")))
 }
 

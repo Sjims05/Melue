@@ -10,6 +10,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { PageHeader } from '@/components/page'
 import { Segmented } from '@/components/settings'
 import { library, type AlbumSort, type ArtistSort, type LibraryStatus, type TrackSort } from '@/library'
+import { changesTheLibrary, onLibraryChange } from '@/library/changes'
 import AlbumsTab from './library/AlbumsTab.vue'
 import ArtistsTab from './library/ArtistsTab.vue'
 import FoldersTab from './library/FoldersTab.vue'
@@ -43,7 +44,10 @@ const albumSort = useLocalStorage<AlbumSort>('melue.library.albumSort', 'title')
 const artistSort = useLocalStorage<ArtistSort>('melue.library.artistSort', 'name')
 
 const status = ref<LibraryStatus | null>(null)
-onMounted(async () => (status.value = await library.status().catch(() => null)))
+const readStatus = async () => (status.value = await library.status().catch(() => status.value))
+onMounted(readStatus)
+// Songs found or synced since (a scan, a sync, a folder added): the counts under the title follow.
+onLibraryChange(changesTheLibrary, readStatus)
 const counts = computed(() => {
   const s = status.value
   if (!s) return ''

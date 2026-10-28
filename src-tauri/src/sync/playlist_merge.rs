@@ -33,6 +33,10 @@ pub struct SyncEntry {
     /// Its length, to recognise the same song elsewhere on a device (see same_song.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<i64>,
+    /// A Spotify playlist's song chosen by hand (Find song): that song's key, used for it on every device that has
+    /// it (the automatic match didn't take it: another version, say).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chosen: Option<String>,
 }
 
 /// A synced playlist's name and songs, and a Spotify playlist's reference.

@@ -2,8 +2,8 @@
 /**
  * The playing song's lyrics (player/lyrics.ts), as in the concept: a card on Now playing, or full size (`big`). Timed
  * lyrics follow the song: the line being sung, and its word being sung (enhanced LRC), light up in two colours from the
- * cover (lib/coverColors.ts: picked to read well on the card), and the card keeps that line in view (unless you
- * scrolled it yourself a moment ago). A tap on a timed line plays from it. The timing tools move the song's lyrics
+ * cover (lib/coverColors.ts: picked to read well on the card), and the card keeps that line in view (it can't be
+ * scrolled by hand: a swipe over it scrolls the page; full size can, and is left alone a moment after). A tap on a timed line plays from it. The timing tools move the song's lyrics
  * earlier or later (a quarter second a press), or, with "Sync by tapping", set a line where it's tapped (the lines
  * after it follow: player/lyrics.ts timedLines); kept for the song. Lyrics without times get a rough timing (marked
  * as estimated) until they're tapped.
@@ -199,10 +199,12 @@ function lineTapped(index: number) {
     <p v-if="lyrics?.estimated && !taps && !adjusting" class="-mt-1 pb-2 text-xs text-muted-foreground" :class="big ? 'mx-auto w-full max-w-3xl px-8 phone:px-5' : 'px-4'">
       Estimated timing: tap lines to set it (the timer)
     </p>
+    <!-- The card follows the song by itself and can't be scrolled (a swipe over it scrolls the page: Now playing is
+         scrolled more often than the lyrics); full size, they scroll. -->
     <div
       ref="scroller"
-      class="lyrics-lines relative min-h-0 flex-1 overflow-y-auto"
-      :class="big ? 'px-8 pb-[40vh] phone:px-5' : 'px-4 pb-24'"
+      class="lyrics-lines relative min-h-0 flex-1"
+      :class="big ? 'overflow-y-auto px-8 pb-[40vh] phone:px-5' : 'overflow-hidden px-4 pb-24'"
       @wheel.passive="byHand"
       @touchmove.passive="byHand"
     >

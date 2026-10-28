@@ -129,6 +129,8 @@ export interface Player {
   getState(): Promise<PlayerState>
   /** Stops playback and empties the queue (the player bar's ✕). The queue saved for restoreLastQueue stays. */
   dispose(): Promise<void>
+  /** Stops, empties the queue and forgets the saved one (nothing comes back at the next start). */
+  clear(): Promise<void>
   /** Calls `listener` with the current state, then on every change. Resolves to a function that stops listening. */
   onState(listener: (state: PlayerState) => void): Promise<() => void>
 

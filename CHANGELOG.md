@@ -3,6 +3,29 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 1.0.1 (2026-10-29)
+
+Fixes from the first days with 1.0, and a few things that make sharing and playing across devices smoother.
+
+- Add a music folder that's on your NAS, and Melue offers to use it as your share: copied to this computer, or
+  played straight from it (also in the folder's ⋯ menu). A folder Melue can't open says why, instead of "0 songs".
+- Music folders show their full path, and say when your synced music inside one is left out (it's in your library
+  already).
+- Settings you changed before setting up a share or adding a device now go to your other devices, instead of being
+  replaced by their defaults. A setting changed on another device shows right away, without a restart. "Keep a
+  screenshot with reports", "Ask when an update is found" and the volume steps now sync too.
+- Spotify playlists match more of your songs: artists written with "/" and downloads a few seconds longer or
+  shorter. "Find song" (a song that isn't here: ⋯, right-click or a long press) lets you pick one of your songs for
+  it, kept and synced to your other devices.
+- Clearing the player sticks: it stays empty after a restart, clears the device you're playing on when connected,
+  and clears your other devices set to Follow.
+- On a phone, the mini player stays when nothing's loaded (a Display setting hides it), and a long press on it has
+  Connect device and Clear the player. The status bar's icons follow Melue's theme, "Playing on" no longer covers the
+  full-size lyrics' buttons, the lyrics card on Now playing no longer scrolls by mistake, and choosing a folder
+  starts in Music.
+- The Library's counts update after a sync, a GitHub sign-in shows its code in a note and reaches your other
+  devices within seconds, and Windows shows Melue's publisher as Sjims05.
+
 ## 1.0.0 (2026-10-28)
 
 Melue 1.0: your own music on your computer and your phone, finished and documented.

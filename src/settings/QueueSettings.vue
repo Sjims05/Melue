@@ -8,7 +8,8 @@
  * The queue following its list is Melue's (library/follow.rs: QueueFollow); the end of the queue is the player's
  * (playerSettings.ts).
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { settingsArrived } from './sharedSettings'
 import { Switch } from '@/components/ui/switch'
 import { Chevron, DropValue, resetTo, Reveal, Segmented, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library, type QueueFollow } from '@/library'
@@ -33,14 +34,19 @@ const customizing = ref(false)
 const trying = ref(false)
 const error = ref('')
 
-onPageLoad(async () => {
-  loadPlayerSettings()
+async function loadFollow() {
   try {
     follow.value = await library.queueFollow()
   } catch (e) {
     error.value = `Can’t read the queue settings: ${e}`
   }
+}
+onPageLoad(async () => {
+  loadPlayerSettings()
+  await loadFollow()
 })
+// Changed on another device: shown here too.
+watch(settingsArrived, loadFollow)
 
 async function save(change: Partial<QueueFollow>) {
   const before = follow.value

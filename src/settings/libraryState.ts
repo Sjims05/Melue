@@ -20,6 +20,8 @@ export const libraryState = reactive({
   /** Of those, the ones all your devices have: offered for the share (Songs on all your devices). */
   offered: [] as OfferedSong[],
   copies: null as Copies | null,
+  /** Folders the last scan couldn't open (id → why): their line says so instead of "0 songs". */
+  folderErrors: new Map<number, string>(),
   /** A scan running: what it's doing ("Reading tags: 450 of 1.200"), and how far (0 to 1, or null when unknown). */
   scanning: null as { line: string; progress: number | null } | null,
   error: '',
@@ -52,7 +54,11 @@ export function startLibraryState(): Promise<void> {
   started ??= (async () => {
     await library.onScan((event) => {
       if (event.phase === 'started') libraryState.scanning = { line: 'Looking for songs…', progress: null }
-      else if (event.phase === 'folder') libraryState.scanning = { line: `Looked through ${event.name}`, progress: null }
+      else if (event.phase === 'folder') {
+        libraryState.scanning = { line: `Looked through ${event.name}`, progress: null }
+        if (event.error) libraryState.folderErrors.set(event.folderId, event.error)
+        else libraryState.folderErrors.delete(event.folderId)
+      }
       else if (event.phase === 'tags') {
         libraryState.scanning = { line: `Reading tags: ${event.done.toLocaleString()} of ${event.total.toLocaleString()}`, progress: event.total ? event.done / event.total : null }
       } else {

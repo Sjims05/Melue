@@ -18,7 +18,7 @@ use crate::share::secrets::{Secrets, SystemSecrets};
 use crate::share::Share;
 
 /// The file on the share.
-const FILE: &str = ".melue/connections.json";
+pub const FILE: &str = ".melue/connections.json";
 /// When each connection last changed here (a library setting: name → ms).
 const CHANGED: &str = "connections_changed";
 /// A connection changed from another device: the app shows it again.

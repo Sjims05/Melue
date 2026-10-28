@@ -33,7 +33,7 @@ export interface Device {
 
 /** A command to the device played on. */
 export type RemoteCommand =
-  | { cmd: 'play' | 'pause' | 'next' | 'previous' }
+  | { cmd: 'play' | 'pause' | 'next' | 'previous' | 'clear' }
   | { cmd: 'seek'; position: number }
   | { cmd: 'volume'; volume: number }
   | { cmd: 'shuffle'; on: boolean }

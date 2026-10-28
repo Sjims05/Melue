@@ -268,6 +268,7 @@ impl AppHost {
         match command {
             Command::Play => player.play(),
             Command::Pause => player.pause(),
+            Command::Clear => player.clear(),
             Command::Next => player.next(),
             Command::Previous => player.previous(),
             Command::Seek { position } => player.seek_to(position),

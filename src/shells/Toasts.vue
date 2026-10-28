@@ -14,7 +14,8 @@ const phone = usePhone()
 </script>
 
 <template>
-  <div class="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex flex-col items-center gap-2 px-4">
+  <!-- Over a phone's full-size lyrics: above their controls and the lyrics' fade (NowPlayingPage.vue). -->
+  <div class="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex flex-col items-center gap-2 px-4 [html[data-lyrics-full]_&]:bottom-[calc(env(safe-area-inset-bottom)+8.5rem)]">
     <div class="flex max-w-full justify-center" role="status" aria-live="polite">
       <Transition name="drop" mode="out-in">
         <div

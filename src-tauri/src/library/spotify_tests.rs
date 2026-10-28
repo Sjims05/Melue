@@ -2,6 +2,7 @@
 
 use super::spotify::{SpotifyList, SpotifySong};
 use super::testkit::{Tags, TestLibrary};
+use super::TrackSort;
 
 fn song(artist: &str, title: &str, seconds: i64) -> SpotifySong {
     SpotifySong { title: title.into(), artist: artist.into(), duration_ms: Some(seconds * 1000) }
@@ -93,4 +94,79 @@ fn stopping_following_spotify_keeps_the_songs_and_stops_reading_it() {
     // Not among the playlists the background update reads.
     let left: i64 = t.library.conn().query_row("SELECT count(*) FROM playlists WHERE spotify_id IS NOT NULL", [], |r| r.get(0)).unwrap();
     assert_eq!(left, 0);
+}
+
+#[test]
+fn downloads_with_other_separators_and_lengths_still_match() {
+    // As a downloader writes them: several artists joined by "/", a band name's comma turned into one, and a few
+    // seconds off Spotify's length.
+    let t = TestLibrary::new("spotify-loose");
+    let m = t.music_folder("Music");
+    let f = t.add_folder(&m).id;
+    m.add("Bang Bang.wav", &Tags::song("Bang Bang", "K'NAAN/Adam Levine", "Album", 1));
+    m.add("September.wav", &Tags::song("September", "Earth/ Wind & Fire", "Album", 1));
+    m.add("Heaven.wav", &Tags::song("Heaven", "Belinda Carlisle", "Album", 1));
+    // Two versions of one song here, both close enough: the one closest to Spotify's length is the one.
+    m.add("Lovefool.wav", &Tags::song("Lovefool", "The Cardigans", "Album", 1));
+    m.add("Lovefool (long).wav", &Tags::song("Lovefool", "The Cardigans", "Other album", 3));
+    t.scan(f, &m);
+    let index = t.library.track_index().unwrap();
+    let list = SpotifyList {
+        name: "Mix".into(),
+        songs: vec![
+            song("K'NAAN, Adam Levine", "Bang Bang", 5),
+            song("Earth, Wind & Fire", "September", 1),
+            // Another version here, two minutes longer: another recording, not this one.
+            song("Belinda Carlisle", "Heaven", 121),
+            song("The Cardigans", "Lovefool", 3),
+            // Not here at all.
+            song("Nena", "99 Luftballons", 230),
+        ],
+        total: Some(5),
+        cover: None,
+    };
+    let id = t.library.add_spotify_list("loose", &list, &index).unwrap();
+    let entries = t.library.playlist_entries(id).unwrap();
+    let here: Vec<(String, bool)> = songs(&t, id);
+    assert_eq!(
+        here,
+        [
+            ("Bang Bang".to_string(), true),
+            ("September".to_string(), true),
+            ("Heaven".to_string(), false),
+            ("Lovefool".to_string(), true),
+            ("99 Luftballons".to_string(), false)
+        ]
+    );
+    let lovefool = entries[3].track.as_ref().unwrap();
+    assert!(lovefool.path.contains("long"), "the 3 s Lovefool, closest to Spotify's");
+}
+
+#[test]
+fn a_song_chosen_by_hand_stays_and_goes_with_the_playlist() {
+    // Spotify's song is four minutes; yours is a longer version: not matched by itself, so you choose it (Find song).
+    let t = TestLibrary::new("spotify-chosen");
+    let m = t.music_folder("Music");
+    let folder = t.add_folder(&m);
+    m.add("Heaven.wav", &Tags::song("Heaven", "Belinda Carlisle", "Album", 1));
+    t.scan(folder.id, &m);
+    let index = t.library.track_index().unwrap();
+    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Belinda Carlisle", "Heaven", 240)], total: Some(1), cover: None };
+    let id = t.library.add_spotify_list("chosen", &list, &index).unwrap();
+    assert_eq!(songs(&t, id), [("Heaven".to_string(), false)]);
+
+    let entry = t.library.playlist_entries(id).unwrap()[0].id;
+    let index = t.library.track_index().unwrap();
+    let track = t.library.tracks(0, 10, TrackSort::Title).unwrap().into_iter().find(|s| s.title == "Heaven").unwrap().id;
+    t.library.choose_playlist_song(id, entry, track).unwrap();
+    assert_eq!(songs(&t, id), [("Heaven".to_string(), true)]);
+
+    // Read from Spotify again: it stays (an entry keeps its song).
+    t.library.update_from_list(id, None, &list, &index).unwrap();
+    assert_eq!(songs(&t, id), [("Heaven".to_string(), true)]);
+
+    // Synced: the other devices get which song was chosen.
+    let here = t.library.songs_here(&folder, "me").unwrap();
+    let data = t.library.playlist_data(id, &here).unwrap();
+    assert_eq!(data.entries[0].chosen.as_deref(), Some(here.key_of(track).as_str()));
 }

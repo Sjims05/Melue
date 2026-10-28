@@ -322,8 +322,12 @@ pub fn needs_password(library: &Library, stores: &PasswordStores) -> Result<bool
 }
 
 /// The default sync folder on desktop: `Music/Melue` (created).
+/// The synced music's folder in Music on a computer. Melue Dev (a development build: lib.rs IDENTITY) has its own, so the two never share one (each would
+/// treat the other's songs as its own share's: copying, or removing, the other's).
+pub const SYNC_FOLDER_NAME: &str = if cfg!(debug_assertions) { "Melue Dev" } else { "Melue" };
+
 pub fn default_sync_folder(music: &Path) -> Result<String, String> {
-    let folder = music.join("Melue");
+    let folder = music.join(SYNC_FOLDER_NAME);
     std::fs::create_dir_all(&folder).map_err(|e| format!("can't create {}: {e}", folder.display()))?;
     Ok(folder.to_string_lossy().into_owned())
 }

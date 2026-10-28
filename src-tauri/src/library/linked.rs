@@ -111,24 +111,53 @@ pub struct TrackIndex {
     /// The last 2 and 3 parts of their paths.
     suffixes: [HashMap<String, Vec<i64>>; 2],
     infos: HashMap<String, Vec<i64>>,
-    /// By main artist and title, plain (version notes and featured artists left out), with their lengths: for
-    /// Spotify's songs (spotify.rs).
+    /// By artist and title, loosely (`spotify_keys`), with their lengths: for Spotify's songs (spotify.rs).
     songs: HashMap<(String, String), Vec<(i64, Option<i64>)>>,
+}
+
+/// How far a Spotify song's length may be from the file's: downloads of the same recording are often a few seconds
+/// longer or shorter than Spotify's (another source, silence trimmed), more than the 2 s of same_song.rs. A version
+/// minutes longer is another recording: not matched (it can be chosen by hand).
+const SPOTIFY_LENGTH_MS: i64 = 5_000;
+
+/// Letters and digits only, lower case: separators and punctuation don't count ("K'NAAN, Adam Levine" and
+/// "K'NAAN/Adam Levine"; "Earth, Wind & Fire" and "Earth/ Wind & Fire", as some downloaders write them).
+fn loose(text: &str) -> String {
+    text.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+/// The keys a song is found by for Spotify: its whole artist credit and its first artist (featured artists and
+/// version notes left out, sync/same_song.rs), each with its title, loosely.
+fn spotify_keys(artist: &str, title: &str) -> Vec<(String, String)> {
+    let title = loose(&crate::sync::same_song::plain_title(title));
+    let credit = crate::sync::same_song::plain_artist(artist);
+    let first = credit.split(['/', ';', ',', '&']).next().unwrap_or_default();
+    let mut keys = Vec::new();
+    for artist in [loose(&credit), loose(first)] {
+        if !artist.is_empty() && !title.is_empty() && !keys.iter().any(|(a, _)| *a == artist) {
+            keys.push((artist, title.clone()));
+        }
+    }
+    keys
 }
 
 impl TrackIndex {
     /// The song a playlist line names; `dir` is the playlist file's folder (a logical path).
     pub fn find(&self, dir: &str, line: &FileLine) -> Option<i64> {
-        // A Spotify playlist's song: the same song here (sync/same_song.rs's rule), the one of the right length.
+        // A Spotify playlist's song: a song here with its artist and title (loosely: spotify_keys), within
+        // SPOTIFY_LENGTH_MS of its length; of your versions, the closest (an unknown length counts as close).
         if let Some(song) = super::spotify::from_line(&line.entry) {
-            let artist = song.artist.split(", ").next().unwrap_or_default();
-            let key = (crate::sync::same_song::plain_artist(artist), crate::sync::same_song::plain_title(&song.title));
-            let near = |length: &Option<i64>| match (length, song.duration_ms) {
-                (Some(a), Some(b)) => (a - b).abs() <= 2_000,
-                _ => true,
+            let gap = |length: &Option<i64>| match (length, song.duration_ms) {
+                (Some(a), Some(b)) => (a - b).abs(),
+                _ => 0,
             };
-            let found: Vec<i64> = self.songs.get(&key)?.iter().filter(|(_, length)| near(length)).map(|(id, _)| *id).collect();
-            return found.first().copied();
+            return spotify_keys(&song.artist, &song.title)
+                .iter()
+                .filter_map(|key| self.songs.get(key))
+                .flatten()
+                .filter(|(_, length)| gap(length) <= SPOTIFY_LENGTH_MS)
+                .min_by_key(|(id, length)| (gap(length), *id))
+                .map(|(id, _)| *id);
         }
         if let Some(path) = m3u::resolve(dir, &line.entry) {
             let key = path.to_lowercase();
@@ -435,10 +464,11 @@ impl Library {
         let mut index = TrackIndex { paths: HashMap::new(), suffixes: Default::default(), infos: HashMap::new(), songs: HashMap::new() };
         for row in rows {
             let (id, kind, location, path, title, artist, length) = row.map_err(err)?;
-            let plain = (crate::sync::same_song::plain_artist(artist.as_deref().unwrap_or_default()), crate::sync::same_song::plain_title(&title));
-            let same = index.songs.entry(plain).or_default();
-            if !same.iter().any(|(known, _)| *known == id) {
-                same.push((id, length));
+            for key in spotify_keys(artist.as_deref().unwrap_or_default(), &title) {
+                let same = index.songs.entry(key).or_default();
+                if !same.iter().any(|(known, _)| *known == id) {
+                    same.push((id, length));
+                }
             }
             let kind = FolderKind::parse(&kind).unwrap_or(FolderKind::Path);
             let key = logical_path(kind, &location, &path).to_lowercase();

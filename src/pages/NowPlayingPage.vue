@@ -172,6 +172,9 @@ function clear() {
 const menu = computed(() => (current.value ? songMenu(current.value).filter((i) => i.action !== 'playNext' && i.action !== 'addToQueue') : []))
 // A phone: More actions opens the song's menu as a drawer.
 const phone = usePhone()
+// A phone's full-size lyrics have their own controls at the bottom: notes and the "Playing on" pill go above them, just
+// over the lyrics' fade (shells/Toasts.vue).
+watch(() => phone && lyricsFull.value && !!current.value, (on) => document.documentElement.toggleAttribute('data-lyrics-full', on), { immediate: true })
 function openSongMenu() {
   const song = current.value
   if (song) openMenu({ title: song.title, subtitle: song.artist, cover: { image: song.cover }, items: menu.value, pick: (a) => songAction(song, a as SongAction), song })

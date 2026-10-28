@@ -197,6 +197,12 @@ async function installOnPhone() {
 /** "Not now": the dialog closes; About's Updates row still offers it, and the next look asks again. */
 export const notNow = () => (updates.asking = false)
 
+/** "Ask when an update is found", as saved (shared across devices: settings/sharedSettings.ts). */
+export async function readAskForUpdates() {
+  updates.ask = (await library.setting(ASK_SETTING).catch(() => null)) !== '0'
+  return updates.ask
+}
+
 /** "Ask when an update is found" on or off ("Don't ask again" switches it off). */
 export async function setAskForUpdates(ask: boolean) {
   updates.ask = ask
