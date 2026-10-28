@@ -65,7 +65,7 @@ const refresh = usePullToRefresh(scroller)
       <!-- The main pages: one top bar, and the page, kept alive. Out of reach while something covers them. -->
       <div class="absolute inset-0 flex flex-col" :inert="onTop || undefined">
         <MobileTopBar />
-        <div ref="scroller" data-scroller class="relative min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]" :style="{ '--page-from': from }">
+        <div ref="scroller" data-scroller class="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none]" :style="{ '--page-from': from }">
           <!-- Pull to refresh's mark: comes down with the finger, turning; spins while it refreshes. -->
           <div class="pointer-events-none sticky top-0 z-10 flex h-0 justify-center" aria-hidden="true">
             <span

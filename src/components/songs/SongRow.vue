@@ -79,10 +79,13 @@ const highlighted = computed(() => props.current || props.lifted || menuOpen.val
 // A menu closed: the row stays lit until the focus is back on it (the menu gives it back once it has faded out), so
 // closing with Esc doesn't blink the highlight off and on.
 const HELD_MS = 250
+const letGo = { menu: 0, context: 0 }
 function menuChanged(which: 'menu' | 'context', open: boolean) {
   const shown = which === 'menu' ? menuOpen : contextOpen
+  // Opened again before the last close let go: it stays lit.
+  clearTimeout(letGo[which])
   if (open) shown.value = true
-  else setTimeout(() => (shown.value = false), HELD_MS)
+  else letGo[which] = window.setTimeout(() => (shown.value = false), HELD_MS)
 }
 // A greyed song (unavailable, or shown ahead) isn't highlighted, by the pointer or otherwise.
 const greyed = computed(() => props.unavailable || !!props.song.later)

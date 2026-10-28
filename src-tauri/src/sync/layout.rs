@@ -28,6 +28,7 @@ use crate::library::{err, scanner, Folder, Library, Result};
 use crate::share::commands::with_stores;
 use crate::share::setup::{self, ShareSetup};
 use crate::share::{Share, ShareError};
+use crate::guard::Locked;
 
 /// The layout the share was last put in completely (empty: never): new songs are tidied only when it's the
 /// chosen one. Kept here as the share last said.
@@ -318,11 +319,11 @@ static GONE: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// A sync ran: songs found gone are tried again by the next tidy.
 pub fn forget_gone() {
-    *GONE.lock().unwrap() = None;
+    *GONE.locked() = None;
 }
 
 fn known_gone(path: &str) -> bool {
-    GONE.lock().unwrap().as_ref().is_some_and(|gone| gone.contains(&key(path)))
+    GONE.locked().as_ref().is_some_and(|gone| gone.contains(&key(path)))
 }
 
 pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result<ReorganiseResult, SyncFailure> {
@@ -364,7 +365,7 @@ pub fn reorganise(app: &AppHandle, only_if_applied: bool) -> std::result::Result
         Ok(reorganise_files(&library, share.as_ref(), target.as_deref(), &moves, report, &|| scheduler::cancelled(app))?)
     })?;
     if !result.gone.is_empty() {
-        GONE.lock().unwrap().get_or_insert_with(HashSet::new).extend(result.gone.iter().map(|p| key(p)));
+        GONE.locked().get_or_insert_with(HashSet::new).extend(result.gone.iter().map(|p| key(p)));
     }
     if result.failed.is_empty() {
         done(&library)?;

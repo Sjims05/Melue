@@ -89,6 +89,9 @@ pub(crate) fn err(e: impl Display) -> String {
 
 pub struct Library {
     conn: Mutex<Connection>,
+    /// A second connection, only for reading, for what the app's pages show (song lists, albums, artists, playlists,
+    /// search): with WAL it reads while a scan or a sync writes on `conn`, so the pages don't wait for them.
+    reader: Mutex<Connection>,
     /// Albums and artists need building again even if a scan changes nothing: at start-up (new rules in an
     /// app update) and after a folder's songs were removed. See grouping.rs.
     regroup_needed: AtomicBool,
@@ -107,12 +110,20 @@ impl Library {
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")
             .map_err(err)?;
         migrations::run(&mut conn)?;
+        let reader = Connection::open(path).map_err(err)?;
+        // Only reading: a write by mistake fails instead of bypassing `conn`'s lock.
+        reader.execute_batch("PRAGMA query_only = ON; PRAGMA foreign_keys = ON;").map_err(err)?;
         let covers_dir = path.parent().unwrap_or(Path::new(".")).join("covers");
-        Ok(Self { conn: Mutex::new(conn), regroup_needed: AtomicBool::new(true), covers_dir })
+        Ok(Self { conn: Mutex::new(conn), reader: Mutex::new(reader), regroup_needed: AtomicBool::new(true), covers_dir })
     }
 
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The reading connection (see `reader`): for what pages show, never for writing.
+    pub(crate) fn reader(&self) -> MutexGuard<'_, Connection> {
+        self.reader.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// The schema version the database is at (see migrations.rs).

@@ -32,6 +32,8 @@ mod moving_tests;
 pub mod same_song;
 #[cfg(test)]
 mod playlist_sync_tests;
+#[cfg(test)]
+mod big_library_tests;
 pub mod shared;
 pub mod to_share;
 #[cfg(test)]

@@ -45,7 +45,7 @@ impl Library {
         }
         // Songs: by their title first, then by their artist, then by their album.
         let rows: Vec<(i64, String, Option<String>, Option<String>)> = {
-            let conn = self.conn();
+            let conn = self.reader();
             let mut stmt = conn
                 .prepare(
                     "SELECT t.id, t.title, t.artist_credit, al.title FROM tracks t LEFT JOIN albums al ON al.id = t.album_id

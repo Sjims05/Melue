@@ -31,6 +31,9 @@ pub struct PlayerSettings {
     pub paused_keep_alive_minutes: u32,
     /// Android: stays ready while Android Auto is connected.
     pub keep_alive_while_car_connected: bool,
+    /// Android: formats the phone can play on its audio chip (offload, saving battery) only with a split-second gap
+    /// between songs are offloaded too (off: they play the normal way, gapless).
+    pub offload_with_gaps: bool,
 }
 
 impl Default for PlayerSettings {
@@ -45,6 +48,7 @@ impl Default for PlayerSettings {
             repeat_added_tracks: false,
             paused_keep_alive_minutes: 30,
             keep_alive_while_car_connected: true,
+            offload_with_gaps: true,
         }
     }
 }

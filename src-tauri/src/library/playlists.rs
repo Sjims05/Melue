@@ -209,7 +209,7 @@ impl Library {
     /// Every playlist, by name.
     pub fn playlists(&self) -> Result<Vec<Playlist>> {
         let ids: Vec<i64> = {
-            let conn = self.conn();
+            let conn = self.reader();
             let mut stmt = conn.prepare("SELECT id FROM playlists ORDER BY name COLLATE NOCASE, id").map_err(err)?;
             let ids = stmt.query_map([], |r| r.get(0)).map_err(err)?;
             ids.collect::<rusqlite::Result<_>>().map_err(err)?
@@ -218,7 +218,7 @@ impl Library {
     }
 
     pub fn playlist(&self, id: i64) -> Result<Playlist> {
-        let conn = self.conn();
+        let conn = self.reader();
         let sql = format!(
             "SELECT p.id, p.name, p.kind, p.created_at, p.updated_at,
                     count(e.id) FILTER (WHERE e.state IN {IN_MELUE}),
@@ -296,7 +296,7 @@ impl Library {
     /// A playlist's entries in order: its songs, available or not, and (linked) greyed ones and lines of the
     /// file that match no song.
     pub fn playlist_entries(&self, id: i64) -> Result<Vec<PlaylistEntry>> {
-        let conn = self.conn();
+        let conn = self.reader();
         let sql = format!(
             "SELECT {TRACK_COLUMNS}, e.id, e.position, e.added_at, e.state, e.file_entry, e.sync_title, e.sync_artist
              FROM playlist_entries e LEFT JOIN tracks t ON t.id = e.track_id LEFT JOIN folders f ON f.id = t.folder_id

@@ -6,7 +6,7 @@
  * library: a scan or a folder change shows at once.
  */
 import { CircleAlert, Music } from '@lucide/vue'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { letterOf, VirtualSongList, type Song } from '@/components/songs'
 import { library, type Track, type TrackSort } from '@/library'
 import { isDesktop } from '@/platform/platform'
@@ -15,6 +15,7 @@ import { playSong, songAction, trackSong } from '@/player/songs'
 import { useRouter } from 'vue-router'
 import { EmptyState } from '@/components/page'
 import { Button } from '@/components/ui/button'
+import { changesTheLibrary, onLibraryChange } from '@/library/changes'
 
 const props = defineProps<{ sort: TrackSort }>()
 
@@ -29,8 +30,7 @@ async function load() {
 }
 watch(() => props.sort, load, { immediate: true })
 // Likes show through the player's liked songs (at once, everywhere); anything else reloads the list.
-const stop = library.onChange((change) => change.reason !== 'likes' && load())
-onUnmounted(() => stop.then((unlisten) => unlisten()))
+onLibraryChange(changesTheLibrary, load)
 
 const songs = computed(() => (tracks.value ?? []).map(trackSong))
 const headingOf = computed<((song: Song) => string) | undefined>(() => {

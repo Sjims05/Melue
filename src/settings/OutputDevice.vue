@@ -8,11 +8,11 @@
  * when it's unplugged). Devices come and go without an event: the list is read again every few seconds while shown.
  */
 import { Unplug } from '@lucide/vue'
-import { useDocumentVisibility, useIntervalFn } from '@vueuse/core'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { RadioMark, resetTo, SettingsCard, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { player, type OutputDevices } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
+import { everyWhileShown } from '@/lib/whileShown'
 
 const NAMES = 'melue-output-names'
 
@@ -42,13 +42,7 @@ function show(next: OutputDevices) {
 
 const read = () => player.getOutputDevices().then(show).catch((e) => (error.value = `Can’t list the output devices: ${e}`))
 onPageLoad(read)
-const visible = useDocumentVisibility()
-const { pause, resume } = useIntervalFn(read, 3000)
-watch(visible, (now) => {
-  if (now !== 'visible') return pause()
-  read()
-  resume()
-})
+everyWhileShown(read, 3000)
 
 async function choose(id: string | null) {
   if (!outputs.value || outputs.value.selected === id) return

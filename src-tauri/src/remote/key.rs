@@ -10,6 +10,7 @@ use sha2::Sha256;
 use tauri::AppHandle;
 
 use crate::share::{Share, ShareError};
+use crate::guard::Locked;
 
 const FILE: &str = ".melue/remote-key";
 /// How old (or how far ahead) a proof may be.
@@ -41,11 +42,11 @@ pub fn read_or_make(share: &dyn Share) -> Result<Vec<u8>, String> {
 
 /// The key (read from the share the first time).
 pub fn key(app: &AppHandle) -> Result<Vec<u8>, String> {
-    if let Some(key) = KEY.lock().unwrap().clone() {
+    if let Some(key) = KEY.locked().clone() {
         return Ok(key);
     }
     let key = crate::sync::shared::with_share(app, |share| read_or_make(share))?;
-    *KEY.lock().unwrap() = Some(key.clone());
+    *KEY.locked() = Some(key.clone());
     Ok(key)
 }
 

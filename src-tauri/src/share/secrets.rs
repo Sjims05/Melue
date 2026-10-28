@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use crate::guard::Locked;
 
 /// Where a password is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,16 +37,16 @@ pub struct MemorySecrets(Mutex<HashMap<String, String>>);
 
 impl Secrets for MemorySecrets {
     fn get(&self, key: &str) -> Result<Option<String>, String> {
-        Ok(self.0.lock().unwrap().get(key).cloned())
+        Ok(self.0.locked().get(key).cloned())
     }
 
     fn set(&self, key: &str, value: &str) -> Result<(), String> {
-        self.0.lock().unwrap().insert(key.into(), value.into());
+        self.0.locked().insert(key.into(), value.into());
         Ok(())
     }
 
     fn delete(&self, key: &str) -> Result<(), String> {
-        self.0.lock().unwrap().remove(key);
+        self.0.locked().remove(key);
         Ok(())
     }
 }
@@ -85,19 +86,19 @@ impl FileSecrets {
 
 impl Secrets for FileSecrets {
     fn get(&self, key: &str) -> Result<Option<String>, String> {
-        let _guard = self.lock.lock().unwrap();
+        let _guard = self.lock.locked();
         Ok(self.load()?.get(key).cloned())
     }
 
     fn set(&self, key: &str, value: &str) -> Result<(), String> {
-        let _guard = self.lock.lock().unwrap();
+        let _guard = self.lock.locked();
         let mut all = self.load()?;
         all.insert(key.into(), value.into());
         self.save(&all)
     }
 
     fn delete(&self, key: &str) -> Result<(), String> {
-        let _guard = self.lock.lock().unwrap();
+        let _guard = self.lock.locked();
         let mut all = self.load()?;
         if all.remove(key).is_some() {
             self.save(&all)?;

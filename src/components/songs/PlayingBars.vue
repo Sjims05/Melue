@@ -11,7 +11,7 @@
  * animation loop only moves them from wherever they are, pausing (gravity) and playing again (catching up: how far
  * each is from the bounce fades away), and hands over once they're in the bounce.
  */
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{ paused?: boolean }>()
 
@@ -60,10 +60,11 @@ const KEYFRAMES = Array.from({ length: SAMPLES + 1 }, (_, k) => ({ transform: sl
 /** In the bounce now: its animations take over (each bar where the bounce has it). */
 function startSteady() {
   stopSteady()
-  const now = performance.now()
+  // On the page's own clock, each a third of a cycle on: every bar on screen (the mini player's, a song row's) steps at
+  // the same moments, so a phone draws 20 frames a second for all of them, not 20 for each (unaligned: ~40, measured).
   steady = inners().map((b, i) => {
     const animation = b.animate(KEYFRAMES, { duration: CYCLE, iterations: Infinity, easing: `steps(${STEPS}, jump-none)` })
-    animation.currentTime = (now + PHASES[i]) % CYCLE
+    animation.startTime = -PHASES[i]
     return animation
   })
 }
@@ -122,6 +123,9 @@ function step(now: number) {
 function run() {
   if (still.matches) {
     // Reduce motion: standing still (uneven while playing, flat while paused).
+    stopSteady()
+    cancelAnimationFrame(frame)
+    frame = 0
     state.forEach((s, i) => (s.h = props.paused ? FLOOR : HEIGHT * [0.55, 1, 0.75][i]))
     return draw()
   }
@@ -138,16 +142,37 @@ watch(
   () => run(),
 )
 
-onMounted(() => {
-  // Shown while already playing: in the bounce at once.
-  if (!props.paused && !still.matches) state.forEach((s, i) => (s.h = bounce(performance.now(), i)))
-  draw()
-  if (!props.paused && !still.matches) startSteady()
-  else run()
-})
-onBeforeUnmount(() => {
+/** Shown (again): playing, in the bounce at once; else as it should be. */
+function show() {
+  if (!props.paused && !still.matches) {
+    state.forEach((s, i) => (s.h = bounce(performance.now(), i)))
+    draw()
+    startSteady()
+  } else run()
+}
+/** Put aside (its page behind another, kept for coming back): nothing moves. Running on, its animations would keep
+ * the page's main thread busy (measured: a third of a phone's core) for bars no one sees. */
+function hide() {
   cancelAnimationFrame(frame)
+  frame = 0
   steady.forEach((a) => a.cancel())
+  steady = []
+  if (!props.paused) return
+  state.forEach((s) => ((s.h = FLOOR), (s.v = 0)))
+  draw()
+}
+// Reduce motion switched on or off meanwhile.
+const motionChanged = () => run()
+
+onMounted(() => {
+  show()
+  still.addEventListener('change', motionChanged)
+})
+onActivated(show)
+onDeactivated(hide)
+onBeforeUnmount(() => {
+  hide()
+  still.removeEventListener('change', motionChanged)
 })
 </script>
 

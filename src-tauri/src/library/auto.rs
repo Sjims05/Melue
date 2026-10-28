@@ -17,6 +17,7 @@ use tauri_plugin_native_audio::{Library as AutoLibrary, LibraryChild, LibraryFol
 
 use super::covers::{self, LARGE};
 use super::{Library, Result};
+use crate::guard::Locked;
 
 /// The player's tracked list of lists played (configured by the UI at start-up, see playback.ts).
 pub const RECENT_LISTS: &str = "recentLists";
@@ -140,11 +141,11 @@ pub fn start(app: &AppHandle) {
         return;
     }
     let (soon, wake) = mpsc::channel::<()>();
-    *app.state::<AutoSender>().soon.lock().unwrap() = Some(soon);
+    *app.state::<AutoSender>().soon.locked() = Some(soon);
     let app = app.clone();
     std::thread::Builder::new()
         .name("android-auto-library".into())
-        .spawn(move || {
+        .spawn(move || crate::guard::keep_running("Android Auto's library", move || {
             crate::startup::wait_for_ui(crate::startup::UI_AT_MOST);
             send(&app);
             while wake.recv().is_ok() {
@@ -157,14 +158,14 @@ pub fn start(app: &AppHandle) {
                 }
                 send(&app);
             }
-        })
+        }))
         .expect("the Android Auto library thread");
 }
 
 /// The library changed: send it once things have been quiet for a moment.
 pub fn send_soon(app: &AppHandle) {
     if let Some(sender) = app.try_state::<AutoSender>() {
-        if let Some(soon) = sender.soon.lock().unwrap().as_ref() {
+        if let Some(soon) = sender.soon.locked().as_ref() {
             let _ = soon.send(());
         }
     }

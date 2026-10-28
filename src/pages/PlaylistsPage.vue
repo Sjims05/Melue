@@ -26,6 +26,7 @@ import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
 import SpotifyAddDialog from './playlists/SpotifyAddDialog.vue'
 import { autoCard, autoPage, playlistBadge, playlistCover, playlistKind, playlistLine } from './playlists/playlists'
+import { onLibraryChange } from '@/library/changes'
 
 const router = useRouter()
 
@@ -46,10 +47,10 @@ async function load() {
 }
 load()
 const stops = [
-  library.onChange((change) => change.reason !== 'likes' && load()),
   librarySync.onConflicts((list) => (conflicts.value = list)),
 ]
 onUnmounted(() => stops.forEach((stop) => stop.then((unlisten) => unlisten())))
+onLibraryChange((change) => change.reason !== 'likes', load)
 
 const shown = computed(() => autos.value.filter((a) => !a.hidden))
 const subtitle = computed(() => [count(playlists.value.length, 'playlist'), `${shown.value.length} made for you`].join(' · '))

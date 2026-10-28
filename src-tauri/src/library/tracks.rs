@@ -357,7 +357,7 @@ impl Library {
     /// Albums with songs that are there, sorted.
     pub fn albums(&self, offset: u32, limit: u32, sort: AlbumSort) -> Result<Vec<Album>> {
         let sql = format!("{} WHERE n > 0 ORDER BY {} LIMIT ?1 OFFSET ?2", album_select(), sort.order());
-        let conn = self.conn();
+        let conn = self.reader();
         let mut stmt = conn.prepare(&sql).map_err(err)?;
         let albums = stmt.query_map(params![limit, offset], album_row).map_err(err)?;
         albums.collect::<rusqlite::Result<_>>().map_err(err)
@@ -366,7 +366,7 @@ impl Library {
     /// Artists with songs that are there, sorted.
     pub fn artists(&self, offset: u32, limit: u32, sort: ArtistSort) -> Result<Vec<Artist>> {
         let sql = format!("{} WHERE main + guest + albums > 0 ORDER BY {} LIMIT ?1 OFFSET ?2", artist_select(), sort.order());
-        let conn = self.conn();
+        let conn = self.reader();
         let mut stmt = conn.prepare(&sql).map_err(err)?;
         let artists = stmt.query_map(params![limit, offset], artist_row).map_err(err)?;
         artists.collect::<rusqlite::Result<_>>().map_err(err)
@@ -375,7 +375,7 @@ impl Library {
     /// An album's page (None: no such album). Its songs are the ones that are there, in the order they play.
     pub fn album_page(&self, id: i64) -> Result<Option<AlbumPage>> {
         let album = {
-            let conn = self.conn();
+            let conn = self.reader();
             conn.query_row(&format!("{} WHERE a.id = ?1", album_select()), [id], album_row).optional().map_err(err)?
         };
         let Some(album) = album else { return Ok(None) };
@@ -386,7 +386,7 @@ impl Library {
     /// An artist's page (None: no such artist).
     pub fn artist_page(&self, id: i64) -> Result<Option<ArtistPage>> {
         let (artist, albums) = {
-            let conn = self.conn();
+            let conn = self.reader();
             let artist = conn.query_row(&format!("{} WHERE ar.id = ?1", artist_select()), [id], artist_row).optional().map_err(err)?;
             let Some(artist) = artist else { return Ok(None) };
             let sql = format!("{} WHERE a.artist_id = ?1 AND n > 0 ORDER BY a.year IS NULL, a.year, a.sort_title, a.id", album_select());
@@ -447,7 +447,7 @@ impl Library {
 
     /// The songs a query finds: `rest` follows the songs' joins (more joins, WHERE, ORDER BY).
     fn select_tracks(&self, rest: &str, params: impl rusqlite::Params) -> Result<Vec<Track>> {
-        let conn = self.conn();
+        let conn = self.reader();
         let mut stmt = conn.prepare(&format!("SELECT {TRACK_COLUMNS} {TRACKS_FROM} {rest}")).map_err(err)?;
         let tracks = stmt.query_map(params, track_row).map_err(err)?;
         tracks.collect::<rusqlite::Result<_>>().map_err(err)

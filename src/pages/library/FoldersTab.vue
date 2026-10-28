@@ -5,7 +5,7 @@
  * switched-off folder says so (its songs are hidden until it's on again, in Settings). It follows the library.
  */
 import { CircleAlert, Cloud, Folder } from '@lucide/vue'
-import { onUnmounted, ref } from 'vue'
+import { ref } from 'vue'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { EmptyState, LinkRow } from '@/components/page'
 import { SettingsBadge } from '@/components/settings'
@@ -15,6 +15,7 @@ import { listAction } from '@/player/songs'
 import { folderIcon, folderPlace } from './folders'
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
+import { changesTheLibrary, onLibraryChange } from '@/library/changes'
 
 const folders = ref<MusicFolder[] | null>(null)
 // Why the list couldn't be read (shown instead of an empty list).
@@ -25,8 +26,7 @@ async function load() {
   folders.value = await library.folders().catch((e) => ((problem.value = String(e)), []))
 }
 load()
-const stop = library.onChange((change) => change.reason !== 'likes' && load())
-onUnmounted(() => stop.then((unlisten) => unlisten()))
+onLibraryChange(changesTheLibrary, load)
 
 const MENU = coverMenu({ kind: 'list' })
 const line = (f: MusicFolder) => [folderPlace(f), f.enabled ? count(f.tracks, 'song') : 'Switched off'].join(' · ')

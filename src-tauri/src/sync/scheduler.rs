@@ -22,6 +22,7 @@ use crate::library::{err, now_ms, scanner, Folder, Library, Result};
 use crate::share::commands::with_stores;
 use crate::share::setup::{self, SetupError, ShareSetup};
 use crate::share::{Share, ShareError, Watch};
+use crate::guard::Locked;
 
 pub const STATUS_EVENT: &str = "sync-status";
 const LAST_SYNC: &str = "sync_last";
@@ -131,7 +132,7 @@ pub fn plan_now(app: &AppHandle) -> std::result::Result<(Box<dyn Share>, Folder,
 /// The sync status now.
 pub fn status(app: &AppHandle) -> SyncStatus {
     let syncing = app.state::<Syncing>();
-    let mut status = syncing.status.lock().unwrap().clone();
+    let mut status = syncing.status.locked().clone();
     if status.last.is_none() {
         status.last = app.state::<Library>().last_sync().ok().flatten();
     }
@@ -140,7 +141,7 @@ pub fn status(app: &AppHandle) -> SyncStatus {
 
 fn set_status(app: &AppHandle, change: impl FnOnce(&mut SyncStatus)) {
     let syncing = app.state::<Syncing>();
-    let mut status = syncing.status.lock().unwrap();
+    let mut status = syncing.status.locked();
     change(&mut status);
     let _ = app.emit(STATUS_EVENT, &*status);
 }
@@ -175,11 +176,11 @@ pub fn sync_once(
     }
     syncing.cancel.store(false, Ordering::SeqCst);
     let me = syncing.runs.fetch_add(1, Ordering::SeqCst) + 1;
-    *syncing.connecting.lock().unwrap() = Some(me);
+    *syncing.connecting.locked() = Some(me);
     set_status(app, |s| s.syncing = Some(Progress::default()));
     let planned = plan_now(app);
     // Cancelled while reaching the share: cancel() has let go of this sync already (another may be running).
-    if syncing.connecting.lock().unwrap().take() != Some(me) {
+    if syncing.connecting.locked().take() != Some(me) {
         eprintln!("melue: sync: cancelled while reaching the share");
         return Err(SyncFailure::Cancelled);
     }
@@ -224,7 +225,7 @@ pub fn sync_once(
         Ok((done, share)) => {
             let last = LastSync { at_ms: now_ms(), trigger, result: done.clone() };
             let _ = app.state::<Library>().save_last_sync(&last);
-            *syncing.retry.lock().unwrap() = None;
+            *syncing.retry.locked() = None;
             let note = share.note();
             set_status(app, |s| {
                 s.syncing = None;
@@ -250,14 +251,14 @@ pub fn sync_once(
             let retry_at_ms = match &failure {
                 SyncFailure::Running => status(app).retry_at_ms,
                 f if f.unreachable() => {
-                    let mut retry = syncing.retry.lock().unwrap();
+                    let mut retry = syncing.retry.locked();
                     let attempts = retry.map_or(0, |(n, _)| n) + 1;
                     let wait = retry_after_ms(attempts);
                     *retry = Some((attempts, Instant::now() + Duration::from_millis(wait as u64)));
                     Some(now_ms() + wait)
                 }
                 _ => {
-                    *syncing.retry.lock().unwrap() = None;
+                    *syncing.retry.locked() = None;
                     None
                 }
             };
@@ -307,7 +308,7 @@ pub fn cancelled(app: &AppHandle) -> bool {
 fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
     let on_change = app.state::<Library>().sync_settings().map(|s| s.on_change).unwrap_or(false);
     let syncing = app.state::<Syncing>();
-    let mut watching = syncing.watch.lock().unwrap();
+    let mut watching = syncing.watch.locked();
     if !on_change {
         *watching = None;
         return;
@@ -335,7 +336,7 @@ fn keep_watching(app: &AppHandle, share: Box<dyn Share>) {
 fn keep_watch_alive(app: &AppHandle) {
     let library = app.state::<Library>();
     let wanted = library.sync_settings().is_ok_and(|s| s.on_change) && library.sync_available().unwrap_or(false);
-    let alive = app.state::<Syncing>().watch.lock().unwrap().as_ref().is_some_and(|(_, watch)| watch.alive());
+    let alive = app.state::<Syncing>().watch.locked().as_ref().is_some_and(|(_, watch)| watch.alive());
     if wanted && !alive {
         eprintln!("melue: sync: the share's changes weren't being watched: watching them again");
         start_watching(app);
@@ -355,7 +356,7 @@ pub fn start_watching(app: &AppHandle) {
 
 /// Stops watching the share (it was removed, or the setting switched off).
 pub fn stop_watching(app: &AppHandle) {
-    *app.state::<Syncing>().watch.lock().unwrap() = None;
+    *app.state::<Syncing>().watch.locked() = None;
 }
 
 /// The network changed (Android): tries the share again now if it couldn't be reached, and lets synced
@@ -372,11 +373,11 @@ pub fn trigger(app: &AppHandle, trigger: Trigger) {
     if trigger == Trigger::Return {
         // Kept until the scheduler reads it: Windows often says the window got focus twice, and the second time
         // there's no leaving to count from.
-        if let Some(left) = syncing.left_at_ms.lock().unwrap().take() {
+        if let Some(left) = syncing.left_at_ms.locked().take() {
             came_back_after(&syncing, now_ms() - left);
         }
     }
-    let triggers = syncing.triggers.lock().unwrap();
+    let triggers = syncing.triggers.locked();
     if let Some(triggers) = triggers.as_ref() {
         let _ = triggers.send(trigger);
     }
@@ -403,7 +404,7 @@ pub fn simulate_notification(app: &AppHandle) {
 
 /// The user left the app (the window lost focus; Android: it went to the background): coming back measures from now.
 pub fn went_away(app: &AppHandle) {
-    *app.state::<Syncing>().left_at_ms.lock().unwrap() = Some(now_ms());
+    *app.state::<Syncing>().left_at_ms.locked() = Some(now_ms());
 }
 
 /// The user is using the app again after `away_ms` without touching it (the window can stay in front while they're
@@ -414,7 +415,7 @@ pub fn came_back(app: &AppHandle, away_ms: i64) {
 }
 
 fn came_back_after(syncing: &Syncing, away_ms: i64) {
-    let mut away = syncing.away_ms.lock().unwrap();
+    let mut away = syncing.away_ms.locked();
     *away = Some(away.map_or(away_ms, |a| a.max(away_ms)));
 }
 
@@ -423,7 +424,7 @@ fn came_back_after(syncing: &Syncing, away_ms: i64) {
 pub fn cancel(app: &AppHandle) {
     let syncing = app.state::<Syncing>();
     syncing.cancel.store(true, Ordering::SeqCst);
-    if syncing.connecting.lock().unwrap().take().is_some() {
+    if syncing.connecting.locked().take().is_some() {
         notify(app, None);
         syncing.running.store(false, Ordering::SeqCst);
         set_status(app, |s| s.syncing = None);
@@ -433,17 +434,17 @@ pub fn cancel(app: &AppHandle) {
 /// Starts the scheduler: a sync shortly after start-up (when that's on), then on the triggers it's sent.
 pub fn start(app: &AppHandle) {
     let (sender, triggers) = mpsc::channel::<Trigger>();
-    *app.state::<Syncing>().triggers.lock().unwrap() = Some(sender.clone());
+    *app.state::<Syncing>().triggers.locked() = Some(sender.clone());
     let app = app.clone();
     std::thread::Builder::new()
         .name("melue-sync".into())
-        .spawn(move || {
+        .spawn(move || crate::guard::keep_running("the sync", move || {
             // After the library's start-up scan has had a moment.
             std::thread::sleep(Duration::from_secs(3));
             let _ = sender.send(Trigger::Start);
             loop {
                 // Wakes up for the periodic check, or sooner when a retry is due.
-                let retry_due = *app.state::<Syncing>().retry.lock().unwrap();
+                let retry_due = *app.state::<Syncing>().retry.locked();
                 let wait = retry_due.map_or(TICK, |(_, due)| due.saturating_duration_since(Instant::now()).min(TICK));
                 let mut next = match triggers.recv_timeout(wait) {
                     Ok(trigger) => trigger,
@@ -468,7 +469,7 @@ pub fn start(app: &AppHandle) {
                     keep_watch_alive(&app);
                 }
                 // A network change only matters while the share couldn't be reached.
-                if next == Trigger::Network && app.state::<Syncing>().retry.lock().unwrap().is_none() {
+                if next == Trigger::Network && app.state::<Syncing>().retry.locked().is_none() {
                     continue;
                 }
                 let library = app.state::<Library>();
@@ -482,7 +483,7 @@ pub fn start(app: &AppHandle) {
                     continue;
                 }
                 let last_ms = library.last_sync().ok().flatten().map(|l| l.at_ms);
-                let away_ms = if next == Trigger::Return { app.state::<Syncing>().away_ms.lock().unwrap().take() } else { None };
+                let away_ms = if next == Trigger::Return { app.state::<Syncing>().away_ms.locked().take() } else { None };
                 if should_sync(next, now_ms(), last_ms, away_ms, &settings) {
                     eprintln!("melue: sync ({next:?}): starting");
                     match sync_once(&app, next, false, false) {
@@ -493,7 +494,7 @@ pub fn start(app: &AppHandle) {
                     eprintln!("melue: sync ({next:?}): not now (the settings, or not away long enough / the last sync is recent)");
                 }
             }
-        })
+        }))
         .expect("the sync scheduler thread");
 }
 

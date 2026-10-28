@@ -2,7 +2,8 @@
 /**
  * A card of setting rows. It also sizes the trailing icons' column (the design's rule): as wide as the card's shortest row
  * with a trailing icon is tall, at most 64 px. CSS can't size a width from a stretched height, so it's measured, and
- * again whenever the card's rows or size change.
+ * again whenever the card's size or its rows change (rows added or removed; not every change inside a row: a sync's
+ * progress would re-measure the card several times a second).
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -22,7 +23,7 @@ onMounted(() => {
   resizes = new ResizeObserver(sizeEnds)
   resizes.observe(card.value!)
   changes = new MutationObserver(sizeEnds)
-  changes.observe(card.value!, { childList: true, subtree: true })
+  changes.observe(card.value!, { childList: true })
 })
 onBeforeUnmount(() => {
   resizes?.disconnect()

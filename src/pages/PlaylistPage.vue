@@ -26,6 +26,7 @@ import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
 import SpotifyUpdateDialog from './playlists/SpotifyUpdateDialog.vue'
 import { playlistCover, playlistKind, playlistLine, playlistLink, playlistWhere } from './playlists/playlists'
+import { onLibraryChange } from '@/library/changes'
 
 const route = useRoute()
 // This page's own address and playlist (the route moves on when another page opens on top of it).
@@ -56,7 +57,9 @@ async function load() {
   }
 }
 load()
-const stops = [library.onChange((change) => change.reason !== 'likes' && load()), librarySync.onConflicts(() => load())]
+// Its own changes (not other playlists'), and songs coming or going.
+onLibraryChange((change) => change.reason !== 'likes' && (change.reason !== 'playlists' || change.sources.includes(source)), load)
+const stops = [librarySync.onConflicts(() => load())]
 onUnmounted(() => stops.forEach((stop) => stop.then((unlisten) => unlisten())))
 
 // ---- Its songs: each entry a row (the same song twice: two rows), greyed ones at their place

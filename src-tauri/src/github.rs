@@ -13,6 +13,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::library::Library;
 use crate::share::secrets::{Secrets, SystemSecrets};
+use crate::guard::Locked;
 
 /// Melue's GitHub App (public: it says which app is asking, not who).
 const CLIENT_ID: &str = "Iv23linuFkI5J6T149A3";
@@ -93,7 +94,7 @@ pub fn github_sign_in_start() -> Result<SignInCode, String> {
         return Err(format!("GitHub answered {}", answer.status()));
     }
     let code: DeviceCode = answer.body_mut().read_json().map_err(|e| e.to_string())?;
-    *PENDING.lock().unwrap() = Some(Pending {
+    *PENDING.locked() = Some(Pending {
         device_code: code.device_code,
         until: Instant::now() + Duration::from_secs(code.expires_in),
         every: Duration::from_secs(code.interval.max(5)),
@@ -106,7 +107,7 @@ pub fn github_sign_in_start() -> Result<SignInCode, String> {
 #[tauri::command(async)]
 pub fn github_sign_in_wait(app: AppHandle) -> Result<String, String> {
     let attempt = ATTEMPT.load(Ordering::SeqCst);
-    let Some(Pending { device_code, until, mut every }) = PENDING.lock().unwrap().take() else {
+    let Some(Pending { device_code, until, mut every }) = PENDING.locked().take() else {
         return Err("cancelled".into());
     };
     let token = loop {
@@ -156,7 +157,7 @@ pub fn github_sign_in_wait(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub fn github_sign_in_cancel() {
     ATTEMPT.fetch_add(1, Ordering::SeqCst);
-    PENDING.lock().unwrap().take();
+    PENDING.locked().take();
 }
 
 /// The GitHub account this device is signed in to (None: not signed in).

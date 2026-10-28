@@ -16,6 +16,7 @@ use super::data::DeviceData;
 use super::handoff::share_path;
 use super::same_song::{plain_artist, plain_title, same_song, Songs};
 use crate::library::{err, Folder, Library, Result};
+use crate::guard::Locked;
 
 /// A song a device has that isn't on the share, as the others see it (in its file on the share).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,8 +162,8 @@ pub fn after_data_sync(app: &AppHandle, offered: Vec<Offered>) {
         }
     }
     let state = app.state::<ToShare>();
-    let changed = *state.offered.lock().unwrap() != offered;
-    *state.offered.lock().unwrap() = offered.clone();
+    let changed = *state.offered.locked() != offered;
+    *state.offered.locked() = offered.clone();
     if changed {
         let _ = app.emit(EVENT, &offered);
     }
@@ -171,7 +172,7 @@ pub fn after_data_sync(app: &AppHandle, offered: Vec<Offered>) {
         return;
     }
     let ids: Vec<i64> = {
-        let mut tried = state.tried.lock().unwrap();
+        let mut tried = state.tried.locked();
         offered.iter().filter(|o| o.best_here && (mode == Mode::Auto || o.approved) && tried.insert(o.id)).map(|o| o.id).collect()
     };
     if ids.is_empty() {
@@ -201,7 +202,7 @@ pub enum Mode {
 /// What's offered for the share now.
 #[tauri::command]
 pub fn sync_to_share(app: AppHandle) -> Vec<Offered> {
-    app.state::<ToShare>().offered.lock().unwrap().clone()
+    app.state::<ToShare>().offered.locked().clone()
 }
 
 /// "Put on share": a yes to songs offered now (`ids`; none given: all of them). This device puts its best copies

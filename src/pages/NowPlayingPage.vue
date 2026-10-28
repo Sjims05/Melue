@@ -12,7 +12,7 @@ import LikeHeart from '@/components/player/LikeHeart.vue'
 import LyricsPanel from '@/components/player/LyricsPanel.vue'
 import { NextIcon, PauseIcon, PlayIcon, PreviousIcon } from '@/components/player/icons'
 import { useEventListener, useResizeObserver } from '@vueuse/core'
-import { computed, nextTick, onActivated, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, ref, watch } from 'vue'
 import { volumeFlash } from '@/lib/hotkeys'
 import DevicesMenu from '@/components/player/DevicesMenu.vue'
 import { openDevicesDrawer, playingOn } from '@/player/remotePlayback'
@@ -113,6 +113,13 @@ watch(
   () => showQueue(false),
 )
 onActivated(() => showQueue(true))
+
+// The position, only while this page is shown: put aside (another page in front), it would re-render a few times a
+// second for nothing.
+const shown = ref(true)
+onActivated(() => (shown.value = true))
+onDeactivated(() => (shown.value = false))
+const at = computed(() => (shown.value ? position.value : 0))
 
 // The volume moves with the slider at once; the player follows.
 const volume = ref<number | null>(null)
@@ -226,9 +233,9 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
         </div>
         </SongMenuArea>
         <div data-arrows-skip>
-          <Slider :value="position" :max="state.duration || 1" label="Seek" @change="seek" />
+          <Slider :value="at" :max="state.duration || 1" label="Seek" @change="seek" />
           <div class="mt-1 flex justify-between text-sm text-muted-foreground tabular-nums">
-            <span>{{ time(position) }}</span><span>{{ time(state.duration) }}</span>
+            <span>{{ time(at) }}</span><span>{{ time(state.duration) }}</span>
           </div>
         </div>
         <div class="flex items-center justify-between" data-arrows-skip>

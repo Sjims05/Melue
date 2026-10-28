@@ -13,6 +13,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 
 use super::{err, now_ms, Library, Result};
+use crate::guard::Locked;
 
 /// The library setting: "0" switches it off (on by default).
 pub const SETTING: &str = "lyrics_online";
@@ -302,7 +303,7 @@ pub struct LyricsLookup {
 /// New songs may be there (a scan ended, the network changed): a round soon.
 pub fn soon(app: &AppHandle) {
     if let Some(lookup) = app.try_state::<LyricsLookup>() {
-        if let Some(soon) = lookup.soon.lock().unwrap().as_ref() {
+        if let Some(soon) = lookup.soon.locked().as_ref() {
             let _ = soon.send(());
         }
     }
@@ -311,11 +312,11 @@ pub fn soon(app: &AppHandle) {
 /// The background rounds: after start-up, then after scans and every half hour.
 pub fn start(app: &AppHandle) {
     let (sender, wake) = mpsc::channel::<()>();
-    *app.state::<LyricsLookup>().soon.lock().unwrap() = Some(sender);
+    *app.state::<LyricsLookup>().soon.locked() = Some(sender);
     let app = app.clone();
     std::thread::Builder::new()
         .name("melue-lyrics".into())
-        .spawn(move || {
+        .spawn(move || crate::guard::keep_running("online lyrics", move || {
             crate::startup::wait_for_ui(crate::startup::UI_AT_MOST);
             loop {
                 round(&app);
@@ -325,7 +326,7 @@ pub fn start(app: &AppHandle) {
                     Err(RecvTimeoutError::Disconnected) => return,
                 }
             }
-        })
+        }))
         .expect("the lyrics lookup thread");
 }
 

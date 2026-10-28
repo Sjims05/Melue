@@ -12,7 +12,7 @@ import { Ellipsis, Monitor, Smartphone } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { onBeforeUnmount, ref } from 'vue'
+import { ref } from 'vue'
 import { Chevron, ConfirmDialog, DropValue, EditRow, IconTile, resetTo, Reveal, Segmented, SettingsBadge, SettingsCard, SettingsLabel, SettingsRow, SettingsTip, StatusDot, Stepper } from '@/components/settings'
 import { usePhone } from '@/lib/phone'
 import { playingOn } from '@/player/playingOn'
@@ -21,6 +21,7 @@ import { ago } from './format'
 import { playbackSync, sync, type PlaybackMode, type PlaybackSettings } from '@/library/sync'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { PLAYBACK_DEFAULTS } from './defaults'
+import { everyWhileShown } from '@/lib/whileShown'
 
 const MODES = [['ask', 'Ask'], ['follow', 'Follow'], ['off', 'Off']] as const
 const MODE_LINE: Record<PlaybackMode, string> = {
@@ -36,12 +37,11 @@ const editingName = ref(false)
 const error = ref('')
 const saving = ref(false)
 
-// Your devices, looked at again every 15 s while this is open (a device going offline shows within a minute or so).
+// Your devices, looked at again every 15 s while this is shown (a device that went away without saying so shows offline within a few minutes).
 const devices = ref<Device[]>([])
 const remoteSettings = ref<RemoteSettings | null>(null)
 const loadDevices = async () => (devices.value = await remote.devices().catch(() => devices.value))
-const looking = setInterval(loadDevices, 15_000)
-onBeforeUnmount(() => clearInterval(looking))
+everyWhileShown(loadDevices, 15_000)
 const ALLOWS = [['on', 'On'], ['ask', 'Ask first'], ['off', 'Off']] as const
 const ALLOW_LINE: Record<Allow, string> = {
   on: 'Your other devices can play their music on this one',

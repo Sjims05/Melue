@@ -3,6 +3,19 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 0.8.2 (2026-10-28)
+
+Steadier and lighter, after a full check of the app.
+
+- Lighter on a phone: the player reports its place less often (twice a second on screen, once in the background),
+  and the page only redraws when something changed. The song's progress line keeps moving while playing.
+- Phones that can play some songs on their own audio chip only with a short gap between songs get a setting for it
+  (Settings, Audio: Save battery on … songs). Most phones play everything without gaps and never see it.
+- More stable: a part of Melue that fails in the background starts again by itself instead of stopping for good.
+- Faster with big libraries: the Library reads alongside a scan instead of waiting for it, a changed music folder is
+  scanned on its own, and pages you left update only when you come back.
+- A thin line no longer flashes above the mini player when switching pages on a phone.
+
 ## 0.8.1 (2026-10-25)
 
 Melue on the keyboard, and lighter on your phone's battery.

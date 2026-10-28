@@ -183,6 +183,11 @@ export const SETTINGS: Record<string, SettingInfo> = {
     default: 'On',
     help: 'While your phone is connected to Android Auto, the player stays ready however long you pause.',
   },
+  'player.offloadWithGaps': {
+    title: 'Save battery on these songs',
+    default: 'On',
+    help: 'Your phone can play some songs on its own audio chip, which saves battery while the screen is off. For these formats it can only do that with a split-second gap between songs: a limit of this phone, not of Melue. On: they save battery, with that gap. Off: they play the normal way, without gaps. The gap only matters on albums whose songs flow into each other, like live albums, mixes and classical.',
+  },
   'output.device': {
     title: 'Output device',
     default: 'System default',

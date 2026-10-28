@@ -117,5 +117,5 @@ opt-level = 3
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+# Panics unwind (not abort): one ends only the work it happened in (src/guard.rs), not all of Melue.
 strip = true

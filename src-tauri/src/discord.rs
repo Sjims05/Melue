@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 use crate::library::{now_ms, Library};
+use crate::guard::Locked;
 
 #[cfg(desktop)]
 pub use show::start;
@@ -50,7 +51,7 @@ pub fn discord_status(app: AppHandle) -> &'static str {
     if !settings(&app.state::<Library>()).enabled {
         return "off";
     }
-    match *SHOWING.lock().unwrap() {
+    match *SHOWING.locked() {
         Some(false) => "noDiscord",
         _ => "showing",
     }
@@ -88,6 +89,7 @@ mod show {
     use tauri_plugin_native_audio::NativeAudioExt;
 
     use super::{settings, SHOWING};
+    use crate::guard::Locked;
     use crate::library::{now_ms, Library};
 
     /// Melue's application on Discord (public: it names the app, "Listening to Melue").
@@ -98,6 +100,8 @@ mod show {
     const LOOK_EVERY: Duration = Duration::from_secs(2);
     /// Discord not running (or it went): tried again this often.
     const RETRY_EVERY: Duration = Duration::from_secs(15);
+    /// How often the weekly line is worked out again.
+    const WEEKLY_EVERY: Duration = Duration::from_secs(5 * 60);
 
     /// What plays, as the status shows it.
     #[derive(Debug, Clone, PartialEq)]
@@ -111,7 +115,10 @@ mod show {
     }
 
     /// What plays now (on another device, when playing there), or None (paused, stopped).
-    fn playing(app: &AppHandle) -> Option<Playing> {
+    /// The song last found in the queue: its id and what's shown of it (the queue is fetched again only for another song).
+    type Known = Option<(Option<i64>, String, Option<String>, Option<String>)>;
+
+    fn playing(app: &AppHandle, known: &mut Known) -> Option<Playing> {
         // A song's album, from the library (the player doesn't keep it): for its cover.
         let album_of = |id: Option<i64>| id.and_then(|id| app.state::<Library>().queue_items_for(&[id]).ok()?.into_iter().next()?.album);
         if let Some((_, state)) = crate::remote::link::remote_status(app.clone()).and_then(|(c, s)| Some((c, s?))) {
@@ -128,10 +135,14 @@ mod show {
         if !state.is_playing {
             return None;
         }
-        let queue = player.get_queue().ok()?;
-        let item = usize::try_from(queue.current_index).ok().and_then(|i| queue.items.get(i))?;
-        let album = item.album.clone().or_else(|| album_of(item.id));
-        Some(Playing { title: item.title.clone()?, artist: item.artist.clone(), album, position: state.current_time, duration: state.duration })
+        if !known.as_ref().is_some_and(|(id, ..)| *id == state.current_id) {
+            let queue = player.get_queue().ok()?;
+            let item = usize::try_from(queue.current_index).ok().and_then(|i| queue.items.get(i))?;
+            let album = item.album.clone().or_else(|| album_of(item.id));
+            *known = Some((state.current_id, item.title.clone()?, item.artist.clone(), album));
+        }
+        let (_, title, artist, album) = known.clone()?;
+        Some(Playing { title, artist, album, position: state.current_time, duration: state.duration })
     }
 
     /// The album's cover on the internet (MusicBrainz's Cover Art Archive), looked up once per album.
@@ -191,16 +202,19 @@ mod show {
     /// Starts following what plays (computers): the status follows the setting and the player.
     pub fn start(app: &AppHandle) {
         let app = app.clone();
-        let _ = std::thread::Builder::new().name("melue-discord".into()).spawn(move || {
+        let _ = std::thread::Builder::new().name("melue-discord".into()).spawn(move || crate::guard::keep_running("Discord", move || {
             let mut client: Option<DiscordIpcClient> = None;
             let mut shown: Option<(Playing, Option<String>)> = None;
             let mut covers = HashMap::new();
             let mut retry_at: Option<Instant> = None;
+            let mut known: Known = None;
+            // The weekly line, worked out again every few minutes (it's a count over the week's plays).
+            let mut weekly_at: Option<(Instant, Option<String>)> = None;
             loop {
                 std::thread::sleep(LOOK_EVERY);
                 let library = app.state::<Library>();
                 let settings = settings(&library);
-                let now = if settings.enabled { playing(&app) } else { None };
+                let now = if settings.enabled { playing(&app, &mut known) } else { None };
                 let Some(now) = now else {
                     // Nothing to show: the status goes (and, switched off, the connection to Discord too).
                     if let Some(c) = client.as_mut() {
@@ -210,12 +224,19 @@ mod show {
                         if !settings.enabled {
                             let _ = c.close();
                             client = None;
-                            *SHOWING.lock().unwrap() = None;
+                            *SHOWING.locked() = None;
                         }
                     }
                     continue;
                 };
-                let weekly = settings.weekly.then(|| weekly_line(&library)).flatten();
+                let weekly = if settings.weekly {
+                    if !weekly_at.as_ref().is_some_and(|(at, _)| at.elapsed() < WEEKLY_EVERY) {
+                        weekly_at = Some((Instant::now(), weekly_line(&library)));
+                    }
+                    weekly_at.as_ref().and_then(|(_, line)| line.clone())
+                } else {
+                    None
+                };
                 // The same song, going on as expected (the bar moves by itself): nothing to tell Discord.
                 if let Some((was, was_weekly)) = &shown {
                     let same = was.title == now.title && was.artist == now.artist && (was.position - now.position).abs() < 3.0 + LOOK_EVERY.as_secs_f64() * 2.0;
@@ -231,7 +252,7 @@ mod show {
                     let mut c = DiscordIpcClient::new(APPLICATION_ID);
                     if c.connect().is_err() {
                         retry_at = Some(Instant::now() + RETRY_EVERY);
-                        *SHOWING.lock().unwrap() = Some(false);
+                        *SHOWING.locked() = Some(false);
                         continue;
                     }
                     client = Some(c);
@@ -262,17 +283,17 @@ mod show {
                 match client.as_mut().map(|c| c.set_activity(activity)) {
                     Some(Ok(())) => {
                         shown = Some((now, weekly));
-                        *SHOWING.lock().unwrap() = Some(true);
+                        *SHOWING.locked() = Some(true);
                     }
                     // Discord went (closed, restarted): connect again later.
                     _ => {
                         client = None;
                         shown = None;
                         retry_at = Some(Instant::now() + RETRY_EVERY);
-                        *SHOWING.lock().unwrap() = Some(false);
+                        *SHOWING.locked() = Some(false);
                     }
                 }
             }
-        });
+        }));
     }
 }

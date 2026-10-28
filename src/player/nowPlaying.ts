@@ -94,6 +94,9 @@ function applyState(state: PlayerState) {
     const title = nowPlaying.queue?.items.find((i) => i.id === state.currentId)?.title ?? 'This song'
     toast(`Can’t play “${title}”${state.error ? `: ${state.error}` : ''}`, CircleAlert)
   }
+  // Only its time moved, where it was expected to be (a phone's player says so 10 times a second): nothing to redraw,
+  // the tick moves the position on. Taken once it's off by more than a moment (a seek, a stall, the end of a song).
+  if (before && onlyMoved(before, state)) return
   nowPlaying.state = state
   nowPlaying.stateAt = performance.now()
   // The queue changed (another song, added, removed, moved, shuffled, or repeat, which decides the next pass): read it
@@ -110,6 +113,20 @@ function applyState(state: PlayerState) {
     lastQueueKey = key
     refreshQueue()
   }
+}
+
+/** How far the position may be off before a player's state is taken just for its time (s). */
+const DRIFT_S = 0.3
+/** A state is taken at least this often all the same (ms): the position runs on from the last one taken for a few
+ * seconds at most (see `position`), so skipping them all would stop it. */
+const TAKEN_EVERY_MS = 2000
+/** `now` says what `before` said, apart from the time, and the time is where `before` would have it by now. */
+function onlyMoved(before: PlayerState, now: PlayerState): boolean {
+  if (performance.now() - nowPlaying.stateAt > TAKEN_EVERY_MS) return false
+  const keys = Object.keys(now) as (keyof PlayerState)[]
+  if (keys.length !== Object.keys(before).length || keys.some((k) => k !== 'currentTime' && now[k] !== before[k])) return false
+  const expected = before.currentTime + (before.isPlaying ? (performance.now() - nowPlaying.stateAt) / 1000 : 0)
+  return Math.abs(expected - now.currentTime) < DRIFT_S
 }
 
 /** Reads the player again: after it has resumed the last queue at start (a queue resumed paused sends nothing). */

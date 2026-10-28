@@ -6,7 +6,7 @@
  * (only what's on screen is drawn). It follows the library and your likes.
  */
 import { ListMusic, Sparkles } from '@lucide/vue'
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { EmptyState, ListHeader } from '@/components/page'
@@ -21,6 +21,7 @@ import { goBack, setPageTitle } from '@/router'
 import { settingsTouched } from '@/settings/sharedSettings'
 import { autoCard } from './playlists/playlists'
 import { Button } from '@/components/ui/button'
+import { onLibraryChange } from '@/library/changes'
 
 const route = useRoute()
 // This page's own address and list (the route moves on when another page opens on top of it).
@@ -39,8 +40,7 @@ async function load() {
 }
 load()
 // Liked songs changes with every like; the others with the library.
-const stop = library.onChange((change) => (change.reason !== 'likes' || source === 'liked') && load())
-onUnmounted(() => stop.then((unlisten) => unlisten()))
+onLibraryChange((change) => change.reason !== 'likes' || source === 'liked', load)
 
 const card = computed(() => (auto.value ? autoCard(auto.value) : null))
 // "Last month · 50 songs · 3 h 10 min" (a Top songs list's period first), "Playlist · 86 songs · 5 h 2 min".

@@ -44,6 +44,7 @@ export class NativePlayer implements Player {
 
   setVolume = (volume: number) => audio.setVolume(volume)
   getOutputDevices = () => audio.getOutputDevices()
+  getOffloadSupport = () => audio.getOffloadSupport()
   setOutputDevice = (id: string | null) => audio.setOutputDevice(id)
   setOptions = (options: PlayerOptions) => audio.setOptions(options)
   setSkipInterval = (seconds: number) => audio.setSkipInterval(seconds)

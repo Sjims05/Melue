@@ -476,7 +476,7 @@ const UPDATE_EVERY: std::time::Duration = std::time::Duration::from_secs(30 * 60
 pub fn start(app: &tauri::AppHandle) {
     use tauri::Manager;
     let app = app.clone();
-    let _ = std::thread::Builder::new().name("melue-spotify".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("melue-spotify".into()).spawn(move || crate::guard::keep_running("Spotify playlists", move || {
         std::thread::sleep(std::time::Duration::from_secs(20));
         loop {
             let library = app.state::<Library>();
@@ -492,7 +492,7 @@ pub fn start(app: &tauri::AppHandle) {
             }
             std::thread::sleep(UPDATE_EVERY);
         }
-    });
+    }));
 }
 
 /// Downloads the Spotify playlists' new pictures in the background (one just added, or one a sync brought), and

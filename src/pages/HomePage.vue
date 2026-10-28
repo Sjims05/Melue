@@ -21,6 +21,7 @@ import { current, like, nowPlaying, togglePlay } from '@/player/nowPlaying'
 import { listAction, playSong, songAction, trackSong } from '@/player/songs'
 import { rememberedHome, rememberHome } from './home/homeMemory'
 import { listCards, type ListCard } from './home/listCards'
+import { onLibraryChange } from '@/library/changes'
 
 const router = useRouter()
 
@@ -73,7 +74,7 @@ async function load() {
   if (!problem.value) rememberHome(lists.value, songs)
 }
 onActivated(load)
-stops.push(library.onChange((change) => change.reason !== 'likes' && load()))
+onLibraryChange((change) => change.reason !== 'likes', load)
 onUnmounted(() => stops.forEach((stop) => stop.then((unlisten) => unlisten())))
 
 const shownLists = computed(() => (allLists.value ? lists.value : lists.value.slice(0, ROW)))

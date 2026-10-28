@@ -83,6 +83,15 @@ export interface PlayerOptions {
   repeatAddedTracks?: boolean
   pausedKeepAliveMinutes?: number
   keepAliveWhileCarConnected?: boolean
+  /** Android: offload also the formats the phone can only offload with gaps between songs (getOffloadSupport). */
+  offloadWithGaps?: boolean
+}
+
+/** A format and whether the device plays it on its audio chip (Android's offload, saving battery), gaplessly or not. */
+export interface OffloadFormat {
+  format: string
+  offload: boolean
+  gapless: boolean
 }
 
 export interface UpdateQueueOptions {
@@ -161,6 +170,8 @@ export interface Player {
   /** 0 to 1. */
   setVolume(volume: number): Promise<PlayerState>
   getOutputDevices(): Promise<OutputDevices>
+  /** What the device can offload, by format (empty on a computer). */
+  getOffloadSupport(): Promise<{ formats: OffloadFormat[] }>
   /** A device id from getOutputDevices, or null for the system default. Saved by the player. */
   setOutputDevice(id: string | null): Promise<OutputDevices>
   /** The player's options (only those passed change). Saved by the player. */

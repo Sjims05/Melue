@@ -30,6 +30,7 @@ use crate::library::linked::document_path;
 use crate::library::{err, now_ms, Folder, FolderKind, Library, Result};
 use super::shared::with_share;
 use crate::share::Share;
+use crate::guard::Locked;
 
 /// Where the playback files are on the share.
 pub const DIR: &str = ".melue/playback";
@@ -128,6 +129,21 @@ pub struct Handoff {
     /// Continued from another device whose song isn't here: what it plays, shown until this device plays.
     stand_in: Mutex<Option<StandIn>>,
     checks: Mutex<Option<Sender<()>>>,
+    /// The player's state at the last full look (its queue, each song's path), and when (ms).
+    glanced: Mutex<Option<(Glance, f64, i64)>>,
+}
+
+/// What the player says, cheaply (no queue): the full look every 5 s (the whole queue from the player, each song's
+/// path on the share) only when this changed, a paused song moved, or every [`SAVE_PLAYING_MS`] all the same (a queue
+/// reordered keeps all of this the same; playing, it's saved that often anyway).
+#[derive(Debug, Clone, PartialEq)]
+struct Glance {
+    current_id: Option<i64>,
+    index: i64,
+    length: i64,
+    playing: bool,
+    shuffle: bool,
+    repeat: String,
 }
 
 /// The song another device plays that isn't here (Continue: songs this device doesn't have): shown as playing there,
@@ -146,12 +162,12 @@ pub const STAND_IN_EVENT: &str = "playback-stand-in";
 
 /// The stand-in now (the app asks at start).
 pub fn stand_in(app: &AppHandle) -> Option<StandIn> {
-    app.state::<Handoff>().stand_in.lock().unwrap().clone()
+    app.state::<Handoff>().stand_in.locked().clone()
 }
 
 /// The stand-in's over (this device plays, or something else was picked).
 pub fn stand_in_done(app: &AppHandle) {
-    if app.state::<Handoff>().stand_in.lock().unwrap().take().is_some() {
+    if app.state::<Handoff>().stand_in.locked().take().is_some() {
         let _ = app.emit(STAND_IN_EVENT, None::<StandIn>);
     }
 }
@@ -304,11 +320,11 @@ static IGNORED: Mutex<Option<(String, i64)>> = Mutex::new(None);
 
 /// Ignores device `id`'s playback until `until_ms` (`i64::MAX`: until said otherwise).
 pub fn ignore(id: &str, until_ms: i64) {
-    *IGNORED.lock().unwrap() = Some((id.to_string(), until_ms));
+    *IGNORED.locked() = Some((id.to_string(), until_ms));
 }
 
 fn ignored() -> Option<String> {
-    IGNORED.lock().unwrap().as_ref().filter(|(_, until)| now_ms() < *until).map(|(id, _)| id.clone())
+    IGNORED.locked().as_ref().filter(|(_, until)| now_ms() < *until).map(|(id, _)| id.clone())
 }
 
 pub fn answered_ms(library: &Library) -> i64 {
@@ -468,12 +484,31 @@ fn save(app: &AppHandle, force: bool) -> Result<()> {
     if settings(app)?.mode == Mode::Off {
         return Ok(());
     }
-    let Some(folder) = library.synced_folder()? else { return Ok(()) };
-    let Some((playback, (title, artist))) = playing_here(app, &library, &folder)? else { return Ok(()) };
     let handoff = app.state::<Handoff>();
     let now = now_ms();
+    let state = app.native_audio().get_state()?;
+    let glance = Glance {
+        current_id: state.current_id,
+        index: state.queue_index,
+        length: state.queue_length,
+        playing: state.is_playing,
+        shuffle: state.shuffle,
+        repeat: state.repeat_mode.clone(),
+    };
     {
-        let mut last = handoff.last.lock().unwrap();
+        let mut glanced = handoff.glanced.locked();
+        let same = glanced.as_ref().is_some_and(|(was, time, looked)| {
+            *was == glance && (glance.playing || (state.current_time - time).abs() <= MOVED_S) && now - looked < SAVE_PLAYING_MS
+        });
+        if same && !force {
+            return Ok(());
+        }
+        *glanced = Some((glance, state.current_time, now));
+    }
+    let Some(folder) = library.synced_folder()? else { return Ok(()) };
+    let Some((playback, (title, artist))) = playing_here(app, &library, &folder)? else { return Ok(()) };
+    {
+        let mut last = handoff.last.locked();
         // Melue just started: the player's queue from last time isn't something new to tell the others.
         if last.is_none() && !force {
             *last = Some((playback, now));
@@ -494,7 +529,7 @@ fn save(app: &AppHandle, force: bool) -> Result<()> {
     };
     with_share(app, |share| write_playback_file(share, &file))?;
     // Only once it's on the share (otherwise it's tried again on the next look at the player).
-    *handoff.last.lock().unwrap() = Some((file.state, now));
+    *handoff.last.locked() = Some((file.state, now));
     Ok(())
 }
 
@@ -546,10 +581,10 @@ fn look(app: &AppHandle) -> Result<()> {
             return Ok(());
         }
         load(app, &other)?;
-        *handoff.offer.lock().unwrap() = None;
+        *handoff.offer.locked() = None;
         let _ = app.emit(FOLLOWED_EVENT, &other);
     } else {
-        let mut offer = handoff.offer.lock().unwrap();
+        let mut offer = handoff.offer.locked();
         if offer.as_ref().is_some_and(|o| o.share_ms >= other.share_ms) {
             return Ok(());
         }
@@ -569,20 +604,20 @@ fn load(app: &AppHandle, other: &PlaybackFile) -> Result<()> {
     // Its song not here: the next one waits from its start, the other device's song shown in its place.
     player.set_queue(items, index, if standing_in { 0.0 } else { other.state.position_s }, None)?;
     let stand_in = standing_in.then(|| StandIn { title: other.title.clone(), artist: other.artist.clone(), device: other.device_name.clone(), waiting });
-    *app.state::<Handoff>().stand_in.lock().unwrap() = stand_in.clone();
+    *app.state::<Handoff>().stand_in.locked() = stand_in.clone();
     let _ = app.emit(STAND_IN_EVENT, stand_in);
     player.set_shuffle(other.state.shuffle)?;
     player.set_repeat_mode(&other.state.repeat)?;
     mark_answered(&library, other)?;
     // Not something new to tell the others: it's theirs (saved once it changes here).
     let loaded = playing_here(app, &library, &folder)?.map(|(p, ..)| p).unwrap_or_else(|| Playback { playing: false, ..other.state.clone() });
-    *app.state::<Handoff>().last.lock().unwrap() = Some((loaded, now_ms()));
+    *app.state::<Handoff>().last.locked() = Some((loaded, now_ms()));
     Ok(())
 }
 
 /// The offer waiting for an answer.
 pub fn offer(app: &AppHandle) -> Option<PlaybackFile> {
-    app.state::<Handoff>().offer.lock().unwrap().clone()
+    app.state::<Handoff>().offer.locked().clone()
 }
 
 /// The offered song here (its id, for its cover), if this device has it.
@@ -600,7 +635,7 @@ pub fn offer_song(app: &AppHandle) -> Result<Option<i64>> {
 
 /// The answer to the offer: Continue (load it) or Not now (it isn't offered again).
 pub fn answer(app: &AppHandle, continue_here: bool) -> Result<()> {
-    let Some(other) = app.state::<Handoff>().offer.lock().unwrap().take() else { return Ok(()) };
+    let Some(other) = app.state::<Handoff>().offer.locked().take() else { return Ok(()) };
     if continue_here {
         load(app, &other)
     } else {
@@ -610,7 +645,7 @@ pub fn answer(app: &AppHandle, continue_here: bool) -> Result<()> {
 
 /// Asks for a look at the other devices' playback (start-up, coming back, a playback file changed).
 pub fn check(app: &AppHandle) {
-    if let Some(checks) = app.state::<Handoff>().checks.lock().unwrap().as_ref() {
+    if let Some(checks) = app.state::<Handoff>().checks.locked().as_ref() {
         let _ = checks.send(());
     }
 }
@@ -619,11 +654,11 @@ pub fn check(app: &AppHandle) {
 /// when it changed, and looking again when asked.
 pub fn start(app: &AppHandle) {
     let (sender, checks) = mpsc::channel::<()>();
-    *app.state::<Handoff>().checks.lock().unwrap() = Some(sender.clone());
+    *app.state::<Handoff>().checks.locked() = Some(sender.clone());
     let app = app.clone();
     std::thread::Builder::new()
         .name("melue-playback".into())
-        .spawn(move || {
+        .spawn(move || crate::guard::keep_running("playback across devices", move || {
             // After the player has restored its queue.
             std::thread::sleep(Duration::from_secs(3));
             let _ = sender.send(());
@@ -647,6 +682,6 @@ pub fn start(app: &AppHandle) {
                     }
                 }
             }
-        })
+        }))
         .expect("the playback thread");
 }

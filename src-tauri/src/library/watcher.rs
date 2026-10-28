@@ -13,9 +13,21 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Manager};
 
 use super::{m3u, scan, FolderKind, Library};
+use crate::guard::Locked;
 
 /// The watcher, and the folders it watches (by folder id).
 static WATCHING: Mutex<Option<(RecommendedWatcher, HashMap<i64, PathBuf>)>> = Mutex::new(None);
+/// The same folders, for telling which one a change is in (its own lock: the watcher's callback never waits on
+/// WATCHING, which is held while watching starts).
+static FOLDERS: Mutex<Vec<(i64, PathBuf)>> = Mutex::new(Vec::new());
+
+/// The watched folders the changed paths are in (none known: all of them are scanned).
+fn folders_of(paths: &[PathBuf]) -> Vec<i64> {
+    let folders = FOLDERS.locked();
+    let mut found: Vec<i64> = paths.iter().filter_map(|path| folders.iter().find(|(_, root)| path.starts_with(root)).map(|(id, _)| *id)).collect();
+    found.dedup();
+    found
+}
 
 /// Whether a change is one a scan would see: a song or playlist file, or a folder (moved or deleted whole). Not
 /// hidden files and folders (the scan skips them; Melue's own `.melue` folder on the share), not downloads still
@@ -37,12 +49,18 @@ pub fn refresh(app: &AppHandle) {
         Ok(folders) => folders.into_iter().filter(|f| f.enabled && f.kind == FolderKind::Path).map(|f| (f.id, PathBuf::from(f.location))).collect(),
         Err(e) => return eprintln!("melue: can't watch the music folders: {e}"),
     };
-    let mut watching = WATCHING.lock().unwrap();
+    let mut watching = WATCHING.locked();
     if watching.is_none() {
         let handle = app.clone();
         let watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
-            if event.is_ok_and(|e| matters(&e)) {
-                super::scanner::scan_soon(&handle);
+            let Ok(event) = event else { return };
+            if !matters(&event) {
+                return;
+            }
+            // Only the folder the change is in (not every folder: a listing of the whole library each time).
+            match folders_of(&event.paths).as_slice() {
+                [] => super::scanner::scan_soon(&handle),
+                folders => super::scanner::scan_folders_soon(&handle, folders.to_vec()),
             }
         });
         match watcher {
@@ -69,6 +87,7 @@ pub fn refresh(app: &AppHandle) {
             Err(e) => eprintln!("melue: can't watch {}: {e} (it's scanned at start-up and with Rescan)", path.display()),
         }
     }
+    *FOLDERS.locked() = watched.iter().map(|(id, path)| (*id, path.clone())).collect();
 }
 
 #[cfg(test)]

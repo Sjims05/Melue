@@ -24,6 +24,7 @@ use super::{key, Allow};
 use crate::library::{now_ms, Library};
 use crate::sync::handoff::{self, Playback};
 use tauri_plugin_native_audio::NativeAudioExt;
+use crate::guard::Locked;
 
 /// The port tried first (the same each time, so a firewall rule keeps working); another one when it's taken.
 const PORT: u16 = 47821;
@@ -106,7 +107,7 @@ pub struct Asking {
 /// The answer to an "Ask first" question.
 #[tauri::command]
 pub fn remote_answer(id: u64, yes: bool) {
-    if let Some(answer) = ASKS.lock().unwrap().get_or_insert_with(HashMap::new).remove(&id) {
+    if let Some(answer) = ASKS.locked().get_or_insert_with(HashMap::new).remove(&id) {
         let _ = answer.send(yes);
     }
 }
@@ -180,10 +181,10 @@ impl Host for AppHost {
         let name = presence::device(&self.0, from).ok().flatten().map_or_else(|| "Another of your devices".to_string(), |d| d.name);
         let id = NEXT_ASK.fetch_add(1, Ordering::SeqCst);
         let (answer, answered) = std::sync::mpsc::channel();
-        ASKS.lock().unwrap().get_or_insert_with(HashMap::new).insert(id, answer);
+        ASKS.locked().get_or_insert_with(HashMap::new).insert(id, answer);
         let _ = self.0.emit(ASK_EVENT, Asking { id, from: name, seconds: ASK_WAIT.as_secs() });
         let yes = answered.recv_timeout(ASK_WAIT).unwrap_or(false);
-        ASKS.lock().unwrap().get_or_insert_with(HashMap::new).remove(&id);
+        ASKS.locked().get_or_insert_with(HashMap::new).remove(&id);
         yes
     }
 

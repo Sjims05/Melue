@@ -314,6 +314,8 @@ export interface PlayerSettings {
   pausedKeepAliveMinutes: number
   /** Android: stays ready while Android Auto is connected. */
   keepAliveWhileCarConnected: boolean
+  /** Android: offload (play on the audio chip, saving battery) also formats the phone can only offload with gaps. */
+  offloadWithGaps: boolean
 }
 
 /** An album: songs with the same album title and album artist (see the grouping rules in grouping.rs). */

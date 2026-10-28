@@ -8,6 +8,7 @@ use tauri_plugin_native_audio::{NativeAudioExt, RemoteCommand, RemotePlayback};
 
 use super::control::{Command, RemoteState};
 use super::link::Connected;
+use crate::guard::Locked;
 
 /// Setup: the controls' presses go to the device played on.
 pub fn start(app: &AppHandle) {
@@ -37,7 +38,7 @@ pub fn show(app: &AppHandle, connected: &Connected, state: &RemoteState) {
     let (app, connected, state) = (app.clone(), connected.clone(), state.clone());
     tauri::async_runtime::spawn_blocking(move || {
         // One at a time, and only while still connected (not after the connection ended).
-        let _one = SHOWING.lock().unwrap();
+        let _one = SHOWING.locked();
         if !super::link::connected(&app) {
             return;
         }
@@ -52,7 +53,7 @@ pub fn show(app: &AppHandle, connected: &Connected, state: &RemoteState) {
 pub fn hide(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _one = SHOWING.lock().unwrap();
+        let _one = SHOWING.locked();
         let _ = app.native_audio().set_remote_playback(None);
     });
 }

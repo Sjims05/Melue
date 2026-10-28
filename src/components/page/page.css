@@ -26,7 +26,9 @@
     transform: translateY(calc(var(--page-from, 1) * 32px));
   }
   /* The old one is out of the way at once: not shown, and not taking room above the new one for the moment it's still
-     there (the new one would be laid out, scrolled and measured below it, then jump up). */
+     there (the new one would be laid out, scrolled and measured below it, then jump up). Taken out of the column, it's a
+     little wider than the page area for that moment: the page areas don't scroll sideways (the shells), or a sideways
+     scrollbar would flash along their bottom. */
   .page-leave-active {
     position: absolute;
     visibility: hidden;

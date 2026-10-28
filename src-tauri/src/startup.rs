@@ -7,6 +7,7 @@ use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
+use crate::guard::Locked;
 
 static STARTED: OnceLock<Instant> = OnceLock::new();
 /// The parts of setting up, as they're done: what, and when (ms).
@@ -28,12 +29,12 @@ pub fn ms() -> u128 {
 
 /// A part of setting up done now (`what` took it since the one before).
 pub fn mark(what: &'static str) {
-    MARKS.lock().unwrap().push((what, ms()));
+    MARKS.locked().push((what, ms()));
 }
 
 /// Set up: in the log, when, and how long each part took ("plugins 400 · window 120 · …").
 pub fn set_up() {
-    let marks = MARKS.lock().unwrap();
+    let marks = MARKS.locked();
     let mut before = 0;
     let parts: Vec<String> = marks
         .iter()
@@ -49,7 +50,7 @@ pub fn set_up() {
 /// Waits until the UI has drawn itself, `at_most` that long.
 pub fn wait_for_ui(at_most: Duration) {
     let (ready, changed) = &UI_READY;
-    let ready = ready.lock().unwrap();
+    let ready = ready.locked();
     let _ = changed.wait_timeout_while(ready, at_most, |ready| !*ready).unwrap();
 }
 
@@ -58,7 +59,7 @@ pub fn wait_for_ui(at_most: Duration) {
 #[tauri::command]
 pub fn window_ready(#[allow(unused_variables)] app: AppHandle, page_ms: Option<f64>) {
     let (ready, changed) = &UI_READY;
-    let mut ready = ready.lock().unwrap();
+    let mut ready = ready.locked();
     if !*ready {
         eprintln!("melue: start-up: the first screen drawn at {} ms (the page took {:.0} ms of that)", ms(), page_ms.unwrap_or(0.0));
     }

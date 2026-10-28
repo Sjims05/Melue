@@ -6,6 +6,7 @@
 //! linked playlists in line with their files (linked.rs). Progress goes to the UI as `library-scan` events,
 //! and what it changed as `library-changed` events (changes.rs).
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,6 +22,7 @@ use super::linked::{LocalFiles, PlaylistFiles};
 use super::scan::{self, ScanSummary};
 use super::tags::{self, TagJob};
 use super::{android, Folder, FolderKind, Library, Result};
+use crate::guard::Locked;
 
 pub const SCAN_EVENT: &str = "library-scan";
 
@@ -49,17 +51,26 @@ pub struct Scanner {
     again: AtomicBool,
     /// Wakes the background thread to scan once things settle.
     soon: Mutex<Option<Sender<()>>>,
+    /// What the next background scan covers: everything, or only some folders (a change the folder watcher saw).
+    wanted: Mutex<Wanted>,
+}
+
+/// What a background scan was asked for: everything (`all`), or only `folders`.
+#[derive(Default)]
+struct Wanted {
+    all: bool,
+    folders: HashSet<i64>,
 }
 
 /// Starts the background scanning: a scan now (start-up), then one after each burst of changes
 /// (Android's music index, the app coming back to the foreground).
 pub fn start(app: &AppHandle) {
     let (soon, wake) = mpsc::channel::<()>();
-    *app.state::<Scanner>().soon.lock().unwrap() = Some(soon);
+    *app.state::<Scanner>().soon.locked() = Some(soon);
     let handle = app.clone();
     std::thread::Builder::new()
         .name("library-scanner".into())
-        .spawn(move || {
+        .spawn(move || crate::guard::keep_running("the scanner", move || {
             // After the first screen (it reads the library too).
             crate::startup::wait_for_ui(crate::startup::UI_AT_MOST);
             let _ = scan_all(&handle);
@@ -73,37 +84,65 @@ pub fn start(app: &AppHandle) {
                         Err(RecvTimeoutError::Disconnected) => return,
                     }
                 }
-                let _ = scan_all(&handle);
+                let only = {
+                    let scanner = handle.state::<Scanner>();
+                    let mut wanted = scanner.wanted.locked();
+                    let only = (!wanted.all && !wanted.folders.is_empty()).then(|| std::mem::take(&mut wanted.folders));
+                    *wanted = Wanted::default();
+                    only
+                };
+                let _ = scan_some(&handle, only.as_ref());
                 super::online_lyrics::soon(&handle);
             }
-        })
+        }))
         .expect("the library scanner thread");
     let handle = app.clone();
     android::on_music_changes(app, move || scan_soon(&handle));
 }
 
-/// Scans once things have been quiet for a moment.
+/// Scans every switched-on folder once things have been quiet for a moment.
 pub fn scan_soon(app: &AppHandle) {
-    if let Some(soon) = app.state::<Scanner>().soon.lock().unwrap().as_ref() {
+    let scanner = app.state::<Scanner>();
+    scanner.wanted.locked().all = true;
+    if let Some(soon) = scanner.soon.locked().as_ref() {
         let _ = soon.send(());
-    }
+    };
+}
+
+/// Scans these folders once things have been quiet for a moment (the folder watcher: a change in them). Walking every
+/// folder for one new song costs a listing of the whole library, slow on a network drive.
+pub fn scan_folders_soon(app: &AppHandle, folders: impl IntoIterator<Item = i64>) {
+    let scanner = app.state::<Scanner>();
+    scanner.wanted.locked().folders.extend(folders);
+    if let Some(soon) = scanner.soon.locked().as_ref() {
+        let _ = soon.send(());
+    };
 }
 
 /// Scans every switched-on folder. With a scan already running, it's asked to go once more instead and
 /// this returns None.
 pub fn scan_all(app: &AppHandle) -> Result<Option<ScanSummary>> {
+    scan_some(app, None)
+}
+
+/// Scans the switched-on folders among `only` (None: all of them). With a scan already running, it's asked to go once
+/// more (all of them) instead and this returns None.
+fn scan_some(app: &AppHandle, only: Option<&HashSet<i64>>) -> Result<Option<ScanSummary>> {
     let scanner = app.state::<Scanner>();
     if scanner.running.swap(true, Ordering::SeqCst) {
         scanner.again.store(true, Ordering::SeqCst);
         return Ok(None);
     }
     let mut total = ScanSummary::default();
+    let mut only = only;
     let result = loop {
         scanner.again.store(false, Ordering::SeqCst);
-        match scan_folders(app) {
+        match scan_folders(app, only) {
             Ok(summary) => total.add(summary),
             Err(e) => break Err(e),
         }
+        // Again: asked for while running (what for isn't known), all of them.
+        only = None;
         if !scanner.again.load(Ordering::SeqCst) {
             break Ok(Some(total));
         }
@@ -128,11 +167,11 @@ pub fn scan_all(app: &AppHandle) -> Result<Option<ScanSummary>> {
     result
 }
 
-fn scan_folders(app: &AppHandle) -> Result<ScanSummary> {
-    tracking(app, ChangeReason::Scan, false, || scan_folders_now(app))
+fn scan_folders(app: &AppHandle, only: Option<&HashSet<i64>>) -> Result<ScanSummary> {
+    tracking(app, ChangeReason::Scan, false, || scan_folders_now(app, only))
 }
 
-fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
+fn scan_folders_now(app: &AppHandle, only: Option<&HashSet<i64>>) -> Result<ScanSummary> {
     // The folders watched: the ones scanned (folders switched on or off, added or removed since).
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     super::watcher::refresh(app);
@@ -142,7 +181,7 @@ fn scan_folders_now(app: &AppHandle) -> Result<ScanSummary> {
     let folder_covers = library.setting(android::FOLDER_COVERS_SETTING)?.as_deref() == Some("1");
     // The playlist files each folder that could be listed has, for after the songs are done.
     let mut playlist_files = Vec::new();
-    for folder in library.folders()?.into_iter().filter(|f| f.enabled) {
+    for folder in library.folders()?.into_iter().filter(|f| f.enabled && only.is_none_or(|only| only.contains(&f.id))) {
         let listed = match folder.kind {
             FolderKind::Path => scan::list_folder(Path::new(&folder.location)),
             FolderKind::AndroidMedia => android::list_music(app, folder_covers),

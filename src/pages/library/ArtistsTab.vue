@@ -5,7 +5,7 @@
  * library.
  */
 import { CircleAlert, User } from '@lucide/vue'
-import { onUnmounted, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { EmptyState, LinkRow } from '@/components/page'
 import { library, type Artist, type ArtistSort } from '@/library'
@@ -13,6 +13,7 @@ import { count } from '@/lib/format'
 import { listAction } from '@/player/songs'
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
+import { changesTheLibrary, onLibraryChange } from '@/library/changes'
 
 const props = defineProps<{ sort: ArtistSort }>()
 
@@ -25,8 +26,7 @@ async function load() {
   artists.value = await library.artists(0, 1_000_000, props.sort).catch((e) => ((problem.value = String(e)), []))
 }
 watch(() => props.sort, load, { immediate: true })
-const stop = library.onChange((change) => change.reason !== 'likes' && load())
-onUnmounted(() => stop.then((unlisten) => unlisten()))
+onLibraryChange(changesTheLibrary, load)
 
 const MENU = coverMenu({ kind: 'list' })
 // Their own songs; only featured ones: those.

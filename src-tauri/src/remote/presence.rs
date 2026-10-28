@@ -1,5 +1,5 @@
 //! Which of your devices are online: each running Melue writes `.melue/devices/<device id>.json` on the share every
-//! 20 s (its name, a computer or a phone, its version, whether others may play on it, and where it can be reached:
+//! minute (its name, a computer or a phone, its version, whether others may play on it, and where it can be reached:
 //! its network addresses and its server's port), and once more when it closes
 //! (offline). A device whose file the share wrote in the last few minutes (the share's clock, the same for all) is
 //! online. Settings, Across devices, lists them.
@@ -15,14 +15,16 @@ use super::Allow;
 use crate::library::{now_ms, Library};
 use crate::share::{Share, ShareError};
 use crate::sync::handoff;
+use crate::guard::Locked;
 
 /// The devices' files on the share.
 const DIR: &str = ".melue/devices";
-/// How often a running device says it's there.
-const HEARTBEAT: Duration = Duration::from_secs(20);
+/// How often a running device says it's there. Not more often: each time is a write to the share, which keeps a
+/// phone's Wi-Fi and the share's disks awake.
+const HEARTBEAT: Duration = Duration::from_secs(60);
 /// Online: its file written this recently (two heartbeats missed, a slow share). A phone can't say it's leaving when
 /// it's swiped away: it shows offline after this.
-pub const ONLINE_MS: i64 = 60_000;
+pub const ONLINE_MS: i64 = 3 * 60_000;
 
 /// A device's file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,7 +214,7 @@ static SOON: Mutex<Option<Sender<()>>> = Mutex::new(None);
 
 /// Tells the others now (a setting changed), not at the next heartbeat.
 pub fn announce_soon() {
-    if let Some(soon) = SOON.lock().unwrap().as_ref() {
+    if let Some(soon) = SOON.locked().as_ref() {
         let _ = soon.send(());
     }
 }
@@ -225,17 +227,17 @@ pub fn leave(app: &AppHandle) {
 /// The heartbeat (setup): this device's file now, then every minute.
 pub fn start(app: &AppHandle) {
     let (sender, wake) = mpsc::channel::<()>();
-    *SOON.lock().unwrap() = Some(sender);
+    *SOON.locked() = Some(sender);
     let app = app.clone();
     std::thread::Builder::new()
         .name("melue-presence".into())
-        .spawn(move || loop {
+        .spawn(move || crate::guard::keep_running("presence", move || loop {
             announce(&app, true);
             match wake.recv_timeout(HEARTBEAT) {
                 Ok(()) | Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return,
             }
-        })
+        }))
         .expect("the presence thread");
 }
 

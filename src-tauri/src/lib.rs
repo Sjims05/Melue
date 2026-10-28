@@ -1,3 +1,5 @@
+/// Keeping Melue going when one part panics (background threads start again; poisoned locks still work).
+pub mod guard;
 #[cfg(desktop)]
 mod desktop;
 mod dev;

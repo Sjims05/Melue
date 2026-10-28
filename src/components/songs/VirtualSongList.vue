@@ -55,16 +55,19 @@ const items = computed<Item[]>(() => {
 
 const list = ref<HTMLElement>()
 const scroller = ref<HTMLElement | null>(null)
-// Where the list starts in the page's scrolling content (the page's header is above it). Measured again as the page
-// scrolls, and once it has slid in: measured while the page it replaces is still there, it'd be off by that page's
-// height (rows would appear and go in view).
+// Where the list starts in the page's scrolling content (the page's header is above it). Measured again when the
+// content changes size (not as the page scrolls: that doesn't move it within the content, and measuring on every
+// scroll event costs a layout each time), and once the page has slid in: measured while the page it replaces is
+// still there, it'd be off by that page's height (rows would appear and go in view).
 const margin = ref(0)
+const resizes = new ResizeObserver(() => locate())
 function locate() {
   const el = list.value
   const found = el?.closest<HTMLElement>('[data-scroller]') ?? null
   if (found !== scroller.value) {
-    scroller.value?.removeEventListener('scroll', locate)
-    found?.addEventListener('scroll', locate, { passive: true })
+    resizes.disconnect()
+    const content = found?.firstElementChild
+    if (content) resizes.observe(content)
     scroller.value = found
   }
   if (!el || !found || !el.isConnected) return
@@ -77,7 +80,7 @@ const settle = () => {
 }
 onMounted(settle)
 onActivated(settle)
-onBeforeUnmount(() => scroller.value?.removeEventListener('scroll', locate))
+onBeforeUnmount(() => resizes.disconnect())
 watch(() => props.songs, () => requestAnimationFrame(locate))
 
 const virtualizer = useVirtualizer(

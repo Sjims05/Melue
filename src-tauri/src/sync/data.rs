@@ -31,6 +31,7 @@ use crate::library::changes::{self, ChangeReason, LibraryChange};
 use crate::library::playback::DAY_MS;
 use crate::library::{err, now_ms, Folder, Library, Result};
 use crate::share::{Share, ShareError};
+use crate::guard::Locked;
 
 /// Where the device files are on the share.
 pub const DIR: &str = ".melue/library";
@@ -395,7 +396,7 @@ pub fn is_library_file(path: &str) -> bool {
 /// things have been quiet for a moment.
 pub fn soon(app: &AppHandle) {
     if let Some(sync) = app.try_state::<LibrarySync>() {
-        if let Some(soon) = sync.soon.lock().unwrap().as_ref() {
+        if let Some(soon) = sync.soon.locked().as_ref() {
             let _ = soon.send(());
         }
     }
@@ -459,11 +460,11 @@ pub fn run(app: &AppHandle) -> Result<()> {
 /// Starts syncing the library data: shortly after start-up, then a few seconds after each burst of changes.
 pub fn start(app: &AppHandle) {
     let (sender, wake) = mpsc::channel::<()>();
-    *app.state::<LibrarySync>().soon.lock().unwrap() = Some(sender.clone());
+    *app.state::<LibrarySync>().soon.locked() = Some(sender.clone());
     let app = app.clone();
     std::thread::Builder::new()
         .name("melue-library-sync".into())
-        .spawn(move || {
+        .spawn(move || crate::guard::keep_running("the library data sync", move || {
             // After the library's start-up scan has had a moment.
             std::thread::sleep(Duration::from_secs(5));
             let _ = sender.send(());
@@ -479,6 +480,6 @@ pub fn start(app: &AppHandle) {
                     eprintln!("melue: library data: can't sync: {e}");
                 }
             }
-        })
+        }))
         .expect("the library sync thread");
 }

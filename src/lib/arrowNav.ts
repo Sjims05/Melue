@@ -85,10 +85,18 @@ function nearest(from: HTMLElement, direction: Direction, candidates: HTMLElemen
 
 // ---- Where you were on each page (by its address), for going in again.
 const lastSpot = new Map<string, HTMLElement>()
+/** How many pages' places are kept. */
+const REMEMBERED = 20
 function remember(e: FocusEvent) {
   const el = e.target as HTMLElement | null
   const page = pageArea()
-  if (el && page?.contains(el)) lastSpot.set(router.currentRoute.value.fullPath, el)
+  if (!el || !page?.contains(el)) return
+  const path = router.currentRoute.value.fullPath
+  // The latest pages only (a page kept for coming back is out of the document meanwhile: that can't tell which are
+  // gone for good), newest last.
+  lastSpot.delete(path)
+  lastSpot.set(path, el)
+  if (lastSpot.size > REMEMBERED) lastSpot.delete(lastSpot.keys().next().value!)
 }
 
 /** Into the page: where you were on it last, else its first stop in view (nearest its top left). */

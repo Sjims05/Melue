@@ -19,6 +19,7 @@ use super::{key, media, presence, server};
 use crate::library::Library;
 use crate::sync::handoff::{self, Playback};
 use tauri_plugin_native_audio::NativeAudioExt;
+use crate::guard::Locked;
 
 pub const STATE_EVENT: &str = "remote-state";
 pub const ERROR_EVENT: &str = "remote-error";
@@ -69,12 +70,12 @@ pub async fn remote_connect(app: AppHandle, id: String) -> Result<Connected, Str
     }
     let serial = NEXT_SERIAL.fetch_add(1, Ordering::SeqCst);
     // The last device's state goes before this connection opens (its first state can come in at once).
-    *app.state::<Remote>().1.lock().unwrap() = None;
+    *app.state::<Remote>().1.locked() = None;
     let (connected, link) = open(&app, &id, serial).await?;
     let remote = app.state::<Remote>();
     // While playing there, Continue doesn't offer (or follow) that device's playback here, and rests altogether.
     handoff::ignore(&id, i64::MAX);
-    if remote.0.lock().unwrap().replace(Current { id, serial, link: Some(link) }).is_none() {
+    if remote.0.locked().replace(Current { id, serial, link: Some(link) }).is_none() {
         handoff::connection_began();
     }
     Ok(connected)
@@ -102,7 +103,7 @@ async fn open(app: &AppHandle, id: &str, serial: u64) -> Result<(Connected, Link
         move |message| {
             let _ = match message {
                 Outgoing::State(state) => {
-                    *to_app.state::<Remote>().1.lock().unwrap() = Some((keep.clone(), state.clone()));
+                    *to_app.state::<Remote>().1.locked() = Some((keep.clone(), state.clone()));
                     // The phone's lock screen, notification and volume buttons follow it (Android).
                     media::show(&to_app, &keep, &state);
                     to_app.emit(STATE_EVENT, state)
@@ -131,7 +132,7 @@ async fn open(app: &AppHandle, id: &str, serial: u64) -> Result<(Connected, Link
 /// Only when it's still the connection there is (not one replaced, or closed here).
 fn closed(app: &AppHandle, serial: u64, how: Closed) {
     let remote = app.state::<Remote>();
-    let mut current = remote.0.lock().unwrap();
+    let mut current = remote.0.locked();
     let Some(now) = current.as_mut().filter(|c| c.serial == serial) else { return };
     match how {
         Closed::Lost(_) => {
@@ -156,26 +157,26 @@ fn closed(app: &AppHandle, serial: u64, how: Closed) {
 /// app's told (`remote-closed`, with why).
 fn end(app: &AppHandle, why: Option<String>) {
     let remote = app.state::<Remote>();
-    if let Some(Current { id, .. }) = remote.0.lock().unwrap().take() {
+    if let Some(Current { id, .. }) = remote.0.locked().take() {
         handoff::connection_ended();
         handoff::ignore(&id, crate::library::now_ms() + 60_000);
     }
-    remote.1.lock().unwrap().take();
-    remote.2.lock().unwrap().take();
+    remote.1.locked().take();
+    remote.2.locked().take();
     media::hide(app);
     let _ = app.emit(CLOSED_EVENT, why);
 }
 
 /// Whether this device plays on another now (connected, or reconnecting).
 pub fn connected(app: &AppHandle) -> bool {
-    app.state::<Remote>().0.lock().unwrap().is_some()
+    app.state::<Remote>().0.locked().is_some()
 }
 
 /// Connection `serial` to device `id` was lost (a network change, the other device's network): tried again every few
 /// seconds for a minute, while it's still the connection there is (not disconnected or replaced meanwhile). The other
 /// device goes on playing; Melue closed there (offline), or a minute without reaching it, ends the connection.
 async fn reconnect(app: AppHandle, id: String, serial: u64) {
-    let still = |app: &AppHandle| app.state::<Remote>().0.lock().unwrap().as_ref().is_some_and(|c| c.serial == serial);
+    let still = |app: &AppHandle| app.state::<Remote>().0.locked().as_ref().is_some_and(|c| c.serial == serial);
     let looked_up = |app: &AppHandle, id: &str| {
         let (app, id) = (app.clone(), id.to_string());
         tauri::async_runtime::spawn_blocking(move || presence::device(&app, &id))
@@ -196,7 +197,7 @@ async fn reconnect(app: AppHandle, id: String, serial: u64) {
         }
         if let Ok((_, link)) = open(&app, &id, serial).await {
             let remote = app.state::<Remote>();
-            let mut current = remote.0.lock().unwrap();
+            let mut current = remote.0.locked();
             if let Some(now) = current.as_mut().filter(|c| c.serial == serial) {
                 now.link = Some(link);
                 drop(current);
@@ -222,7 +223,7 @@ pub async fn remote_play_on(app: AppHandle, id: String) -> Result<Connected, Str
     // (what plays there goes on; this one becomes its remote), nothing is sent over.
     let mut there_playing = None;
     for _ in 0..20 {
-        if let Some((_, state)) = app.state::<Remote>().1.lock().unwrap().as_ref() {
+        if let Some((_, state)) = app.state::<Remote>().1.locked().as_ref() {
             there_playing = Some(state.playing);
             break;
         }
@@ -238,7 +239,7 @@ pub async fn remote_play_on(app: AppHandle, id: String) -> Result<Connected, Str
         let Some(folder) = library.synced_folder()? else { return Ok(()) };
         let Some((playback, _)) = handoff::playing_here(&here, &library, &folder)? else { return Ok(()) };
         remote_command(here.clone(), Command::Load { queue: playback.queue, index: playback.index, position: playback.position_s, playing: playback.playing })?;
-        *here.state::<Remote>().2.lock().unwrap() = Some(here.native_audio().get_queue()?.items);
+        *here.state::<Remote>().2.locked() = Some(here.native_audio().get_queue()?.items);
         here.native_audio().pause()
     })
     .await
@@ -251,8 +252,8 @@ pub async fn remote_play_on(app: AppHandle, id: String) -> Result<Connected, Str
 #[tauri::command(async)]
 pub fn remote_bring_back(app: AppHandle) -> Result<(), String> {
     let remote = app.state::<Remote>();
-    let last = remote.1.lock().unwrap().clone();
-    let sent = remote.2.lock().unwrap().take();
+    let last = remote.1.locked().clone();
+    let sent = remote.2.locked().take();
     if let Some((_, state)) = last.filter(|(_, s)| s.index >= 0) {
         let library = app.state::<Library>();
         let folder = library.synced_folder()?.ok_or("no share is set up")?;
@@ -361,7 +362,7 @@ fn only_here(app: &AppHandle, id: i64) -> String {
 /// The device connected to, by name.
 fn there(app: &AppHandle) -> String {
     let remote = app.state::<Remote>();
-    let name = remote.1.lock().unwrap().as_ref().map(|(c, _)| c.name.clone());
+    let name = remote.1.locked().as_ref().map(|(c, _)| c.name.clone());
     name.filter(|n| !n.is_empty()).unwrap_or_else(|| "the other device".into())
 }
 
@@ -374,8 +375,8 @@ fn capitalized(text: &str) -> String {
 #[tauri::command]
 pub fn remote_status(app: AppHandle) -> Option<(Connected, Option<RemoteState>)> {
     let remote = app.state::<Remote>();
-    let connected = remote.0.lock().unwrap().as_ref().map(|c| c.id.clone())?;
-    let last = remote.1.lock().unwrap().clone();
+    let connected = remote.0.locked().as_ref().map(|c| c.id.clone())?;
+    let last = remote.1.locked().clone();
     Some(match last {
         Some((who, state)) if who.id == connected => (who, Some(state)),
         _ => (Connected { id: connected, name: String::new(), address: String::new() }, None),
@@ -386,7 +387,7 @@ pub fn remote_status(app: AppHandle) -> Option<(Connected, Option<RemoteState>)>
 #[tauri::command]
 pub fn remote_command(app: AppHandle, command: Command) -> Result<(), String> {
     let remote = app.state::<Remote>();
-    let current = remote.0.lock().unwrap();
+    let current = remote.0.locked();
     let current = current.as_ref().ok_or("not connected to another device")?;
     current.link.as_ref().ok_or("reconnecting to it: a moment")?.send(command)
 }
@@ -406,7 +407,7 @@ pub fn remote_send_playing(app: AppHandle) -> Result<(), String> {
 /// Another device started playing on this one: this one's own connection closes (one way at a time), the app told
 /// why (`remote-closed`).
 pub fn give_way(app: &AppHandle, to: &str) {
-    if app.state::<Remote>().0.lock().unwrap().is_some() {
+    if app.state::<Remote>().0.locked().is_some() {
         remote_disconnect(app.clone());
         let _ = app.emit(CLOSED_EVENT, format!("{to} plays here now"));
     }
@@ -417,12 +418,12 @@ pub fn give_way(app: &AppHandle, to: &str) {
 pub fn remote_disconnect(app: AppHandle) {
     // Dropping the link closes it.
     let remote = app.state::<Remote>();
-    if let Some(Current { id, .. }) = remote.0.lock().unwrap().take() {
+    if let Some(Current { id, .. }) = remote.0.locked().take() {
         handoff::connection_ended();
         // A minute more: what that device saves as it stops isn't offered back here.
         handoff::ignore(&id, crate::library::now_ms() + 60_000);
     }
-    remote.1.lock().unwrap().take();
-    remote.2.lock().unwrap().take();
+    remote.1.locked().take();
+    remote.2.locked().take();
     media::hide(&app);
 }

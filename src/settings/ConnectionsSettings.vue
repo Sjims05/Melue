@@ -15,6 +15,7 @@ import { isDesktop } from '@/platform'
 import { Button } from '@/components/ui/button'
 import { Reveal, SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
 import { onPageLoad } from '@/components/page/pageLoading'
+import { everyWhileShown } from '@/lib/whileShown'
 
 const account = ref<string | null>(null)
 /** Signing in: the code to enter on GitHub, and where. */
@@ -38,9 +39,8 @@ async function loadDiscord() {
   if (isDesktop) discordStatus.value = await discord.status().catch(() => 'off' as const)
 }
 onPageLoad(loadDiscord)
-// Discord opened or closed meanwhile: the line follows (Melue looks every few seconds).
-const lookingAtDiscord = setInterval(() => isDesktop && discordSettings.value?.enabled && loadDiscord(), 5_000)
-onBeforeUnmount(() => clearInterval(lookingAtDiscord))
+// Discord opened or closed meanwhile: the line follows (Melue looks every few seconds, while this is shown).
+everyWhileShown(() => isDesktop && discordSettings.value?.enabled && loadDiscord(), 5_000)
 const discordLine = computed(() => {
   if (!discordSettings.value?.enabled) return 'Show what you’re listening to in your Discord status'
   if (!isDesktop) return 'On: your computers show what they play in your Discord status'

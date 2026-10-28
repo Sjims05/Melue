@@ -20,6 +20,7 @@ use super::server::{Hello, PROOF};
 use super::Allow;
 pub use crate::library::shared_lists::SharedList;
 use crate::library::now_ms;
+use crate::guard::Locked;
 
 /// What the controller asks of the device playing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -151,11 +152,11 @@ const COME_BACK_WITHIN: Duration = Duration::from_secs(90);
 /// Whether device `from` is coming back: connected here now (the old connection not noticed as gone yet), or lost
 /// lately. Taken off the lost list.
 fn coming_back(from: &str) -> bool {
-    let mut lost = LOST.lock().unwrap();
+    let mut lost = LOST.locked();
     lost.retain(|(_, at)| at.elapsed() < COME_BACK_WITHIN);
     let was_lost = lost.iter().any(|(id, _)| id == from);
     lost.retain(|(id, _)| id != from);
-    was_lost || SESSIONS.lock().unwrap().iter().any(|(_, id, _)| id == from)
+    was_lost || SESSIONS.locked().iter().any(|(_, id, _)| id == from)
 }
 
 /// For a controller's connection, from elsewhere on this device.
@@ -172,7 +173,7 @@ static NEXT_SESSION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 
 /// The devices controlling this one now (their ids).
 pub fn controllers() -> Vec<String> {
-    SESSIONS.lock().unwrap().iter().map(|(_, from, _)| from.clone()).collect()
+    SESSIONS.locked().iter().map(|(_, from, _)| from.clone()).collect()
 }
 
 /// Ends every controller's connection from here (`why` goes to them); what plays here goes on.
@@ -182,14 +183,14 @@ pub fn end_sessions(why: &str) {
 
 /// Ends every controller's connection from here, telling each one (by its device id) why.
 pub fn end_sessions_saying(why: impl Fn(&str) -> String) {
-    for (_, from, end) in SESSIONS.lock().unwrap().iter() {
+    for (_, from, end) in SESSIONS.locked().iter() {
         let _ = end.send(ToSession::End(why(from)));
     }
 }
 
 /// Tells every controller connected here `message` (a like here).
 pub fn tell_controllers(message: Outgoing) {
-    for (_, _, to) in SESSIONS.lock().unwrap().iter() {
+    for (_, _, to) in SESSIONS.locked().iter() {
         let _ = to.send(ToSession::Tell(message.clone()));
     }
 }
@@ -239,7 +240,7 @@ struct Open(Arc<dyn Host>, u64, String);
 
 impl Drop for Open {
     fn drop(&mut self) {
-        SESSIONS.lock().unwrap().retain(|(id, _, _)| *id != self.1);
+        SESSIONS.locked().retain(|(id, _, _)| *id != self.1);
         self.0.connection(&self.2, false);
     }
 }
@@ -248,7 +249,7 @@ async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
     let id = NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let (end, mut told) = tokio::sync::mpsc::unbounded_channel::<ToSession>();
     {
-        let mut sessions = SESSIONS.lock().unwrap();
+        let mut sessions = SESSIONS.locked();
         // The same device again (it lost its connection, and this one hadn't noticed yet): the old one goes.
         for (_, _, old) in sessions.iter().filter(|(_, other, _)| *other == from) {
             let _ = old.send(ToSession::End("connected again".into()));
@@ -336,7 +337,7 @@ async fn session(host: Arc<dyn Host>, socket: WebSocket, from: String) {
         }
     }
     if lost {
-        LOST.lock().unwrap().push((from, Instant::now()));
+        LOST.locked().push((from, Instant::now()));
     }
 }
 
@@ -448,7 +449,7 @@ mod tests {
             Ok(Hello { device_id: "pc".into(), name: "PC".into(), version: "0.6.2".into(), allow: self.allow })
         }
         fn state(&self) -> Result<RemoteState, String> {
-            Ok(self.state.lock().unwrap().clone())
+            Ok(self.state.locked().clone())
         }
         fn ask(&self, from: &str) -> bool {
             assert!(from.starts_with("phone-"), "asked about the device connecting: {from}");
@@ -456,7 +457,7 @@ mod tests {
         }
         fn connection(&self, _from: &str, _open: bool) {}
         fn apply(&self, command: Command) -> Result<(), String> {
-            let mut s = self.state.lock().unwrap();
+            let mut s = self.state.locked();
             match command {
                 Command::Load { queue, index, position, playing } => {
                     if queue.iter().any(|p| p.contains("missing")) {
@@ -498,18 +499,18 @@ mod tests {
         let me = format!("phone-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let keep = seen.clone();
-        let link = connect("127.0.0.1", port, key, &me, move |m| keep.lock().unwrap().push(m), |_| {}).await?;
+        let link = connect("127.0.0.1", port, key, &me, move |m| keep.locked().push(m), |_| {}).await?;
         Ok((link, seen))
     }
 
     async fn until(seen: &Arc<Mutex<Vec<Outgoing>>>, what: impl Fn(&Outgoing) -> bool) -> Outgoing {
         for _ in 0..60 {
-            if let Some(found) = seen.lock().unwrap().iter().rev().find(|m| what(m)).cloned() {
+            if let Some(found) = seen.locked().iter().rev().find(|m| what(m)).cloned() {
                 return found;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        panic!("not received; got {:?}", seen.lock().unwrap());
+        panic!("not received; got {:?}", seen.locked());
     }
 
     #[tokio::test]
@@ -584,7 +585,7 @@ mod tests {
     #[test]
     fn a_device_that_lost_its_connection_comes_back_without_asking_once() {
         assert!(!coming_back("lost-phone"));
-        LOST.lock().unwrap().push(("lost-phone".into(), Instant::now()));
+        LOST.locked().push(("lost-phone".into(), Instant::now()));
         assert!(coming_back("lost-phone"));
         // Taken off the list: the next time (a new connection, not coming back) asks again.
         assert!(!coming_back("lost-phone"));

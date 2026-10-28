@@ -6,7 +6,7 @@
 import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
 import { Sparkles } from '@lucide/vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { PageHeader } from '@/components/page'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
@@ -18,8 +18,43 @@ import { toast } from '@/lib/toast'
 import { checkForUpdate } from '@/lib/updates'
 import { router } from '@/router'
 import { remote, type RemoteState } from '@/library/remote'
+import { ConfirmDialog, Segmented } from '@/components/settings'
+import { SETTINGS } from '@/settings/registry'
+import { offloadChoiceFor } from '@/settings/offloadSupport'
+import OffloadSetting from '@/settings/OffloadSetting.vue'
+import type { OffloadFormat } from '@/platform/player/Player'
 
 const version = ref('')
+
+// ---- A preview of the battery-saving playback setting on pretend phones (each phone says what it can offload; Settings
+// shows the choice only where some format would have gaps). Only here: the real setting isn't changed.
+const PHONES = [
+  ['gapless', 'Offloads gaplessly'],
+  ['some', 'Some only with gaps'],
+  ['all', 'All only with gaps'],
+  ['none', 'No offload'],
+] as const
+type Phone = (typeof PHONES)[number][0]
+const PHONE_FORMATS: Record<Phone, OffloadFormat[]> = {
+  gapless: [
+    { format: 'MP3', offload: true, gapless: true },
+    { format: 'AAC', offload: true, gapless: true },
+  ],
+  some: [
+    { format: 'MP3', offload: true, gapless: true },
+    { format: 'AAC', offload: true, gapless: false },
+  ],
+  all: [
+    { format: 'MP3', offload: true, gapless: false },
+    { format: 'AAC', offload: true, gapless: false },
+  ],
+  none: [],
+}
+const phone = ref<Phone>('some')
+const previewOn = ref(true)
+const previewAbout = ref(false)
+const offloadInfo = SETTINGS['player.offloadWithGaps']
+const previewChoice = computed(() => offloadChoiceFor(PHONE_FORMATS[phone.value]))
 /** What the last tool did, or why it couldn't. */
 const result = ref<{ ok: boolean; text: string } | null>(null)
 
@@ -132,6 +167,18 @@ const TOOLS: { title: string; description: string; run: () => Promise<unknown> |
         </SettingsRow>
       </template>
     </SettingsCard>
+    <SettingsHeading title="Battery-saving playback" description="The setting in Settings, Audio, as it looks on other phones" />
+    <Segmented v-model="phone" :options="PHONES" class="mb-3" />
+    <template v-if="previewChoice">
+      <SettingsCard>
+        <OffloadSetting v-model="previewOn" :choice="previewChoice" />
+      </SettingsCard>
+      <button type="button" class="mt-2 px-1 text-[13.5px] text-muted-foreground underline-offset-2 hover:underline" @click="previewAbout = true">
+        About this setting (a long press in Settings)
+      </button>
+    </template>
+    <p v-else class="px-1 text-[13.5px] text-muted-foreground">Nothing shows in Settings on such a phone: there's nothing to choose.</p>
+    <ConfirmDialog v-model:open="previewAbout" :title="offloadInfo.title" :text="offloadInfo.help" />
     <Transition name="drop">
       <SettingsTip v-if="result" :kind="result.ok ? 'ok' : 'bad'" class="mt-3">{{ result.text }}</SettingsTip>
     </Transition>

@@ -67,7 +67,7 @@ onKeyStroke('Escape', (e) => {
             <!-- The scrollbar's room is always kept, so the page doesn't shift when it comes or goes. No scroll anchoring:
                  the page being replaced is above the new one for a moment, and the browser would move the new one's
                  place up by its height when it goes. -->
-            <div ref="scroller" data-scroller class="absolute inset-0 overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]" :style="{ '--page-from': from }">
+            <div ref="scroller" data-scroller class="absolute inset-0 overflow-x-hidden overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]" :style="{ '--page-from': from }">
               <main class="app-column pb-24">
                 <Transition name="page" :duration="{ enter: 320, leave: 0 }">
                   <KeepAlive>

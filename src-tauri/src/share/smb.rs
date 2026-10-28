@@ -20,6 +20,7 @@ use smb2::{ClientConfig, ErrorKind, SmbClient, Tree};
 use tokio::sync::{mpsc, Mutex};
 
 use super::{clean_path, is_hidden, join, part_path, Entry, Share, ShareError, ShareResult, CHUNK};
+use crate::guard::Locked;
 
 /// A VPN that has just (re)connected can need several seconds before the NAS answers.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -148,12 +149,12 @@ async fn connect(config: &SmbConfig) -> ShareResult<Conn> {
         if let Some(addr) = home_address(home).await {
             match connect_to(config, &addr, HOME_TIMEOUT).await {
                 Ok(conn) => {
-                    *config.home_note.lock().unwrap() = None;
+                    *config.home_note.locked() = None;
                     return Ok(conn);
                 }
                 Err(e) => {
                     let note = format!("the home address ({home}) didn't answer, so the main one was used: it may have changed ({e})");
-                    *config.home_note.lock().unwrap() = Some(note);
+                    *config.home_note.locked() = Some(note);
                 }
             }
         }
@@ -205,7 +206,7 @@ impl SmbShare {
 
     /// Why the home address wasn't used at home (None: it was, or this device isn't at home).
     pub fn home_note(&self) -> Option<String> {
-        self.config.home_note.lock().unwrap().clone()
+        self.config.home_note.locked().clone()
     }
 
     /// Connects and lists the music folder (the tests' check that a login works).

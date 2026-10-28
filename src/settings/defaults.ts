@@ -39,4 +39,5 @@ export const PLAYER_DEFAULTS: PlayerSettings = {
   repeatAddedTracks: false,
   pausedKeepAliveMinutes: 30,
   keepAliveWhileCarConnected: true,
+  offloadWithGaps: true,
 }

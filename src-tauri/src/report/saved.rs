@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 use crate::share::Share;
+use crate::guard::Locked;
 
 /// The reports' folder on the share.
 const SHARE_DIR: &str = ".melue/reports";
@@ -101,7 +102,7 @@ pub fn send_waiting(app: &AppHandle) {
 /// the share's waiting reports sent from here when signed in.
 pub fn sync(app: &AppHandle, share: &dyn Share) -> Result<(), String> {
     send_waiting(app);
-    let _one = SENDING.lock().unwrap();
+    let _one = SENDING.locked();
     let local = read_all(app)?;
     for mut report in local {
         let path = format!("{SHARE_DIR}/{}.json", report.id);
