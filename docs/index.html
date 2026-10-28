@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Melue: your own music player for computer and phone</title>
+  <meta name="description" content="Melue is a free, open-source music player for the music files you own, on Windows and Android. Sync your songs, playlists and likes through your own NAS or network share. No streaming, no ads, no account." />
+  <link rel="canonical" href="https://sjims05.github.io/Melue/" />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Melue: your own music, on your computer and your phone" />
+  <meta property="og:description" content="A free music player for the files you own, synced through your own NAS. No streaming, no ads, no account." />
+  <meta property="og:url" content="https://sjims05.github.io/Melue/" />
+  <meta property="og:image" content="https://sjims05.github.io/Melue/social-preview.png" />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="640" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Melue",
+    "description": "A music player for the music files you own, on Windows and Android, synced through your own network share.",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Windows 10, Windows 11, Android 8+",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "license": "https://opensource.org/licenses/MIT",
+    "url": "https://sjims05.github.io/Melue/",
+    "downloadUrl": "https://github.com/Sjims05/Melue/releases/latest",
+    "image": "https://sjims05.github.io/Melue/social-preview.png"
+  }
+  </script>
+  <style>
+    /* Melue's own colours (src/style.css): white cards on a light grey page; #171717 cards on #0a0a0a. */
+    :root {
+      --bg: #f0f0f0;
+      --card: #ffffff;
+      --fg: #0a0a0a;
+      --muted: #737373;
+      --border: #e5e5e5;
+      --primary: #171717;
+      --primary-fg: #fafafa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0a0a0a;
+        --card: #171717;
+        --fg: #fafafa;
+        --muted: #a1a1a1;
+        --border: #262626;
+        --primary: #fafafa;
+        --primary-fg: #0a0a0a;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0a0a0a;
+      --card: #171717;
+      --fg: #fafafa;
+      --muted: #a1a1a1;
+      --border: #262626;
+      --primary: #fafafa;
+      --primary-fg: #0a0a0a;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--bg);
+      color: var(--fg);
+      font: 400 17px/1.6 Inter, system-ui, sans-serif;
+    }
+    a { color: inherit; }
+    img { display: block; max-width: 100%; height: auto; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+    header.top { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 18px; text-decoration: none; }
+    .brand img { width: 28px; height: 28px; border-radius: 6px; }
+    .top nav a { color: var(--muted); text-decoration: none; font-weight: 500; margin-left: 20px; font-size: 15px; }
+    .top nav a:hover { color: var(--fg); }
+
+    .hero { text-align: center; padding: 48px 0 32px; }
+    .hero h1 { font-size: clamp(40px, 7vw, 68px); line-height: 1.05; letter-spacing: -0.03em; margin: 0 0 18px; font-weight: 700; }
+    .hero p { color: var(--muted); font-size: clamp(18px, 2.4vw, 21px); max-width: 620px; margin: 0 auto 28px; }
+    .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .button {
+      display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px;
+      font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid var(--border); background: var(--card);
+    }
+    .button.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+    .small { color: var(--muted); font-size: 14px; margin-top: 14px; }
+    .shot { margin: 40px auto 0; }
+
+    section { padding: 56px 0; }
+    h2 { font-size: clamp(28px, 4vw, 36px); letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 12px; }
+    .lead { color: var(--muted); max-width: 640px; margin: 0 0 32px; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 16px; }
+    .feature { background: var(--card); border-radius: 14px; padding: 22px; }
+    .feature h3 { margin: 0 0 6px; font-size: 18px; }
+    .feature p { margin: 0; color: var(--muted); font-size: 15.5px; }
+
+    .split { display: grid; grid-template-columns: 1fr; gap: 24px; align-items: center; margin-top: 40px; }
+    /* Screenshots share the page's colour: a thin edge, like a window. */
+    .split img, .phones img { border: 1px solid var(--border); border-radius: 12px; }
+    .phones img { border-radius: 24px; }
+    .phones { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 32px; }
+    @media (max-width: 720px) { .phones { grid-template-columns: repeat(2, 1fr); } }
+
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 14px; overflow: hidden; font-size: 15.5px; }
+    th, td { padding: 12px 16px; text-align: left; }
+    td + td, th + th { text-align: center; width: 110px; }
+    tr + tr td { border-top: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+
+    details { background: var(--card); border-radius: 12px; padding: 4px 20px; margin-bottom: 10px; }
+    summary { cursor: pointer; font-weight: 600; padding: 14px 0; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+    summary::-webkit-details-marker { display: none; }
+    summary::after { content: "+"; color: var(--muted); font-weight: 400; font-size: 22px; line-height: 1; }
+    details[open] summary::after { content: "−"; }
+    details p { color: var(--muted); margin: 0 0 16px; font-size: 15.5px; }
+
+    @media (max-width: 560px) {
+      .top nav a:not(:last-child) { display: none; }
+      td + td, th + th { width: 72px; padding: 12px 8px; }
+      th, td { padding: 10px 12px; }
+    }
+    footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    code { font-size: 0.9em; background: var(--border); padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="./"><img src="icon.png" alt="" />Melue</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/Sjims05/Melue">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="hero">
+      <h1>Your own music,<br />on every device.</h1>
+      <p>A music player for the files you own, on your computer and your phone. Synced through your own NAS. No streaming, no ads, no account.</p>
+      <div class="buttons">
+        <a class="button primary" href="https://github.com/Sjims05/Melue/releases/latest">Download for Windows</a>
+        <a class="button" href="https://github.com/Sjims05/Melue/releases/latest">Download for Android</a>
+      </div>
+      <div class="small">Free and open source (MIT). Windows 10 or 11, 64-bit · Android 8 or newer.</div>
+      <picture class="shot">
+        <source media="(prefers-color-scheme: dark)" srcset="screenshots/hero-dark.png" />
+        <img src="screenshots/hero-light.png" width="1468" height="794" alt="Melue on a computer, showing Home, and on a phone, showing the song playing" />
+      </picture>
+    </div>
+
+    <section id="features">
+      <h2>Everything your music needs, and nothing it doesn't</h2>
+      <p class="lead">Melue plays MP3, FLAC, AAC, ALAC, Ogg Vorbis and WAV files from folders on your computer or phone. Keep your library on a network share and every device gets the same songs, playlists, likes and settings.</p>
+      <div class="features">
+        <div class="feature"><h3>Your library, everywhere</h3><p>Songs, albums, artists and folders with covers. Home brings back what you played last; "Made for you" follows your likes and most played songs.</p></div>
+        <div class="feature"><h3>Synced through your own share</h3><p>Songs are copied to each device, so they play offline. Playlists, likes, play counts and settings stay the same everywhere. A phone can wait for Wi-Fi.</p></div>
+        <div class="feature"><h3>Your devices work together</h3><p>Continue on your computer where your phone stopped, or play your phone's queue on your computer's speakers with the phone as the remote.</p></div>
+        <div class="feature"><h3>Timed lyrics</h3><p>Lyrics follow the song, word by word where they can: from a <code>.lrc</code> file, the song's tags, or LRCLIB if you allow it.</p></div>
+        <div class="feature"><h3>Spotify playlists, your songs</h3><p>Paste a public Spotify playlist's link: Melue matches its songs to yours and follows it as it changes. No Spotify account or Premium.</p></div>
+        <div class="feature"><h3>Made for both</h3><p>The keyboard everywhere on a computer; Android's media controls and Android Auto on a phone; a dark and a light theme; updates that install themselves.</p></div>
+      </div>
+
+      <div class="split">
+        <picture class="card-img">
+          <source media="(prefers-color-scheme: dark)" srcset="screenshots/desktop-nowplaying-dark.png" />
+          <img src="screenshots/desktop-nowplaying-light.png" width="1600" height="860" loading="lazy" alt="Now playing on a computer, with the lyrics and Up next" />
+        </picture>
+      </div>
+      <div class="phones">
+        <picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/phone-home-dark.png" /><img src="screenshots/phone-home-light.png" width="452" height="1000" loading="lazy" alt="Home on a phone" /></picture>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/phone-songs-dark.png" /><img src="screenshots/phone-songs-light.png" width="452" height="1000" loading="lazy" alt="The library's songs on a phone" /></picture>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/phone-playlists-dark.png" /><img src="screenshots/phone-playlists-light.png" width="452" height="1000" loading="lazy" alt="Playlists on a phone" /></picture>
+        <picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/phone-nowplaying-dark.png" /><img src="screenshots/phone-nowplaying-light.png" width="452" height="1000" loading="lazy" alt="Now playing on a phone" /></picture>
+      </div>
+      <div class="split">
+        <picture class="card-img">
+          <source media="(prefers-color-scheme: dark)" srcset="screenshots/desktop-playlists-dark.png" />
+          <img src="screenshots/desktop-playlists-light.png" width="1600" height="860" loading="lazy" alt="Playlists on a computer: your own, a Spotify playlist, and Made for you" />
+        </picture>
+      </div>
+    </section>
+
+    <section>
+      <h2>Computer or phone</h2>
+      <p class="lead">Almost everything works on both. The differences:</p>
+      <table>
+        <tr><th></th><th>Computer</th><th>Phone</th></tr>
+        <tr><td>Keyboard navigation and shortcuts</td><td>✓</td><td></td></tr>
+        <tr><td>Watches your music folders for new songs</td><td>✓</td><td></td></tr>
+        <tr><td>Discord status, tray icon, start with Windows</td><td>✓</td><td></td></tr>
+        <tr><td>Android Auto</td><td></td><td>✓</td></tr>
+        <tr><td>Songs wait for Wi-Fi (mobile data limits)</td><td></td><td>✓</td></tr>
+        <tr><td>Everything else</td><td>✓</td><td>✓</td></tr>
+      </table>
+    </section>
+
+    <section id="faq">
+      <h2>Questions</h2>
+      <details><summary>Does Melue stream music?</summary><p>No. It plays files you have. Spotify playlists are matched to your own songs; Melue never plays anything from Spotify.</p></details>
+      <details><summary>Can I use Melue without syncing anything?</summary><p>Yes. Without a share, Melue is a music player for the folders on that device: nothing leaves it, and nothing else is needed.</p></details>
+      <details><summary>Do I need to keep my NAS or shared folder online?</summary><p>Only for syncing. Each device keeps its own copy of the songs and plays them offline. A phone syncs when Melue is open and can reach the share, at home say; away from home it can sync over mobile data through a VPN to your home network, within what the mobile data setting allows. Continuing on another device and Connect device need both devices online too.</p></details>
+      <details><summary>What happens when I add or remove a song?</summary><p>Put it in your share's music folder, or a music folder on a computer: Melue picks it up. Easier still, drop the files on Melue on a computer: it copies them into the right place by their tags (<code>Artist/Album/</code>), on your share when you have one, and on a playlist's page into that playlist too. A song removed from the share is kept on your devices or removed there too (a setting).</p></details>
+      <details><summary>Does Melue need Spotify Premium or a Spotify account?</summary><p>No. A playlist only needs to be public: paste its link and Melue reads it like a web browser would, with no sign-in.</p></details>
+      <details><summary>What if a song from a Spotify playlist isn't in my library?</summary><p>It stays in the playlist, greyed out, so you can see what's missing, and the list of missing songs can be copied. When you add the song later, it fills in by itself.</p></details>
+      <details><summary>What goes online?</summary><p>Only lyrics from LRCLIB if you switch it on, Spotify playlists whose link you paste, album covers for your Discord status if you connect Discord, and checking GitHub for a new version. No account, no tracking, no ads.</p></details>
+      <details><summary>Is there a version for macOS, Linux or iPhone?</summary><p>Not as a download. Melue is built with Tauri, so macOS and Linux builds from source should work, but they aren't tested yet; there's no iPhone version.</p></details>
+    </section>
+
+    <footer>
+      <span>Melue · MIT license</span>
+      <span><a href="https://github.com/Sjims05/Melue">Source on GitHub</a> · <a href="https://github.com/Sjims05/Melue/releases/latest">Releases</a> · <a href="https://github.com/Sjims05/Melue/issues">Report a bug</a></span>
+    </footer>
+  </div>
+</body>
+</html>
