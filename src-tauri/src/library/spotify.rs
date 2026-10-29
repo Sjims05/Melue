@@ -42,7 +42,7 @@ pub struct SpotifyList {
     pub cover: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SpotifySong {
     pub title: String,
     /// The artists, as Spotify lists them ("ABBA", "Artist A, Artist B").
@@ -52,10 +52,14 @@ pub struct SpotifySong {
     pub track: Option<String>,
 }
 
+/// The most songs a playlist's embed shows.
+pub const EMBED_SONGS: usize = 100;
+
 impl SpotifyList {
-    /// All of the playlist's songs are here (100 or fewer).
+    /// All of the playlist's songs Spotify shows are here: fewer than the embed's most (a song no longer playable on
+    /// Spotify is left out of it, but still counted on the playlist's page), or as many as the page counts.
     pub fn complete(&self) -> bool {
-        self.total.is_none_or(|total| total <= self.songs.len())
+        self.songs.len() < EMBED_SONGS || self.total.is_none_or(|total| total <= self.songs.len())
     }
 }
 
@@ -83,8 +87,11 @@ fn agent() -> ureq::Agent {
 
 /// Reads playlist `id` from Spotify: its embed (name, first 100 songs) and its page (how many songs).
 pub fn read_playlist(id: &str) -> Result<SpotifyList> {
+    // Each read its own address: the plain one can get a copy of the embed from before the playlist's latest changes
+    // (songs added 40 minutes before missing), while the page already counts them.
+    let fresh = now_ms();
     let embed = agent()
-        .get(&format!("https://open.spotify.com/embed/playlist/{id}"))
+        .get(&format!("https://open.spotify.com/embed/playlist/{id}?_={fresh}"))
         .call()
         .map_err(|e| format!("Spotify can’t be reached: {e}"))?
         .body_mut()
@@ -93,7 +100,7 @@ pub fn read_playlist(id: &str) -> Result<SpotifyList> {
     let mut list = parse_embed(&embed)?;
     // The true count is on the playlist's own page; without it, the embed's songs are taken as all.
     list.total = agent()
-        .get(&format!("https://open.spotify.com/playlist/{id}"))
+        .get(&format!("https://open.spotify.com/playlist/{id}?_={fresh}"))
         .call()
         .ok()
         .and_then(|mut page| page.body_mut().read_to_string().ok())
@@ -664,6 +671,16 @@ mod tests {
         // A link column, after an artist's URI.
         let links = "Title,Artist,Artist URI,Spotify URL\nSong,Band,spotify:artist:0abc,https://open.spotify.com/track/5LxvwujISqiB8vpRYv887S?si=x\n";
         assert_eq!(parse_csv(links).unwrap()[0].track.as_deref(), Some("5LxvwujISqiB8vpRYv887S"));
+    }
+
+    #[test]
+    fn a_list_is_whole_unless_the_embed_stopped_at_its_most() {
+        let songs = |n: usize| (0..n).map(|i| SpotifySong { title: format!("{i}"), ..SpotifySong::default() }).collect();
+        // 66 on the page, 63 in the embed (3 no longer playable): all there is.
+        assert!(SpotifyList { songs: songs(63), total: Some(66), ..SpotifyList::default() }.complete());
+        // 150 on the page, the embed's 100: the rest from a CSV.
+        assert!(!SpotifyList { songs: songs(EMBED_SONGS), total: Some(150), ..SpotifyList::default() }.complete());
+        assert!(SpotifyList { songs: songs(EMBED_SONGS), total: Some(100), ..SpotifyList::default() }.complete());
     }
 
     #[test]

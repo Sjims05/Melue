@@ -64,8 +64,9 @@ fn a_short_playlist_is_matched_and_follows_spotify() {
 fn a_long_playlist_says_it_changed_and_takes_its_list_from_a_csv() {
     let t = library("spotify-long");
     let index = t.library.track_index().unwrap();
-    // 150 songs on Spotify: the first ones only.
-    let list = SpotifyList { name: "Long".into(), songs: vec![song("Band", "Song One", 1)], total: Some(150), cover: None };
+    // 150 songs on Spotify: the embed's first 100 only.
+    let first: Vec<_> = std::iter::once(song("Band", "Song One", 1)).chain((2..=100).map(|i| song("Other", &format!("Song {i}"), 200))).collect();
+    let list = SpotifyList { name: "Long".into(), songs: first, total: Some(150), cover: None };
     let id = t.library.add_spotify_list("long", &list, &index).unwrap();
     let seen: Option<String> = t.library.conn().query_row("SELECT spotify_seen FROM playlists WHERE id = ?1", [id], |r| r.get(0)).unwrap();
     // The same on Spotify: nothing to do. Changed there: the "!".

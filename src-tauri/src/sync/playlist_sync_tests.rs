@@ -565,6 +565,24 @@ fn a_spotify_change_read_on_two_devices_comes_in_once() {
 }
 
 #[test]
+fn a_song_removed_on_spotify_goes_on_every_device() {
+    let share = TestShare::new("devices-spotify-removed");
+    let (desktop, phone) = (Device::new("desktop", &["A", "B"]), Device::new("phone", &["A", "B"]));
+    desktop.add_spotify(&["A", "B", "Gone"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    // Removed on Spotify, read by the desktop only: gone there, and from the phone at its sync (its link too).
+    desktop.read_spotify(&["A", "B"]);
+    assert_eq!(desktop.states("Mix"), ["A", "B"]);
+    desktop.sync(&share);
+    phone.sync(&share);
+    assert_eq!(phone.states("Mix"), ["A", "B"]);
+    let mut ids: Vec<String> = phone.lib().spotify_tracks(phone.playlist_id("Mix")).unwrap().into_values().collect();
+    ids.sort();
+    assert_eq!(ids, ["idA", "idB"]);
+}
+
+#[test]
 fn stopping_following_spotify_stops_it_everywhere_and_keeps_the_songs() {
     let share = TestShare::new("devices-spotify-stop");
     let (desktop, phone) = (Device::new("desktop", &["A"]), Device::new("phone", &["A"]));

@@ -20,6 +20,8 @@ Playing across devices when a song is only on one of them, and smaller touches.
 - A Spotify playlist's menu has "Update from Spotify" (a long one that changed there opens its update's steps), and
   "Copy their Spotify links": links to the songs you don't have, to paste into a playlist in Spotify on a computer
   (Ctrl+V) and get them there. Opening a Spotify playlist reads it again, so it's as Spotify has it now.
+- Spotify playlists get songs just added on Spotify (they could be missing for a long while), and one with a few
+  songs Spotify doesn't show is no longer taken for a playlist of over 100.
 
 ## 1.0.1 (2026-10-29)
 

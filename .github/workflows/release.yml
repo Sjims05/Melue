@@ -4,6 +4,8 @@
 # latest.json, its notes from CHANGELOG.md. Publishing the draft (on GitHub) makes it the latest release: installed
 # copies then update to it (src/lib/updates.ts). Drafts and pre-releases never reach them.
 name: Release
+# Each run named by its version (a run by hand would otherwise say only "Release").
+run-name: Release ${{ inputs.tag || github.ref_name }}
 
 on:
   push:
