@@ -17,8 +17,9 @@ Playing across devices when a song is only on one of them, and smaller touches.
   computer's player bar (it was empty there).
 - Likes, plays and playlists no longer fail to sync now and then while another device reads the same file.
 - The computer's player bar narrows smoothly, without the controls jumping.
-- A Spotify playlist's menu has "Copy their Spotify links": links to the songs you don't have, to paste into a
-  playlist in Spotify on a computer (Ctrl+V) and get them there.
+- A Spotify playlist's menu has "Update from Spotify" (a long one that changed there opens its update's steps), and
+  "Copy their Spotify links": links to the songs you don't have, to paste into a playlist in Spotify on a computer
+  (Ctrl+V) and get them there. Opening a Spotify playlist reads it again, so it's as Spotify has it now.
 
 ## 1.0.1 (2026-10-29)
 

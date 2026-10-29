@@ -2,16 +2,18 @@
  * What your playlists' menus do, the same on the Playlists page and a playlist's own page: play it (and the rest of
  * the playing items), rename it (its name turns into a text field: `renaming`), keep it only here (asked first: the
  * other devices keep theirs, or it's taken off them) or sync it, stop following its file or Spotify (asked first)
- * or follow it again, delete it (asked first), copy a Spotify playlist's songs you don't have ("Artist – Title"
+ * or follow it again, delete it (asked first), update a Spotify playlist from Spotify (a long one changed there: the
+ * CSV's steps, `spotifyUpdate`), copy a Spotify playlist's songs you don't have ("Artist – Title"
  * lines, or their links on Spotify: pasted into a playlist in Spotify on a computer, they add them), and the About items (`asking`, shown by PlaylistDialogs).
  */
-import { ClipboardList, Link2 } from '@lucide/vue'
+import { ClipboardList, Link2, RefreshCw } from '@lucide/vue'
 import { ref } from 'vue'
 import type { CoverAction } from '@/components/covers'
 import { library, type Playlist } from '@/library'
 import { librarySync } from '@/library/sync'
 import { toast } from '@/lib/toast'
 import { exportList, listAction } from '@/player/songs'
+import { readSpotify } from './playlists'
 
 /** A question or explanation about a playlist: delete it? keep it only here? stop following its file? about how it
  * lives. */
@@ -22,6 +24,8 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
   const asking = ref<PlaylistAsk | null>(null)
   // Change cover: the playlist whose cover is being chosen (the crop window).
   const covering = ref<Playlist | null>(null)
+  // A long Spotify playlist that changed there: its update's steps (a CSV) shown.
+  const spotifyUpdate = ref<Playlist | null>(null)
 
   async function act(p: Playlist, action: CoverAction) {
     if (action === 'rename') renaming.value = p.id
@@ -39,6 +43,8 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
       await changed()
     } else if (action === 'export') {
       await exportList(`playlist:${p.id}`, p.name)
+    } else if (action === 'updateSpotify') {
+      await updateFromSpotify(p)
     } else if (action === 'copyMissing') {
       await copyMissing(p)
     } else if (action === 'copyMissingLinks') {
@@ -79,6 +85,18 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
       toast('Couldn’t copy')
     }
   }
+  async function updateFromSpotify(p: Playlist) {
+    let updated: boolean
+    try {
+      updated = await readSpotify(p.id, true)
+    } catch (e) {
+      return toast(`Couldn’t read it on Spotify: ${e}`, RefreshCw)
+    }
+    // A long one (over 100 songs) that changed there: Spotify shares only its first 100, the rest come from a CSV.
+    const now = await library.playlist(p.id).catch(() => null)
+    if (now?.spotify?.changed) spotifyUpdate.value = now
+    else toast(updated ? 'Updated from Spotify' : 'Up to date with Spotify', RefreshCw)
+  }
   async function copyMissingLinks(p: Playlist) {
     const [entries, links] = await Promise.all([library.playlistEntries(p.id), library.spotifyLinks(p.id)])
     const missing = entries.filter((e) => !e.track && e.syncTitle)
@@ -99,5 +117,5 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
     await library.setPlaylistCover(p.id, picture)
     await changed()
   }
-  return { renaming, asking, covering, act, rename, confirm, saveCover }
+  return { renaming, asking, covering, spotifyUpdate, act, rename, confirm, saveCover }
 }

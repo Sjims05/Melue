@@ -24,6 +24,7 @@ import { usePlaylistActions } from './playlists/actions'
 import ConflictDialog from './playlists/ConflictDialog.vue'
 import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
+import SpotifyUpdateDialog from './playlists/SpotifyUpdateDialog.vue'
 import SpotifyAddDialog from './playlists/SpotifyAddDialog.vue'
 import { autoCard, autoPage, playlistBadge, playlistCover, playlistKind, playlistLine } from './playlists/playlists'
 import { onLibraryChange } from '@/library/changes'
@@ -57,7 +58,7 @@ const subtitle = computed(() => [count(playlists.value.length, 'playlist'), `${s
 const conflictOf = (p: Playlist) => conflicts.value.find((c) => c.playlistId === p.id)
 
 // ---- Your playlists: new, and the menu (shared with a playlist's page)
-const { renaming, asking, covering, act, rename, confirm, saveCover } = usePlaylistActions(load)
+const { renaming, asking, covering, spotifyUpdate, act, rename, confirm, saveCover } = usePlaylistActions(load)
 // A Spotify playlist from its link: it opens once added.
 const addingSpotify = ref(false)
 async function addedSpotify(id: number) {
@@ -155,6 +156,8 @@ const choosing = ref<PlaylistConflict | null>(null)
     </section>
 
     <PlaylistDialogs v-model="asking" @confirm="confirm" />
+    <!-- Update from Spotify on a long one that changed there: its CSV's steps. -->
+    <SpotifyUpdateDialog v-if="spotifyUpdate" :open="true" :playlist="spotifyUpdate" @update:open="(open) => !open && (spotifyUpdate = null)" />
     <SpotifyAddDialog v-model:open="addingSpotify" @added="addedSpotify" />
       <CoverCropDialog
         v-if="covering"

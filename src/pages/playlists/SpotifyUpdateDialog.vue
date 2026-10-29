@@ -23,7 +23,8 @@ const waiting = ref(false)
 const error = ref('')
 const link = () => `https://open.spotify.com/playlist/${props.playlist.spotify?.id}`
 
-// Opened: the link copied, and (on a computer) Melue watches Downloads for the CSV.
+// Opened (also: shown open, from a playlist's menu): the link copied, and (on a computer) Melue watches Downloads for
+// the CSV.
 watch(open, async (now) => {
   error.value = ''
   if (!now) return void stopWaiting()
@@ -33,7 +34,7 @@ watch(open, async (now) => {
   const done = await library.waitForSpotifyCsv(props.playlist.id).catch((e) => ((error.value = String(e)), false))
   waiting.value = false
   if (done) open.value = false
-})
+}, { immediate: true })
 function stopWaiting() {
   if (waiting.value) library.stopWaitingForSpotifyCsv().catch(() => {})
   waiting.value = false

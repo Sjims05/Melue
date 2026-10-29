@@ -2,11 +2,12 @@
  * A cover card's right-click menu (long-press on a phone): what it offers depends on what the card is. Everything
  * plays, shuffles, plays next and goes in the queue; then an album goes to its artist; your playlist renames,
  * changes where it lives (only here / synced; a linked one stops following its file), deletes, and explains how it
- * lives (About syncing / "This device" / following a file / Spotify; a Spotify one also copies the songs you don't have);
+ * lives (About syncing / "This device" / following a file / Spotify; a Spotify one also updates from Spotify and copies
+ * the songs you don't have);
  * an auto playlist hides. A song's card uses the
  * song's own menu (songMenu): Add to playlist is for songs only.
  */
-import { AudioLines, ClipboardList, Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, LayoutGrid, Link, Link2, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
+import { AudioLines, ClipboardList, Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, LayoutGrid, Link, Link2, ListEnd, Lock, Pencil, RefreshCw, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
 import { NextIcon, PlayIcon } from '@/components/player/icons'
 import type { Component } from 'vue'
 
@@ -21,6 +22,7 @@ export type CoverAction =
   | 'syncEverywhere'
   | 'unlink'
   | 'copyMissing'
+  | 'updateSpotify'
   | 'copyMissingLinks'
   | 'follow'
   | 'delete'
@@ -93,6 +95,7 @@ export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAc
                       : what.synced === false
                         ? [{ action: 'syncEverywhere' as const, label: 'Sync to your other devices', icon: Cloud }]
                         : []),
+                    { action: 'updateSpotify', label: 'Update from Spotify', icon: RefreshCw },
                     { action: 'copyMissing', label: 'Copy the songs you don’t have', icon: ClipboardList },
                     { action: 'copyMissingLinks', label: 'Copy their Spotify links', icon: Link2 },
                     { action: 'unlink', label: 'Stop following Spotify…', icon: Unlink },

@@ -5,7 +5,7 @@
 import { AudioLines, CircleAlert, Cloud, Link, Lock, Unlink } from '@lucide/vue'
 import type { Component } from 'vue'
 import { AUTO_COVERS, type CoverKind } from '@/components/covers'
-import { coverUrl, type AutoPlaylist, type Playlist } from '@/library'
+import { coverUrl, library, type AutoPlaylist, type Playlist } from '@/library'
 import { count, totalLength } from '@/lib/format'
 
 /**
@@ -103,4 +103,19 @@ export function autoPage(a: AutoPlaylist): string {
   if (kind === 'folder') return `/folder/${id}`
   if (kind === 'top') return `/playlist/top-${id}`
   return '/playlist/liked'
+}
+
+// ---- Spotify playlists: read again
+
+/** A Spotify playlist opened again within this long of its last read here isn't read again. */
+const READ_AGAIN_MS = 5 * 60_000
+const lastRead = new Map<number, number>()
+/**
+ * Reads Spotify playlist `id` again (its page opened: unless it was read here in the last few minutes; `now`: Update
+ * from Spotify). Whether it changed here (its pages reload by themselves, from the library's change).
+ */
+export async function readSpotify(id: number, now = false): Promise<boolean> {
+  if (!now && Date.now() - (lastRead.get(id) ?? 0) < READ_AGAIN_MS) return false
+  lastRead.set(id, Date.now())
+  return library.updateSpotifyPlaylists(id)
 }

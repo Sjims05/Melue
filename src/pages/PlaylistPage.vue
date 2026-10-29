@@ -26,7 +26,7 @@ import CoverCropDialog from './playlists/CoverCropDialog.vue'
 import PlaylistDialogs from './playlists/PlaylistDialogs.vue'
 import SpotifyUpdateDialog from './playlists/SpotifyUpdateDialog.vue'
 import FindSongDialog from './playlists/FindSongDialog.vue'
-import { playlistCover, playlistKind, playlistLine, playlistLink, playlistWhere } from './playlists/playlists'
+import { playlistCover, playlistKind, playlistLine, playlistLink, playlistWhere, readSpotify } from './playlists/playlists'
 import { onLibraryChange } from '@/library/changes'
 
 const route = useRoute()
@@ -57,7 +57,8 @@ async function load() {
     header.value?.rename()
   }
 }
-load()
+// A Spotify playlist: read again (unless it was a few minutes ago), so what's shown is as Spotify has it now.
+load().then(() => playlist.value?.spotify && readSpotify(id).catch(() => {}))
 // Its own changes (not other playlists'), and songs coming or going.
 onLibraryChange((change) => change.reason !== 'likes' && (change.reason !== 'playlists' || change.sources.includes(source)), load)
 const stops = [librarySync.onConflicts(() => load())]
@@ -142,7 +143,7 @@ async function act(song: Song, action: SongAction) {
 
 // ---- The playlist itself: rename (its name, or the menu), the rest of its menu
 const header = ref<InstanceType<typeof ListHeader> | null>(null)
-const { asking, covering, act: actOnPlaylist, rename, confirm, saveCover } = usePlaylistActions(load, goBack)
+const { asking, covering, spotifyUpdate, act: actOnPlaylist, rename, confirm, saveCover } = usePlaylistActions(load, goBack)
 const menu = computed(() => (playlist.value ? coverMenu(playlistKind(playlist.value, sync.available), isDesktop) : []))
 // Its badges: where it lives (a linked one: where its file is), and a linked one's link.
 const badges = computed(() => (playlist.value ? [playlistWhere(playlist.value, sync.available), playlistLink(playlist.value)].filter((b) => !!b) : []))
@@ -154,7 +155,7 @@ function pick(action: CoverAction) {
 const choosing = ref(false)
 // A Spotify playlist with more than 100 songs: its full list from a CSV ("Update list"; the "!" when it changed there).
 const long = computed(() => (playlist.value?.spotify?.total ?? 0) > 100)
-const updatingSpotify = ref(false)
+const updatingSpotify = computed({ get: () => !!spotifyUpdate.value, set: (open) => (spotifyUpdate.value = open ? (playlist.value ?? null) : null) })
 </script>
 
 <template>
