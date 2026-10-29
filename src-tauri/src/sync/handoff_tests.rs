@@ -191,7 +191,32 @@ fn a_song_only_on_that_device_goes_out_as_the_one_after_it() {
     let paths: HashMap<i64, String> = [(1, "a.mp3"), (3, "c.mp3"), (4, "d.mp3")].into_iter().map(|(id, p)| (id, p.to_string())).collect();
     let queue = [Some(1), Some(2), Some(3), Some(4)];
     // Song 2 isn't on the share: the queue's songs that are, from c (the one after it).
-    assert_eq!(next_on_share(&queue, 1, &paths), Some((vec!["a.mp3".into(), "c.mp3".into(), "d.mp3".into()], 1)));
-    // Nothing on the share after it: nothing to continue.
-    assert_eq!(next_on_share(&[Some(1), Some(2)], 1, &paths), None);
+    assert_eq!(next_on_share(&queue, 1, &[], false, &paths), Some((vec!["a.mp3".into(), "c.mp3".into(), "d.mp3".into()], 1)));
+    // Nothing on the share after it: none (it goes out alone); with repeat all, round to a.
+    assert_eq!(next_on_share(&[Some(1), Some(2)], 1, &[], false, &paths), None);
+    assert_eq!(next_on_share(&[Some(1), Some(2)], 1, &[], true, &paths), Some((vec!["a.mp3".into()], 0)));
+    // Shuffled (2, 4, 1, 3): d plays after it.
+    assert_eq!(next_on_share(&queue, 1, &[1, 3, 0, 2], false, &paths), Some((vec!["a.mp3".into(), "c.mp3".into(), "d.mp3".into()], 2)));
+    // Only songs that aren't on the share.
+    assert_eq!(next_on_share(&[Some(2), Some(5)], 0, &[], true, &paths), None);
+}
+
+#[test]
+fn the_play_order_after_a_song_is_the_shuffle_order_round_with_repeat_all() {
+    assert_eq!(after_in_play_order(4, 1, &[], false), [2, 3]);
+    assert_eq!(after_in_play_order(4, 1, &[], true), [2, 3, 0]);
+    assert_eq!(after_in_play_order(4, 1, &[3, 1, 0, 2], false), [0, 2]);
+    assert_eq!(after_in_play_order(4, 1, &[3, 1, 0, 2], true), [0, 2, 3]);
+    // An order that isn't this queue's: the list's.
+    assert_eq!(after_in_play_order(4, 1, &[0, 9], false), [2, 3]);
+}
+
+#[test]
+fn a_song_only_there_with_none_after_it_isnt_a_cleared_player() {
+    let alone = Playback { only_there: true, ..Playback::default() };
+    assert!(!cleared(&alone));
+    assert!(cleared(&Playback::default()));
+    // Another song only there: something new.
+    let other = Playback { there: Some(7), ..alone.clone() };
+    assert!(needs_saving(Some(&(Playback { there: Some(6), ..alone }, 0)), &other, 0));
 }

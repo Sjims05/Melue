@@ -80,16 +80,20 @@ pub struct Playback {
     pub queue: Vec<String>,
     /// The song in `queue`.
     pub index: usize,
-    /// Seconds into the song.
+    /// Seconds into the song (`only_there`: into the song playing there, so a seek there is something new; the
+    /// song after it starts from its beginning).
     pub position_s: f64,
     pub playing: bool,
     pub shuffle: bool,
     /// "off", "all" or "one".
     pub repeat: String,
     /// The song playing isn't on the share (it's only on that device): `queue` has the songs that are, and `index`
-    /// is the one after it (the file's title and artist say what plays).
+    /// is the next of them to play (the file's title and artist say what plays). Empty: none of them plays after it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub only_there: bool,
+    /// `only_there`: the song playing there (its id there), so another such song is something new. Not saved.
+    #[serde(skip)]
+    pub there: Option<i64>,
 }
 
 /// What to do with another device's playback.
@@ -224,7 +228,7 @@ pub fn here(playback: &Playback, songs: &HashMap<String, i64>) -> Option<(Vec<i6
 /// while playing every [`SAVE_PLAYING_MS`]; paused, moved to another place in the song.
 pub fn needs_saving(last: Option<&(Playback, i64)>, now: &Playback, now_ms: i64) -> bool {
     let Some((last, saved_ms)) = last else { return true };
-    let other_song = last.queue != now.queue || last.index != now.index;
+    let other_song = last.queue != now.queue || last.index != now.index || last.there != now.there;
     let other_settings = last.playing != now.playing || last.shuffle != now.shuffle || last.repeat != now.repeat;
     other_song
         || other_settings
@@ -249,11 +253,16 @@ pub fn share_clock_ahead(files: &[PlaybackFile], me: &str) -> i64 {
 }
 
 /// The other device's playback to offer: the newest on the share's clock, if it's newer than this device's
-/// own and than `answered_ms` (the last one answered). An empty queue is a player cleared there.
+/// own and than `answered_ms` (the last one answered). An empty queue is a player cleared there (see [`cleared`]).
 pub fn newest_other(files: Vec<PlaybackFile>, me: &str, answered_ms: i64) -> Option<PlaybackFile> {
     let mine = files.iter().find(|f| f.device_id == me).map_or(0, |f| f.share_ms);
     let after = mine.max(answered_ms);
     files.into_iter().filter(|f| f.device_id != me && f.share_ms > after).max_by_key(|f| f.share_ms)
+}
+
+/// A player cleared there: an empty queue (not a song only there with none after it).
+pub fn cleared(playback: &Playback) -> bool {
+    playback.queue.is_empty() && !playback.only_there
 }
 
 // ---- this device
@@ -376,29 +385,49 @@ pub fn queue_here(library: &Library, folder: &Folder, other: &Playback) -> Resul
     Ok(Some((items, index)))
 }
 
-/// What plays, on the share's terms, from the queue's item ids. A song that isn't on the share (only here): the
-/// queue's songs that are, from the one after it (`only_there`). None: nothing of the queue from there on is.
-pub fn playback_on_share(library: &Library, folder: &Folder, ids: &[Option<i64>], index: usize, position_s: f64, modes: (bool, bool, &str)) -> Result<Option<Playback>> {
+/// What plays, on the share's terms, from the queue's item ids (`order`: the player's play order, the shuffle order;
+/// empty: the list's). A song that isn't on the share (only here): the queue's songs that are, and the next of them
+/// to play (`only_there`; none: an empty queue, the song still said).
+pub fn playback_on_share(library: &Library, folder: &Folder, ids: &[Option<i64>], index: usize, order: &[i64], position_s: f64, modes: (bool, bool, &str)) -> Result<Playback> {
     let paths: HashMap<i64, String> = library.synced_songs(folder)?.into_iter().collect();
     let (playing, shuffle, repeat) = modes;
     let repeat = if repeat.is_empty() { "off" } else { repeat };
+    let playback = Playback { position_s: position_s.max(0.0), playing, shuffle, repeat: repeat.into(), ..Playback::default() };
     if let Some((queue, index)) = on_share(ids, index, &paths) {
-        return Ok(Some(Playback { queue, index, position_s: position_s.max(0.0), playing, shuffle, repeat: repeat.into(), only_there: false }));
+        return Ok(Playback { queue, index, ..playback });
     }
-    let Some((queue, next)) = next_on_share(ids, index, &paths) else { return Ok(None) };
-    Ok(Some(Playback { queue, index: next, position_s: 0.0, playing, shuffle, repeat: repeat.into(), only_there: true }))
+    let there = ids.get(index).copied().flatten();
+    let (queue, next) = next_on_share(ids, index, order, repeat == "all", &paths).unwrap_or_default();
+    Ok(Playback { queue, index: next, only_there: true, there, ..playback })
 }
 
-/// The queue's songs on the share, and the place among them of the first one after song `index` (which isn't).
-pub fn next_on_share(ids: &[Option<i64>], index: usize, paths: &HashMap<i64, String>) -> Option<(Vec<String>, usize)> {
+/// The places of the queue (`len` songs) that play after place `index`, in the play order (`order`; empty, or not
+/// the queue's: the list's), round to the start with `repeat_all`.
+pub fn after_in_play_order(len: usize, index: usize, order: &[i64], repeat_all: bool) -> Vec<usize> {
+    let order: Vec<usize> = match order.iter().map(|&i| usize::try_from(i).ok().filter(|&i| i < len)).collect::<Option<Vec<_>>>() {
+        Some(order) if order.len() == len => order,
+        _ => (0..len).collect(),
+    };
+    let Some(at) = order.iter().position(|&i| i == index) else { return Vec::new() };
+    let mut after = order[at + 1..].to_vec();
+    if repeat_all {
+        after.extend(&order[..at]);
+    }
+    after
+}
+
+/// The queue's songs on the share, and the place among them of the next one to play after song `index` (which
+/// isn't). None: none of them plays after it.
+pub fn next_on_share(ids: &[Option<i64>], index: usize, order: &[i64], repeat_all: bool, paths: &HashMap<i64, String>) -> Option<(Vec<String>, usize)> {
     let path = |id: &Option<i64>| id.and_then(|id| paths.get(&id).cloned());
-    ids.get(index + 1..)?.iter().find(|id| path(id).is_some())?;
-    let before = ids[..=index].iter().filter(|id| path(id).is_some()).count();
+    let next = after_in_play_order(ids.len(), index, order, repeat_all).into_iter().find(|&i| path(&ids[i]).is_some())?;
+    let before = ids[..next].iter().filter(|id| path(id).is_some()).count();
     Some((ids.iter().filter_map(path).collect(), before))
 }
 
 /// The songs here for another device's playback, and the song to start on; when the song it plays isn't here (only
-/// there, or not synced yet), the next one that is, waiting (true: a stand-in shows the song playing there).
+/// there, or not synced yet), the next one that is, waiting (true: a stand-in shows the song playing there; no songs:
+/// none of them is here, the stand-in alone).
 pub fn queue_here_or_next(library: &Library, folder: &Folder, other: &Playback) -> Result<Option<(Vec<tauri_plugin_native_audio::QueueItem>, usize, bool)>> {
     if !other.only_there {
         if let Some((items, index)) = queue_here(library, folder, other)? {
@@ -407,9 +436,11 @@ pub fn queue_here_or_next(library: &Library, folder: &Folder, other: &Playback) 
     }
     let songs: HashMap<String, i64> = library.synced_songs(folder)?.into_iter().map(|(id, p)| (key(&p), id)).collect();
     let id = |path: &String| songs.get(&key(path)).copied();
-    // The first song here from the one after it (only there: `index` is that one already).
+    // The first song here from the one after it (only there: `index` is that one already), round to the start with
+    // repeat all.
     let from = if other.only_there { other.index } else { other.index + 1 };
-    let Some(next) = other.queue.iter().enumerate().skip(from).find_map(|(i, p)| id(p).map(|_| i)) else { return Ok(None) };
+    let round = if other.repeat == "all" { other.index.min(other.queue.len()) } else { 0 };
+    let Some(next) = (from..other.queue.len()).chain(0..round).find(|&i| id(&other.queue[i]).is_some()) else { return Ok(Some((Vec::new(), 0, true))) };
     let playing = id(&other.queue[next]).expect("found");
     let ids: Vec<i64> = other.queue.iter().filter_map(id).collect();
     let items = library.queue_items_for(&ids)?;
@@ -465,7 +496,7 @@ pub fn network_changed(app: &AppHandle) {
 /// What plays here now, on the share's terms, and the song's (title, artist).
 type PlayingHere = (Playback, (Option<String>, Option<String>));
 
-/// What plays here now (None: nothing, or a song that isn't on the share).
+/// What plays here now (None: nothing).
 pub(crate) fn playing_here(app: &AppHandle, library: &Library, folder: &Folder) -> Result<Option<PlayingHere>> {
     let player = app.native_audio();
     let state = player.get_state()?;
@@ -476,7 +507,7 @@ pub(crate) fn playing_here(app: &AppHandle, library: &Library, folder: &Folder) 
     let Ok(index) = usize::try_from(queue.current_index) else { return Ok(None) };
     let ids: Vec<Option<i64>> = queue.items.iter().map(|i| i.id).collect();
     let modes = (state.is_playing, state.shuffle, state.repeat_mode.as_str());
-    let Some(playback) = playback_on_share(library, folder, &ids, index, state.current_time, modes)? else { return Ok(None) };
+    let playback = playback_on_share(library, folder, &ids, index, &queue.play_order, state.current_time, modes)?;
     let current = &queue.items[index];
     Ok(Some((playback, (current.title.clone(), current.artist.clone()))))
 }
@@ -513,15 +544,18 @@ fn save(app: &AppHandle, force: bool) -> Result<()> {
         Some(here) => here,
         // Nothing in the player: cleared, after something was (an empty queue tells the others). Not at start.
         None if state.queue_length == 0 => {
-            let cleared = Playback { repeat: state.repeat_mode.clone(), shuffle: state.shuffle, ..Playback::default() };
+            let empty = Playback { repeat: state.repeat_mode.clone(), shuffle: state.shuffle, ..Playback::default() };
             let mut last = handoff.last.locked();
-            if last.as_ref().is_none_or(|(was, _)| was.queue.is_empty()) {
-                *last = Some((cleared, now));
+            if last.as_ref().is_none_or(|(was, _)| cleared(was)) {
+                *last = Some((empty, now));
                 return Ok(());
             }
-            (cleared, (None, None))
+            (empty, (None, None))
         }
-        None => return Ok(()),
+        None => {
+            eprintln!("melue: playback: not saved: the player's song isn't in its queue (place {} of {})", state.queue_index, state.queue_length);
+            return Ok(());
+        }
     };
     {
         let mut last = handoff.last.locked();
@@ -584,7 +618,7 @@ fn look(app: &AppHandle) -> Result<()> {
     }
     // Cleared there: followed, it's cleared here too, its saved queue as well (at start-up too, before or after the
     // player restores it); asked, there's nothing to offer. Answered once done (a clear that fails is tried again).
-    if other.state.queue.is_empty() {
+    if cleared(&other.state) {
         let handoff = app.state::<Handoff>();
         if settings.mode == Mode::Follow {
             app.native_audio().clear()?;
@@ -630,8 +664,14 @@ fn load(app: &AppHandle, other: &PlaybackFile) -> Result<()> {
     let (items, index, standing_in) = queue_here_or_next(&library, &folder, &other.state)?.ok_or("that song isn't here (not synced yet?)")?;
     let waiting = items.get(index).and_then(|item| item.id);
     let player = app.native_audio();
-    // Its song not here: the next one waits from its start, the other device's song shown in its place.
-    player.set_queue(items, index, if standing_in { 0.0 } else { other.state.position_s }, None)?;
+    // Its song not here: the next one waits from its start, the other device's song shown in its place; none of its
+    // songs here, the player's emptied (that song shown alone, nothing to play).
+    let nothing = items.is_empty();
+    if nothing {
+        player.clear()?;
+    } else {
+        player.set_queue(items, index, if standing_in { 0.0 } else { other.state.position_s }, None)?;
+    }
     let stand_in = standing_in.then(|| StandIn { title: other.title.clone(), artist: other.artist.clone(), device: other.device_name.clone(), waiting });
     *app.state::<Handoff>().stand_in.locked() = stand_in.clone();
     let _ = app.emit(STAND_IN_EVENT, stand_in);
@@ -639,7 +679,12 @@ fn load(app: &AppHandle, other: &PlaybackFile) -> Result<()> {
     player.set_repeat_mode(&other.state.repeat)?;
     mark_answered(&library, other)?;
     // Not something new to tell the others: it's theirs (saved once it changes here).
-    let loaded = playing_here(app, &library, &folder)?.map(|(p, ..)| p).unwrap_or_else(|| Playback { playing: false, ..other.state.clone() });
+    // (Nothing loaded: not a clear to tell the others either.)
+    let loaded = match playing_here(app, &library, &folder)? {
+        Some((playback, _)) => playback,
+        None if nothing => Playback { queue: Vec::new(), index: 0, playing: false, only_there: false, ..other.state.clone() },
+        None => Playback { playing: false, ..other.state.clone() },
+    };
     *app.state::<Handoff>().last.locked() = Some((loaded, now_ms()));
     Ok(())
 }

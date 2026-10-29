@@ -35,7 +35,10 @@ const look = computed(() => JSON.stringify([props.image, props.colors, props.col
         <div v-else-if="colors" class="grid size-full place-items-center" :style="{ background: coverCss(colors) }">
           <component :is="icon" v-if="icon" class="size-[24%] text-white/92" :stroke-width="1.75" />
         </div>
-        <div v-else class="grid size-full place-items-center text-muted-foreground"><component :is="placeholder ?? Music" class="size-[24%]" :stroke-width="1.5" /></div>
+        <!-- A quarter of a big card; on a small cover (a song row's, Home's Playing card) 20 px, as song rows draw it. -->
+        <div v-else class="grid size-full place-items-center text-muted-foreground">
+          <component :is="placeholder ?? Music" class="size-[max(24%,min(20px,45%))]" :stroke-width="1.5" />
+        </div>
       </div>
     </Transition>
     <slot />

@@ -254,9 +254,10 @@ export function songOf(item: PlayerTrack): Song {
 export const current = computed(() => {
   const q = nowPlaying.queue
   const item = q && q.currentIndex >= 0 ? q.items[q.currentIndex] : null
-  // Continued from another device whose song isn't here: that song, until this one plays.
+  // Continued from another device whose song isn't here: that song, until this one plays (none of its songs here:
+  // that song alone, nothing to play).
   const stand = standIn.value
-  if (stand && item && item.id === stand.waiting && !nowPlaying.state?.isPlaying) {
+  if (stand && (item ? item.id === stand.waiting : stand.waiting == null) && !nowPlaying.state?.isPlaying) {
     return { id: -1, title: stand.title ?? 'A song', artist: stand.artist ?? '', duration: 0, liked: false, localOnly: false, later: `Only on ${stand.device}` } as Song
   }
   return item ? songOf(item) : null
@@ -284,6 +285,8 @@ export async function followStandIn() {
     },
   )
 }
+/** Continued from another device, none of whose songs are here: its song's shown, with nothing to play. */
+export const nothingHere = computed(() => current.value?.id === -1 && !nowPlaying.queue?.items.length)
 /** The page of the list the queue plays from ("Playing from …" links to it), or null. */
 export const fromPage = computed((): RouteLocationRaw | null => {
   const [kind, id] = (nowPlaying.queue?.sourceId ?? '').split(':')
@@ -394,6 +397,10 @@ export const cycleRepeat = () => {
  */
 export async function clearPlayer() {
   if (playingOn.device) return void (await control({ cmd: 'clear' }, () => player.getState()))
+  if (standIn.value) {
+    standIn.value = null
+    playbackSync.standInDone().catch(() => {})
+  }
   await player.clear()
   applyState(await player.getState())
   await refreshQueue()

@@ -12,7 +12,7 @@ import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { EmptyState, ListHeader } from '@/components/page'
 import { SettingsBadge, SettingsTip } from '@/components/settings'
-import { SongList, type Song, type SongAction } from '@/components/songs'
+import { NOT_HERE, SongList, type Song, type SongAction } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { library, type Playlist, type PlaylistEntry, type Source } from '@/library'
 import { librarySync, sync, type PlaylistConflict } from '@/library/sync'
@@ -78,7 +78,7 @@ function entrySong(e: PlaylistEntry): Song {
       ? STATE_NOTES[e.state]
       : !e.track
         ? e.syncTitle
-          ? 'Not on this device yet'
+          ? NOT_HERE
           : 'Not found'
         : e.state === 'here_only' && !playlist.value?.writeBack
           ? 'Only in Melue'

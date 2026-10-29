@@ -17,12 +17,13 @@ import { useRouter } from 'vue-router'
 import Slider from '@/components/player/Slider.vue'
 import { PlayingBars } from '@/components/songs'
 import VolumeButton from './VolumeButton.vue'
-import { clearPlayer, current, cycleRepeat, like, next, nowPlaying, position, previous, seek, toggleShuffle, togglePlay } from '@/player/nowPlaying'
+import { clearPlayer, current, cycleRepeat, like, next, nothingHere, nowPlaying, position, previous, seek, toggleShuffle, togglePlay } from '@/player/nowPlaying'
 
 const router = useRouter()
 const state = computed(() => nowPlaying.state)
 // Nothing in the queue: the bar stays, empty, with what needs a song off.
-const empty = computed(() => !current.value || !state.value)
+// (Another device's song shown with nothing to play here: the same, but it can be cleared.)
+const empty = computed(() => !current.value || !state.value || nothingHere.value)
 const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 // A button's colour is one class or the other (two colour classes: the stylesheet's order would decide, not this).
@@ -34,15 +35,20 @@ const OFF = 'pointer-events-none opacity-40'
 <template>
   <!--
     The parts, with the room between them as columns of their own. As the window narrows, the song gives up its
-    width first (360 px down to 200), while the progress keeps at least 240; under 1140 px, when that's used up,
-    everything moves closer together.
+    width first (360 px down to 200), while the progress keeps at least 240; under 1140 px everything moves closer
+    together. The song's widest is 360 px or the room the rest leaves it (100% less 828 px: the three 48 px gaps,
+    the controls' 232, the progress's 240 and the right side's 212), not 360 with the progress's minimum pushing it
+    back: while the columns change between the two, that would let the song grow past what it ends at, and the
+    controls run on and back (a pop).
   -->
   <footer
-    class="grid h-[92px] flex-none grid-cols-[minmax(0,200px)_16px_auto_16px_minmax(0,1fr)_16px_auto] items-center border-t px-4 transition-[grid-template-columns,padding] duration-300 ease-out min-[1140px]:grid-cols-[minmax(200px,360px)_48px_auto_48px_minmax(240px,1fr)_48px_auto] min-[1140px]:px-12"
+    class="grid h-[92px] flex-none grid-cols-[minmax(0,200px)_16px_auto_16px_minmax(0,1fr)_16px_auto] items-center border-t px-4 transition-[grid-template-columns,padding] duration-300 ease-out min-[1140px]:grid-cols-[minmax(200px,min(360px,calc(100%_-_828px)))_48px_auto_48px_minmax(240px,1fr)_48px_auto] min-[1140px]:px-12"
   >
     <!-- The song. A set width, so the controls stay put: a long title is cut off (the room after it keeps it off them). -->
     <RouterLink v-if="current && state" to="/now-playing" class="col-start-1 flex min-w-0 items-center gap-4">
-      <span class="relative size-[52px] flex-none overflow-hidden rounded-md bg-well">
+      <span class="relative grid size-[52px] flex-none place-items-center overflow-hidden rounded-md bg-well text-muted-foreground">
+        <!-- No cover (a song only on the other device, or one without): the note, as the mini player shows it. -->
+        <Music v-if="!current.cover" class="size-5" />
         <Transition name="fade">
           <img v-if="current.cover" :key="current.cover" :src="current.cover" alt="" class="absolute inset-0 size-full object-cover" draggable="false" />
         </Transition>
@@ -132,7 +138,7 @@ const OFF = 'pointer-events-none opacity-40'
       >
         <ListMusic />
       </button>
-      <button type="button" :class="[ICON, tone(false), empty && OFF]" :disabled="empty" title="Clear the player" aria-label="Clear the player" @click="clearPlayer">
+      <button type="button" :class="[ICON, tone(false), !current && OFF]" :disabled="!current" title="Clear the player" aria-label="Clear the player" @click="clearPlayer">
         <X />
       </button>
     </div>

@@ -229,7 +229,8 @@ impl Car {
         let Some(folder) = self.library.synced_folder()? else { return Ok(false) };
         let modes = (car.playing, car.shuffle, car.repeat_mode.as_str());
         let position_s = car.position_ms as f64 / 1000.0;
-        let Some(playback) = playback_on_share(&self.library, &folder, &car.item_ids, car.index, position_s, modes)? else { return Ok(false) };
+        // (The car's queue plays in its list's order, as far as this knows.)
+        let playback = playback_on_share(&self.library, &folder, &car.item_ids, car.index, &[], position_s, modes)?;
         let now = now_ms();
         // The first look: the queue the player started with isn't news (its own last queue, or one taken).
         if self.last.is_none() {

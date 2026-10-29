@@ -116,3 +116,61 @@
     will-change: transform;
   }
 }
+
+/* "This device" / "Not on this device yet" beside a song's title (deviceIcons.ts): an icon the height of the title's
+   letters, centred on them (its own box: on the text's line it would sit low), a little further from the title than
+   the line's gap. */
+.song-device {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0;
+  height: 14px;
+  margin: 1px 0 0 4px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition-property: gap, height, margin, padding, background-color, color;
+}
+.song-device svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  transition-property: width, height;
+}
+.song-device-words {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition-property: max-width, opacity;
+}
+/* The two looks ease into each other as the title's room changes (a computer's window resized). */
+.song-device,
+.song-device svg,
+.song-device-words {
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
+}
+/* Room beside the title (its column 20rem and up, SongRow): a badge, the icon smaller with its words (as
+   SettingsBadge). */
+@container (min-width: 20rem) {
+  .song-device {
+    gap: 4px;
+    height: 20px;
+    margin: 0;
+    padding: 0 6px;
+    background: var(--badge);
+    color: var(--soft);
+  }
+  .song-device svg {
+    width: 10px;
+    height: 10px;
+  }
+  .song-device-words {
+    max-width: 10em;
+    opacity: 1;
+  }
+}

@@ -3,6 +3,21 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 1.0.2 (2026-10-29)
+
+Playing across devices when a song is only on one of them, and smaller touches.
+
+- A song that's only on one device now always continues on your others, even from an album or playlist none of
+  whose songs they have: they show it, and wait with nothing to play until you pick something. Pausing, seeking and
+  switching between such songs count as new too, and the song that waits is the one that plays next, with shuffle
+  and repeat all.
+- "This device" and "Not on this device yet" beside a song's title are the device's icon, plain or slashed; with
+  room beside the title, a badge with words, easing between the two as the window changes.
+- A song without a cover shows the note at a size that fits on Home's Playing card, in a song's menu and in the
+  computer's player bar (it was empty there).
+- Likes, plays and playlists no longer fail to sync now and then while another device reads the same file.
+- The computer's player bar narrows smoothly, without the controls jumping.
+
 ## 1.0.1 (2026-10-29)
 
 Fixes from the first days with 1.0, and a few things that make sharing and playing across devices smoother.

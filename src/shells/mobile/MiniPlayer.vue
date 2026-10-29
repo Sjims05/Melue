@@ -12,7 +12,7 @@ import { computed, shallowRef, watch } from 'vue'
 import { NextIcon, PauseIcon, PlayIcon } from '@/components/player/icons'
 import { useSlide } from '@/components/player/slide'
 import { PlayingBars } from '@/components/songs'
-import { clearPlayer, current, next, nowPlaying, position, togglePlay } from '@/player/nowPlaying'
+import { clearPlayer, current, next, nothingHere, nowPlaying, position, togglePlay } from '@/player/nowPlaying'
 import { useLongPress } from '@/lib/longPress'
 import { appearance } from '@/lib/appearance'
 import { openMenu } from '@/lib/menuDrawer'
@@ -97,14 +97,21 @@ const press = useLongPress(() => {
           </RouterLink>
           <button
             type="button"
-            class="grid size-11 flex-none place-items-center rounded-full transition-transform active:scale-90 [&_svg]:size-5"
+            class="grid size-11 flex-none place-items-center rounded-full transition-transform active:scale-90 disabled:opacity-40 [&_svg]:size-5"
+            :disabled="nothingHere"
             :aria-label="nowPlaying.state?.isPlaying ? 'Pause' : 'Play'"
             @click="togglePlay"
           >
             <PauseIcon v-if="nowPlaying.state?.isPlaying" />
             <PlayIcon v-else class="translate-x-px" />
           </button>
-          <button type="button" class="grid size-11 flex-none place-items-center rounded-full transition-transform active:scale-90 [&_svg]:size-5" aria-label="Next" @click="next">
+          <button
+            type="button"
+            class="grid size-11 flex-none place-items-center rounded-full transition-transform active:scale-90 disabled:opacity-40 [&_svg]:size-5"
+            :disabled="nothingHere"
+            aria-label="Next"
+            @click="next"
+          >
             <NextIcon />
           </button>
         </div>

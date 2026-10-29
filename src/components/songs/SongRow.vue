@@ -16,7 +16,7 @@ import LikeHeart from '@/components/player/LikeHeart.vue'
 import { usePhone } from '@/lib/phone'
 import { PauseIcon, PlayIcon } from '@/components/player/icons'
 import { computed, ref } from 'vue'
-import SettingsBadge from '@/components/settings/SettingsBadge.vue'
+import { NOT_HERE, NotHereIcon, ThisDeviceIcon } from './deviceIcons'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import AddToPlaylist from './AddToPlaylist.vue'
@@ -177,15 +177,24 @@ const ON_HIGHLIGHT =
           <img v-if="song.cover && !unavailable" :src="song.cover" alt="" class="size-full object-cover" draggable="false" />
           <Music v-else class="size-5" />
         </span>
-        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+        <!-- Its own width measured (@container): the device badge has its words only with room beside the title. -->
+        <span class="@container flex min-w-0 flex-1 flex-col gap-0.5">
           <span class="flex min-w-0 items-center gap-2">
             <PlayingBars v-if="current" :paused="!playing" class="flex-none" />
             <span class="truncate text-[15px] font-medium">{{ song.title }}</span>
+            <!-- Only on this device, or not on it yet: the device's icon, plain or slashed; with room, a badge with words. -->
             <Transition name="fade">
-              <SettingsBadge v-if="localOnly || song.localOnly" class="flex-none" title="Only on this device, not on your share">This device</SettingsBadge>
+              <span v-if="localOnly || song.localOnly" class="song-device" :class="MUTED" title="Only on this device, not on your share">
+                <ThisDeviceIcon aria-hidden="true" /><span class="song-device-words" aria-hidden="true">This device</span>
+                <span class="sr-only">Only on this device</span>
+              </span>
             </Transition>
             <Transition name="drop">
-              <span v-if="note" class="flex-none text-xs" :class="MUTED">{{ note }}</span>
+              <span v-if="note === NOT_HERE" class="song-device" :class="MUTED" :title="NOT_HERE">
+                <NotHereIcon aria-hidden="true" /><span class="song-device-words" aria-hidden="true">Not here yet</span>
+                <span class="sr-only">{{ NOT_HERE }}</span>
+              </span>
+              <span v-else-if="note" class="flex-none text-xs" :class="MUTED">{{ note }}</span>
             </Transition>
           </span>
           <!-- Each artist's name links to their page, when the song knows them (underlined under the pointer). -->

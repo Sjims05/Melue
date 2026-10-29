@@ -51,7 +51,7 @@ fn big_library() {
     let paths = timed("synced_songs (handoff: every 5 s)", || t.library.synced_songs(&folder).unwrap());
     let ids: Vec<Option<i64>> = paths.iter().take(1_000).map(|(id, _)| Some(*id)).collect();
     timed("playback_on_share, a 1,000-song queue (every 5 s)", || {
-        handoff::playback_on_share(&t.library, &folder, &ids, 500, 10.0, (true, false, "off")).unwrap()
+        handoff::playback_on_share(&t.library, &folder, &ids, 500, &[], 10.0, (true, false, "off")).unwrap()
     });
     let me = handoff::device_id(&t.library).unwrap();
     timed("songs_here (every playlist sync)", || t.library.songs_here(&folder, &me).unwrap());

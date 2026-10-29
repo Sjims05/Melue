@@ -37,6 +37,7 @@ import {
   like,
   moveInUpNext,
   next,
+  nothingHere,
   nowPlaying,
   playFromUpNext,
   position,
@@ -235,13 +236,14 @@ const tone = (on: boolean) => (on ? 'text-foreground' : 'text-muted-foreground')
           </div>
         </div>
         </SongMenuArea>
-        <div data-arrows-skip>
+        <!-- Another device's song with nothing to play here: the seek bar and controls off. -->
+        <div data-arrows-skip :class="nothingHere && 'pointer-events-none opacity-40'" :inert="nothingHere || undefined">
           <Slider :value="at" :max="state.duration || 1" label="Seek" @change="seek" />
           <div class="mt-1 flex justify-between text-sm text-muted-foreground tabular-nums">
             <span>{{ time(at) }}</span><span>{{ time(state.duration) }}</span>
           </div>
         </div>
-        <div class="flex items-center justify-between" data-arrows-skip>
+        <div class="flex items-center justify-between" data-arrows-skip :class="nothingHere && 'pointer-events-none opacity-40'" :inert="nothingHere || undefined">
           <button type="button" :class="[BIG, tone(state.shuffle)]" :aria-pressed="state.shuffle" aria-label="Shuffle" @click="toggleShuffle">
             <Shuffle />
             <span v-if="state.shuffle" class="absolute bottom-0 size-1 rounded-full bg-current" />

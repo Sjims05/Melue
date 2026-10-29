@@ -75,7 +75,9 @@ watch(menu, async (m) => {
         <button v-if="choosing" type="button" class="-ml-2 grid size-10 flex-none place-items-center" aria-label="Back to the menu" @click="choosing = null">
           <ChevronLeft class="size-5" />
         </button>
-        <span v-else-if="menu.cover" class="w-11 flex-none [&>div]:rounded-md"><Cover v-bind="menu.cover" /></span>
+        <span v-else-if="menu.cover" class="w-11 flex-none [&>div]:rounded-md">
+          <Cover v-bind="menu.cover" />
+        </span>
         <span class="flex min-w-0 flex-col">
           <span class="truncate text-[15px] font-semibold">{{ choosing ? 'Add to playlist' : menu.title }}</span>
           <span v-if="choosing || menu.subtitle" class="truncate text-[13px] text-muted-foreground">{{ choosing ? menu.title : menu.subtitle }}</span>

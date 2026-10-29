@@ -31,6 +31,8 @@ pub const OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 const HOME_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long looking up a home address given by name may take (away from home it may not answer at all).
 const HOME_LOOKUP_TIMEOUT: Duration = Duration::from_secs(1);
+/// Writing a file, its name still taken when it's put in place: the waits before trying again.
+const RENAME_WAITS: [Duration; 4] = [Duration::from_millis(250), Duration::from_millis(500), Duration::from_secs(1), Duration::from_secs(2)];
 
 /// Where the share is and how to log in.
 #[derive(Clone, Default)]
@@ -404,16 +406,20 @@ impl Share for SmbShare {
                             return Err(smb2::Error::Cancelled);
                         }
                         writer.finish().await?;
-                        // Put in place: what was there goes first (a rename doesn't replace on every server). Another
-                        // device writing the same file at the same moment can put its own there in between: then again.
-                        let mut tries = 0;
+                        // Put in place: what was there goes first (a rename doesn't replace on every server). The name
+                        // can stay taken a moment: the old file is gone only once another device reading it lets go,
+                        // or one writing the same file puts its own there in between. Then again, after a wait.
+                        let mut waits = RENAME_WAITS.iter();
                         loop {
                             if c.client.stat(&mut c.tree, &full).await.is_ok() {
                                 let _ = c.client.delete_file(&mut c.tree, &full).await;
                             }
                             match c.client.rename(&mut c.tree, &part, &full).await {
                                 Ok(()) => break,
-                                Err(e) if tries < 2 && e.to_string().contains("COLLISION") => tries += 1,
+                                Err(e) if e.to_string().contains("COLLISION") => match waits.next() {
+                                    Some(wait) => tokio::time::sleep(*wait).await,
+                                    None => return Err(e),
+                                },
                                 Err(e) => return Err(e),
                             }
                         }
