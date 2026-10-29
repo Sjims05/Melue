@@ -117,12 +117,30 @@
   }
 }
 
+/* A row out of view isn't laid out or drawn (a playlist shows all its rows; resizing the window re-laid out every one
+   each frame, ~3x a page without them), its height kept for the scrollbar: a row's (SongRow), 60 px on a phone. */
+[data-song-row] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 68px;
+}
+.mobile-shell [data-song-row] {
+  contain-intrinsic-size: auto 60px;
+}
+
 /* "This device" / "Not on this device yet" beside a song's title (deviceIcons.ts): an icon the height of the title's
    letters, centred on them (its own box: on the text's line it would sit low), a little further from the title than
-   the line's gap. */
+   the line's gap. Its words only when every row in view has room for them (badgeFit.ts); while it changes, it gives way
+   (clipped) and the title keeps its width (up to the room the icons leave it), so the title never moves. A note beside
+   it changing gives way first (the badge hardly shrinks: 0.001), and neither goes below its icon. */
+.song-line-fit .song-title {
+  flex-shrink: 0;
+  max-width: calc(100% - var(--song-after, 0px));
+}
 .song-device {
   display: flex;
-  flex: none;
+  flex: 0 0.001 auto;
+  min-width: 14px;
+  overflow: hidden;
   align-items: center;
   gap: 0;
   height: 14px;
@@ -137,6 +155,7 @@
 }
 .song-device svg {
   display: block;
+  flex: none;
   width: 14px;
   height: 14px;
   transition-property: width, height;
@@ -147,30 +166,108 @@
   opacity: 0;
   transition-property: max-width, opacity;
 }
-/* The two looks ease into each other as the title's room changes (a computer's window resized). */
+/* The two looks ease into each other as the room changes (a computer's window resized). */
 .song-device,
 .song-device svg,
 .song-device-words {
   transition-duration: 200ms;
   transition-timing-function: ease-out;
 }
-/* Room beside the title (its column 20rem and up, SongRow): a badge, the icon smaller with its words (as
+/* Room for its words beside the whole title (SongRow, badgeFit.ts): a badge, the icon smaller with its words (as
    SettingsBadge). */
-@container (min-width: 20rem) {
-  .song-device {
-    gap: 4px;
-    height: 20px;
-    margin: 0;
-    padding: 0 6px;
-    background: var(--badge);
-    color: var(--soft);
+.song-device.song-device-wide {
+  min-width: 0;
+  gap: 4px;
+  height: 20px;
+  margin: 0;
+  padding: 0 6px;
+  background: var(--badge);
+  color: var(--soft);
+}
+.song-device-wide svg {
+  width: 10px;
+  height: 10px;
+}
+.song-device-wide .song-device-words {
+  max-width: 10em;
+  opacity: 1;
+}
+
+/* A note with an icon after a song's title ("Only in Melue": SongRow, badgeFit.ts): its words with room for them,
+   else its icon (the words its tooltip), all of a list's together, easing between the two and giving way while it
+   changes, as the device badges. */
+.song-note {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 14px;
+  align-items: center;
+  margin: 1px 0 0 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  transition: margin 200ms ease-out;
+}
+.song-note svg {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  transition:
+    width 200ms ease-out,
+    opacity 200ms ease-out;
+}
+.song-note-words {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-width 200ms ease-out,
+    opacity 200ms ease-out;
+}
+.song-note.song-note-wide {
+  min-width: 0;
+  margin: 0;
+}
+.song-note-wide svg {
+  width: 0;
+  opacity: 0;
+}
+.song-note-wide .song-note-words {
+  max-width: 12em;
+  opacity: 1;
+}
+
+/* The album and the length beside a song (SongRow): they open and close, sliding (the title making or taking the
+   room), as the list gets wide enough for them or not (28rem: the length; 42rem: the album), rather than popping in.
+   Closed: no width, and no gap before them either (the row's gap taken back: 16 px, 12 on a phone). */
+.song-column {
+  min-width: 0;
+  width: 0;
+  margin-left: -16px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* (With the row's own fade of its parts: a song greyed or not, SongRow.) */
+  transition:
+    width 200ms ease-out,
+    margin-left 200ms ease-out,
+    opacity 300ms;
+}
+.song-length {
+  flex: none;
+}
+.mobile-shell .song-column {
+  margin-left: -12px;
+}
+@container (min-width: 28rem) {
+  .song-column.song-length {
+    width: 3.5rem;
+    margin-left: 0;
   }
-  .song-device svg {
-    width: 10px;
-    height: 10px;
-  }
-  .song-device-words {
-    max-width: 10em;
-    opacity: 1;
+}
+@container (min-width: 42rem) {
+  .song-column.song-album {
+    width: 28%;
+    margin-left: 0;
   }
 }

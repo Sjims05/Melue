@@ -3,6 +3,18 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 1.0.3 (2026-10-30)
+
+Smoother resizing, and long playlists that scroll as short ones do.
+
+- Long song lists (playlists, the queue, albums) draw only the songs in view, so resizing the window and scrolling
+  stay smooth. Dragging a song to a new place scrolls the list when held near its top or bottom edge.
+- Resizing the window keeps the songs you were looking at in place.
+- "This device", "Not here yet" and "Only in Melue" show as icons when a song's line is short of room, all of a list's
+  together; "Only in Melue" has its own icon (Spotify's, or a file's, slashed). The album and length columns slide in
+  and out as the list gets wider or narrower, and songs without them give their room to the title.
+- A start-up error on phones is gone.
+
 ## 1.0.2 (2026-10-29)
 
 Playing across devices when a song is only on one of them, and smaller touches.

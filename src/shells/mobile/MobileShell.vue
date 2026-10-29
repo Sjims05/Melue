@@ -31,6 +31,7 @@ import { READY, usePullToRefresh } from './pullToRefresh'
 import MenuDrawer from './MenuDrawer.vue'
 import ReportDialog from '@/components/report/ReportDialog.vue'
 import RemoteAsk from '@/components/player/RemoteAsk.vue'
+import { vKeepPlace } from '@/lib/keepPlace'
 
 const route = useRoute()
 // The phone's status and navigation bars: icons for Melue's theme (dark icons while it's light), not the phone's.
@@ -69,7 +70,7 @@ const refresh = usePullToRefresh(scroller)
       <!-- The main pages: one top bar, and the page, kept alive. Out of reach while something covers them. -->
       <div class="absolute inset-0 flex flex-col" :inert="onTop || undefined">
         <MobileTopBar />
-        <div ref="scroller" data-scroller class="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none]" :style="{ '--page-from': from }">
+        <div ref="scroller" v-keep-place data-scroller class="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none]" :style="{ '--page-from': from }">
           <!-- Pull to refresh's mark: comes down with the finger, turning; spins while it refreshes. -->
           <div class="pointer-events-none sticky top-0 z-10 flex h-0 justify-center" aria-hidden="true">
             <span
@@ -102,7 +103,7 @@ const refresh = usePullToRefresh(scroller)
             :style="{ translate: `${layerPull.pull.value}px 0` }"
           >
             <MobileTopBar :back="backLabel" />
-            <div data-scroller class="min-h-0 flex-1 overflow-y-auto">
+            <div v-keep-place data-scroller class="min-h-0 flex-1 overflow-y-auto">
               <main class="app-column pb-8"><component :is="Component" /></main>
             </div>
           </div>

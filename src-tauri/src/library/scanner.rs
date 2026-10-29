@@ -110,7 +110,8 @@ pub fn scan_soon(app: &AppHandle) {
 }
 
 /// Scans these folders once things have been quiet for a moment (the folder watcher: a change in them). Walking every
-/// folder for one new song costs a listing of the whole library, slow on a network drive.
+/// folder for one new song costs a listing of the whole library, slow on a network drive. (The watcher's: a computer's.)
+#[cfg(desktop)]
 pub fn scan_folders_soon(app: &AppHandle, folders: impl IntoIterator<Item = i64>) {
     let scanner = app.state::<Scanner>();
     scanner.wanted.locked().folders.extend(folders);

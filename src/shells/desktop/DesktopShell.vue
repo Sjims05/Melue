@@ -31,6 +31,7 @@ import DotsNav from './DotsNav.vue'
 import PlayerBar from './PlayerBar.vue'
 import Toasts from '../Toasts.vue'
 import TopBar from './TopBar.vue'
+import { vKeepPlace } from '@/lib/keepPlace'
 
 const route = useRoute()
 // What's playing, for the player bar and Now playing; the song menus' Add to playlist.
@@ -66,8 +67,8 @@ onKeyStroke('Escape', (e) => {
             <div id="page-overlay" class="contents" />
             <!-- The scrollbar's room is always kept, so the page doesn't shift when it comes or goes. No scroll anchoring:
                  the page being replaced is above the new one for a moment, and the browser would move the new one's
-                 place up by its height when it goes. -->
-            <div ref="scroller" data-scroller class="absolute inset-0 overflow-x-hidden overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]" :style="{ '--page-from': from }">
+                 place up by its height when it goes. The window resized: v-keep-place keeps what's in view in place. -->
+            <div ref="scroller" v-keep-place data-scroller class="absolute inset-0 overflow-x-hidden overflow-y-auto [overflow-anchor:none] [scrollbar-gutter:stable]" :style="{ '--page-from': from }">
               <main class="app-column pb-24">
                 <Transition name="page" :duration="{ enter: 320, leave: 0 }">
                   <KeepAlive>
@@ -84,7 +85,7 @@ onKeyStroke('Escape', (e) => {
             <!-- Not before a page is known (starting, or a reload): the blank starting point isn't a page on top. -->
             <div v-if="shown.matched.length && !shown.meta.main" :key="layerKey" class="absolute inset-0 z-20 flex flex-col bg-background">
               <TopBar :back="backLabel" :search="shown.name !== 'search'" />
-              <div data-scroller class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+              <div v-keep-place data-scroller class="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
                 <main class="app-column pb-24"><component :is="Component" /></main>
               </div>
             </div>

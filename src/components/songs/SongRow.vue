@@ -17,6 +17,7 @@ import { usePhone } from '@/lib/phone'
 import { PauseIcon, PlayIcon } from '@/components/player/icons'
 import { computed, ref } from 'vue'
 import { NOT_HERE, NotHereIcon, ThisDeviceIcon } from './deviceIcons'
+import { useBadgeFits } from './badgeFit'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import AddToPlaylist from './AddToPlaylist.vue'
@@ -140,6 +141,9 @@ const BUTTON =
 // buttons with the arrows, the next one is shown before it takes the focus.
 const ON_HIGHLIGHT =
   'song-hover-only invisible group-hover/song:visible group-data-[highlight]/song:visible in-focus-visible:visible group-has-focus-visible/song:visible group-focus-within/song:visible'
+// The device badge's words only with room for them beside the whole title (badgeFit.ts).
+const line = ref<HTMLElement>()
+const { badgeWide, noteWide } = useBadgeFits(line, () => [props.song.title, props.note, props.current, props.localOnly, props.song.localOnly])
 </script>
 
 <template>
@@ -177,22 +181,26 @@ const ON_HIGHLIGHT =
           <img v-if="song.cover && !unavailable" :src="song.cover" alt="" class="size-full object-cover" draggable="false" />
           <Music v-else class="size-5" />
         </span>
-        <!-- Its own width measured (@container): the device badge has its words only with room beside the title. -->
-        <span class="@container flex min-w-0 flex-1 flex-col gap-0.5">
-          <span class="flex min-w-0 items-center gap-2">
+        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+          <!-- The device badge and a note's icon have their words only when they fit beside the whole title (badgeFit.ts). -->
+          <span ref="line" class="flex min-w-0 items-center gap-2">
             <PlayingBars v-if="current" :paused="!playing" class="flex-none" />
-            <span class="truncate text-[15px] font-medium">{{ song.title }}</span>
+            <span class="song-title truncate text-[15px] font-medium">{{ song.title }}</span>
             <!-- Only on this device, or not on it yet: the device's icon, plain or slashed; with room, a badge with words. -->
             <Transition name="fade">
-              <span v-if="localOnly || song.localOnly" class="song-device" :class="MUTED" title="Only on this device, not on your share">
+              <span v-if="localOnly || song.localOnly" class="song-device" :class="[MUTED, badgeWide && 'song-device-wide']" title="Only on this device, not on your share">
                 <ThisDeviceIcon aria-hidden="true" /><span class="song-device-words" aria-hidden="true">This device</span>
                 <span class="sr-only">Only on this device</span>
               </span>
             </Transition>
             <Transition name="drop">
-              <span v-if="note === NOT_HERE" class="song-device" :class="MUTED" :title="NOT_HERE">
+              <span v-if="note === NOT_HERE" class="song-device" :class="[MUTED, badgeWide && 'song-device-wide']" :title="NOT_HERE">
                 <NotHereIcon aria-hidden="true" /><span class="song-device-words" aria-hidden="true">Not here yet</span>
                 <span class="sr-only">{{ NOT_HERE }}</span>
+              </span>
+              <!-- A note with an icon ("Only in Melue"): its words with room for them, else its icon (badgeFit.ts). -->
+              <span v-else-if="note && song.noteIcon" class="song-note" :class="[MUTED, noteWide && 'song-note-wide']" :title="note">
+                <component :is="song.noteIcon" aria-hidden="true" /><span class="song-note-words">{{ note }}</span>
               </span>
               <span v-else-if="note" class="flex-none text-xs" :class="MUTED">{{ note }}</span>
             </Transition>
@@ -200,8 +208,10 @@ const ON_HIGHLIGHT =
           <!-- Each artist's name links to their page, when the song knows them (underlined under the pointer). -->
           <span class="truncate text-[13px]" :class="MUTED"><template v-for="(part, i) in artistParts(song.artist, song.artists)" :key="i"><RouterLink v-if="part.artist && !greyed" :to="`/artist/${part.artist}`" class="hover:underline" @dblclick.stop>{{ part.text }}</RouterLink><template v-else>{{ part.text }}</template></template></span>
         </span>
-        <!-- The album opens its page (like Go to album in the menu). -->
-        <span v-if="!noAlbum" class="hidden w-[28%] min-w-0 truncate text-right text-sm @2xl:block" :class="MUTED">
+        <!-- The album opens its page (like Go to album in the menu). None (a song not on this device, or without one): no
+             column, its room the title's (the length and buttons after it still line up with the other rows). It and the
+             length open and close as the list gets wide enough or not (songs.css: song-column). -->
+        <span v-if="!noAlbum && song.album" class="song-column song-album text-right text-sm" :class="MUTED">
           <button
             v-if="song.album && !song.later"
             type="button"
@@ -212,7 +222,7 @@ const ON_HIGHLIGHT =
           </button>
           <template v-else>{{ song.album }}</template>
         </span>
-        <span class="hidden w-14 flex-none text-right text-sm tabular-nums @md:block" :class="MUTED">{{ length }}</span>
+        <span v-if="length" class="song-column song-length text-right text-sm tabular-nums" :class="MUTED">{{ length }}</span>
         <!-- A greyed song that can come back (a linked playlist's) has its button in place of ▶ ♥, not greyed (the
              rest of the row is). -->
         <span class="ml-2 flex flex-none items-center gap-1" :class="song.restore && 'song-keep'">

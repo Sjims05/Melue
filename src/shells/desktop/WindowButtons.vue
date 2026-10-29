@@ -2,14 +2,16 @@
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ref } from 'vue'
+import { isDesktop } from '@/platform'
 
 // Whether the window is maximized, shared by every top bar's buttons (one listener for the whole app). The window is
 // asked only once it has stopped resizing: asked while it's being maximized (Windows), the answer waits on the
-// window's own thread, which can be busy with the resize, and the app can hang.
+// window's own thread, which can be busy with the resize, and the app can hang. Only on a computer: the phone loads this
+// file too (main.ts imports both frames), and a phone's window has no such questions (Tauri rejects them).
 const maximized = ref(false)
-if (isTauri()) {
+if (isTauri() && isDesktop) {
   const win = getCurrentWindow()
-  const ask = () => win.isMaximized().then((m) => (maximized.value = m))
+  const ask = () => win.isMaximized().then((m) => (maximized.value = m), () => {})
   let settle: ReturnType<typeof setTimeout> | undefined
   ask()
   win.onResized(() => {

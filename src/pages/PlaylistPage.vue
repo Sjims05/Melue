@@ -12,7 +12,7 @@ import { useRoute, type RouteLocationNormalized } from 'vue-router'
 import { coverMenu, type CoverAction } from '@/components/covers'
 import { EmptyState, ListHeader } from '@/components/page'
 import { SettingsBadge, SettingsTip } from '@/components/settings'
-import { NOT_HERE, SongList, type Song, type SongAction } from '@/components/songs'
+import { FileOff, NOT_HERE, SongList, SpotifyOff, type Song, type SongAction } from '@/components/songs'
 import { Button } from '@/components/ui/button'
 import { library, type Playlist, type PlaylistEntry, type Source } from '@/library'
 import { librarySync, sync, type PlaylistConflict } from '@/library/sync'
@@ -84,7 +84,9 @@ function entrySong(e: PlaylistEntry): Song {
         : e.state === 'here_only' && !playlist.value?.writeBack
           ? 'Only in Melue'
           : undefined
-  return { ...song, key: `e${e.id}`, note, restore: e.state === 'suggested' ? 'Add' : e.state === 'removed_here' ? 'Restore' : undefined }
+  // "Only in Melue": short of room, its icon (not on Spotify, or not in the file).
+  const noteIcon = note === 'Only in Melue' ? (playlist.value?.spotify ? SpotifyOff : FileOff) : undefined
+  return { ...song, key: `e${e.id}`, note, noteIcon, restore: e.state === 'suggested' ? 'Add' : e.state === 'removed_here' ? 'Restore' : undefined }
 }
 // A linked playlist's songs added in Melue that its file doesn't have (not written back to it): how many, for its line.
 const onlyInMelue = computed(() =>

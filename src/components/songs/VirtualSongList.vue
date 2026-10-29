@@ -9,6 +9,7 @@ import { useVirtualizer } from '@tanstack/vue-virtual'
 import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { usePhone } from '@/lib/phone'
 import SongRow from './SongRow.vue'
+import { provideBadgeLevels } from './badgeFit'
 import type { Song, SongAction, SongMenuPlace } from './songMenu'
 
 const props = defineProps<{
@@ -23,6 +24,8 @@ const props = defineProps<{
   /** A number before each song, in the queue's place (its play count, the date it was added), and what it means. */
   numberOf?: (song: Song) => { text: string; title: string }
 }>()
+// Its rows' device badges and notes: words or icons, all together (badgeFit.ts).
+provideBadgeLevels()
 const emit = defineEmits<{
   /** `via`: its play button, or a double-click on the row. */
   play: [song: Song, via: 'button' | 'doubleClick']

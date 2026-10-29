@@ -319,7 +319,7 @@ pub fn connection_began() {
 }
 
 pub fn connection_ended() {
-    let _ = CONNECTIONS.fetch_update(std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst, |n| n.checked_sub(1));
+    let _ = CONNECTIONS.try_update(std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst, |n| n.checked_sub(1));
 }
 
 fn resting() -> bool {

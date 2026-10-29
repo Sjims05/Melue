@@ -52,4 +52,22 @@ export default defineConfig(() => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  // The libraries every page needs in files of their own (Vue, the UI components, the icons, Tauri's bridge, the
+  // rest), beside Melue's own code: none of them one big file (pages are already loaded when opened: router.ts).
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: "vue", test: /[\\/]node_modules[\\/](@vue|vue|vue-router)[\\/]/, priority: 4 },
+            { name: "ui", test: /[\\/]node_modules[\\/](reka-ui|@floating-ui|@internationalized|@vueuse)[\\/]/, priority: 3 },
+            { name: "icons", test: /[\\/]node_modules[\\/]@lucide[\\/]/, priority: 2 },
+            { name: "tauri", test: /[\\/]node_modules[\\/]@tauri-apps[\\/]/, priority: 1 },
+            { name: "libraries", test: /[\\/]node_modules[\\/]/, priority: 0 },
+          ],
+        },
+      },
+    },
+  },
 }));

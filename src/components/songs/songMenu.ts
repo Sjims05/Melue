@@ -5,6 +5,7 @@
 import { CloudUpload, Disc3, FolderOpen, Heart, ListEnd, ListMusic, ListX, Search, User } from '@lucide/vue'
 import { NextIcon } from '@/components/player/icons'
 import type { MenuItem } from '@/components/covers/coverMenu'
+import type { Component } from 'vue'
 
 export interface Song {
   id: number | string
@@ -21,6 +22,8 @@ export interface Song {
   addedAt?: number
   /** A grey note after its title ("Not on this device yet", "Removed from the file"). */
   note?: string
+  /** The note's icon: shown instead of its words when the line is short of room ("Only in Melue": SongRow). */
+  noteIcon?: Component
   /** A greyed song that can come back: its button's word ("Restore", "Add"); the row stays greyed, the button not. */
   restore?: string
   /** Its album's page (Go to album, the album link). */

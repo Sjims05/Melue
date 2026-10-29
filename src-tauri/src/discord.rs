@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::library::{now_ms, Library};
+use crate::library::Library;
 use crate::guard::Locked;
 
 #[cfg(desktop)]
@@ -59,9 +59,10 @@ pub fn discord_status(app: AppHandle) -> &'static str {
 
 impl Library {
     /// This week's listening (the last 7 days, all your devices): how many plays, and the artist played most. Counted
-    /// as the Top songs lists count (plays per day: a song played, not every start or skip).
+    /// as the Top songs lists count (plays per day: a song played, not every start or skip). Discord's: a computer's.
+    #[cfg(desktop)]
     pub fn weekly_listening(&self) -> Result<(i64, Option<String>), String> {
-        let since = now_ms().div_euclid(86_400_000) - 7;
+        let since = crate::library::now_ms().div_euclid(86_400_000) - 7;
         let conn = self.conn();
         let plays: i64 = conn.query_row("SELECT coalesce(sum(plays), 0) FROM all_play_days WHERE day > ?1", [since], |r| r.get(0)).map_err(|e| e.to_string())?;
         let top: Option<String> = conn

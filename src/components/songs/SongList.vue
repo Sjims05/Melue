@@ -6,11 +6,15 @@
  * ("Plays next"; the first, in a list without the playing song: Up next). While a song is dragged, the numbers and "Plays next" follow the order it would make.
  *
  * Narrow (a phone): the album goes, then the length (container widths, not the window's).
+ *
+ * Only the rows in and near the view are drawn; the rest are space of their height, so a long list scrolls and resizes
+ * as a short one does (a list with headings, whose heights differ, draws all its rows).
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { spotlight } from '@/lib/spotlight'
 import { letterOf } from './letters'
 import SongRow from './SongRow.vue'
+import { provideBadgeLevels } from './badgeFit'
 import type { Song, SongAction, SongMenuPlace } from './songMenu'
 
 const props = defineProps<{
@@ -41,6 +45,8 @@ const props = defineProps<{
   /** No covers and no album column on the rows (an album's songs: they'd be the same on each). */
   albumPage?: boolean
 }>()
+// Its rows' device badges and notes: words or icons, all together (badgeFit.ts).
+provideBadgeLevels()
 const emit = defineEmits<{
   /** `via`: its play button, or a double-click on the row. */
   play: [song: Song, via: 'button' | 'doubleClick']
@@ -71,7 +77,9 @@ const rows = computed(() =>
 // Tauri takes drags for files dropped on Melue. Picked up by its handle, the song grows a little and lifts (a shadow)
 // and follows the pointer; the songs it passes slide aside to make room; let go, it glides into its place and settles.
 const LIFT = 1.03
-const drag = ref<{ from: number; to: number; startY: number; dy: number; centers: number[]; height: number } | null>(null)
+// `centers`: each row's middle when it was picked up (on the screen then); `scrolled`: the list's scroll then, so a
+// scroll while it's held (the wheel, or the list scrolling at its edges) counts as moving it.
+const drag = ref<{ from: number; to: number; startY: number; lastY: number; scrolled: number; dy: number; centers: number[]; height: number } | null>(null)
 // After letting go, the rows take their new places without sliding back.
 const settling = ref(false)
 // The song picked up (its key), highlighted until it has glided into its place; then its highlight's background fades
@@ -89,27 +97,53 @@ function grab(event: PointerEvent, index: number) {
   if (!(props.queue || props.reorderable) || props.songs[index].later || !(event.target as HTMLElement).closest('.song-handle')) return
   event.preventDefault()
   const wrapper = event.currentTarget as HTMLElement
-  const rows = [...list.value!.querySelectorAll<HTMLElement>(':scope > [role=listitem]')]
   wrapper.setPointerCapture(event.pointerId)
   lifted.value = props.songs[index].key ?? props.songs[index].id
   drag.value = {
     from: index,
     to: index,
     startY: event.clientY,
+    lastY: event.clientY,
+    scrolled: scroller?.scrollTop ?? 0,
     dy: 0,
-    centers: rows.map((r) => r.getBoundingClientRect().top + r.offsetHeight / 2),
+    centers: centers(),
     height: wrapper.offsetHeight,
   }
+  requestAnimationFrame(scrollAtEdges)
+}
+/** Each row's middle on the screen now: worked out from the row height (not every row is drawn), or measured. */
+function centers(): number[] {
+  const el = list.value!
+  if (windowed.value) {
+    const top = el.getBoundingClientRect().top
+    return props.songs.map((_, i) => top + i * rowHeight.value + rowHeight.value / 2)
+  }
+  return [...el.querySelectorAll<HTMLElement>(':scope > [role=listitem]')].map((r) => r.getBoundingClientRect().top + r.offsetHeight / 2)
 }
 function follow(event: PointerEvent) {
   const d = drag.value
   if (!d) return
-  d.dy = event.clientY - d.startY
+  d.lastY = event.clientY
+  placeHeld(d)
+}
+/** Where the song held goes: after every other song whose middle it has passed (the pointer and the scroll since). */
+function placeHeld(d: NonNullable<typeof drag.value>) {
+  d.dy = d.lastY - d.startY + ((scroller?.scrollTop ?? 0) - d.scrolled)
   const center = d.centers[d.from] + d.dy
   // Its new place: after every other song whose middle it has passed.
   // Not among the songs shown ahead (later): those come after the queue.
   const last = props.songs.findIndex((s) => s.later)
   d.to = Math.min(d.centers.filter((c, i) => i !== d.from && c < center).length, last < 0 ? Infinity : last - 1)
+}
+/** Held near the list's top or bottom edge: it scrolls that way, faster the nearer (to move a song past the view). */
+const EDGE = 56
+function scrollAtEdges() {
+  const d = drag.value
+  if (!d || keyMoving.value || !scroller) return
+  const view = scroller.getBoundingClientRect()
+  const into = d.lastY < view.top + EDGE ? d.lastY - (view.top + EDGE) : d.lastY > view.bottom - EDGE ? d.lastY - (view.bottom - EDGE) : 0
+  if (into) scroller.scrollTop += Math.sign(into) * Math.min(16, Math.ceil(Math.abs(into) / 4))
+  requestAnimationFrame(scrollAtEdges)
 }
 async function letGo() {
   const d = drag.value
@@ -151,13 +185,18 @@ function lastPlace() {
   return (later < 0 ? props.songs.length : later) - 1
 }
 function moveKey(e: KeyboardEvent, index: number) {
+  // Home / End: the first and last songs (lib/hotkeys.ts would go to the first and last drawn).
+  if ((e.key === 'Home' || e.key === 'End') && windowed.value && e.target === e.currentTarget && !keyMoving.value && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    return void goTo(e.key === 'Home' ? 0 : props.songs.length - 1)
+  }
   if (!(props.queue || props.reorderable) || e.ctrlKey || e.altKey || e.metaKey) return
   const d = drag.value
   if (!keyMoving.value || !d) {
     if (e.key === 'Enter' && e.shiftKey && e.target === e.currentTarget && !props.songs[index].later && !drag.value) {
       e.preventDefault()
       const row = e.currentTarget as HTMLElement
-      drag.value = { from: index, to: index, startY: 0, dy: 0, centers: [], height: row.offsetHeight }
+      drag.value = { from: index, to: index, startY: 0, lastY: 0, scrolled: 0, dy: 0, centers: [], height: row.offsetHeight }
       lifted.value = props.songs[index].key ?? props.songs[index].id
       keyMoving.value = true
     }
@@ -322,9 +361,10 @@ watch(
     spotlight.value = null
     const key = song.key ?? song.id
     await new Promise((done) => setTimeout(done, wanted.delay))
+    const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
     const row = rowOf(String(key))
-    if (!row) return
-    row.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' })
+    if (row) row.scrollIntoView({ behavior, block: 'center' })
+    else if (!scrollToIndex(props.songs.indexOf(song), behavior)) return
     lifted.value = key
     setTimeout(() => lifted.value === key && putDown(), 1500)
   },
@@ -359,13 +399,102 @@ function moved(index: number): string | undefined {
   return undefined
 }
 
-// The keyboard: one row at a time takes Tab (the one last moved to); the keys within: lib/hotkeys.ts (listKey).
+// The keyboard: one row at a time takes Tab (the one last moved to, or the first drawn when that one isn't); the keys
+// within: lib/hotkeys.ts (listKey).
 const focused = ref<number | null>(null)
+const tabRow = computed(() => {
+  const f = focused.value ?? 0
+  return f >= shownRows.value.first && f <= shownRows.value.last ? f : shownRows.value.first
+})
+
+// ---- Only the rows in and near the view are drawn, the rest space of their height (all of a long list's rows made
+// resizing the window and scrolling slow). Each row is as tall as the others (SongRow: 68 px, 60 on a phone); a list
+// with headings draws them all. The song held while dragging is always drawn (and the rows between it and the view).
+const OVERSCAN = 5
+const windowed = computed(() => !rows.value.some((r) => r.heading))
+const rowHeight = ref(68)
+const shown = ref({ first: 0, last: 2 * OVERSCAN })
+let scroller: HTMLElement | null = null
+let looking = 0
+/** The closest scrolling box around the list (a page, a panel). */
+function scrollParent(el: HTMLElement): HTMLElement | null {
+  for (let box = el.parentElement; box; box = box.parentElement) {
+    const y = getComputedStyle(box).overflowY
+    if (y === 'auto' || y === 'scroll') return box
+  }
+  return null
+}
+/** Which rows are in and near the view now. */
+function look() {
+  looking = 0
+  const el = list.value
+  if (!el || !windowed.value) return
+  const count = props.songs.length
+  if (!scroller) return void (shown.value = { first: 0, last: count - 1 })
+  // Away (its page kept for later): as it was.
+  if (!el.offsetParent || !scroller.clientHeight) return
+  const row = el.querySelector<HTMLElement>('[data-song-row]')
+  if (row?.offsetHeight) rowHeight.value = row.offsetHeight
+  const h = rowHeight.value
+  const top = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  const first = Math.max(0, Math.min(count - 1, Math.floor(-top / h) - OVERSCAN))
+  const last = Math.max(first, Math.min(count - 1, Math.ceil((scroller.clientHeight - top) / h) + OVERSCAN))
+  if (first !== shown.value.first || last !== shown.value.last) shown.value = { first, last }
+}
+function scrolled() {
+  // Held: the song follows the pointer as the list scrolls under it.
+  if (drag.value && !keyMoving.value) placeHeld(drag.value)
+  looking ||= requestAnimationFrame(look)
+}
+const sizes = new ResizeObserver(() => (looking ||= requestAnimationFrame(look)))
+onMounted(() => {
+  scroller = list.value ? scrollParent(list.value) : null
+  if (list.value?.closest('.mobile-shell')) rowHeight.value = 60
+  scroller?.addEventListener('scroll', scrolled, { passive: true })
+  if (scroller) sizes.observe(scroller)
+  look()
+})
+onActivated(look)
+onBeforeUnmount(() => {
+  scroller?.removeEventListener('scroll', scrolled)
+  sizes.disconnect()
+  cancelAnimationFrame(looking)
+})
+watch(() => props.songs.length, () => nextTick(look))
+/** The rows drawn: the ones in view, and the one held (and those between). */
+const shownRows = computed(() => {
+  const count = rows.value.length
+  if (!windowed.value) return { first: 0, last: count - 1 }
+  let { first, last } = shown.value
+  const held = drag.value?.from
+  if (held != null) [first, last] = [Math.min(first, held), Math.max(last, held)]
+  return { first: Math.min(first, Math.max(0, count - 1)), last: Math.min(last, count - 1) }
+})
+const drawn = computed(() => rows.value.slice(shownRows.value.first, shownRows.value.last + 1))
+const above = computed(() => shownRows.value.first * rowHeight.value)
+const below = computed(() => Math.max(0, rows.value.length - 1 - shownRows.value.last) * rowHeight.value)
+/** Song `index` scrolled to the middle of the view (drawn once it's there). False: no scrolling box. */
+function scrollToIndex(index: number, behavior: ScrollBehavior = 'auto') {
+  if (!scroller || !list.value || index < 0) return false
+  const top = list.value.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop
+  scroller.scrollTo({ top: top + index * rowHeight.value - (scroller.clientHeight - rowHeight.value) / 2, behavior })
+  return true
+}
+/** The keyboard to song `index` (Home, End): scrolled to, drawn, then focused. */
+async function goTo(index: number) {
+  if (index < 0) return
+  focused.value = index
+  scrollToIndex(index)
+  look()
+  await nextTick()
+  rowOf(String(props.songs[index].key ?? props.songs[index].id))?.focus({ preventScroll: true })
+}
 </script>
 
 <template>
   <div ref="list" class="@container" :data-moving="keyMoving || undefined" :class="{ 'song-on-card': onCard, 'song-strong': queue }" role="list">
-    <template v-for="{ song, index, heading } in rows" :key="song.key ?? song.id">
+    <div v-if="above" aria-hidden="true" :style="{ height: `${above}px` }" />
+    <template v-for="{ song, index, heading } in drawn" :key="song.key ?? song.id">
       <div v-if="heading" class="mt-4 mb-1 px-2 text-sm font-semibold text-muted-foreground first:mt-0">{{ heading }}</div>
       <!-- While a song is picked up and placed, the others don't light up under the pointer (song-quiet: their hover
            look is off, the pointer still reaches them, so the one under it lights up as soon as placing is done). -->
@@ -384,7 +513,7 @@ const focused = ref<number | null>(null)
         ]"
         :style="{ translate: moved(index), scale: drag?.from === index ? LIFT : undefined }"
         :data-song="song.key ?? song.id"
-        :tabindex="index === (focused ?? 0) ? 0 : -1"
+        :tabindex="index === tabRow ? 0 : -1"
         @focus="focused = index"
         @keydown="moveKey($event, index)"
         @pointerdown="grab($event, index)"
@@ -415,5 +544,6 @@ const focused = ref<number | null>(null)
         />
       </div>
     </template>
+    <div v-if="below" aria-hidden="true" :style="{ height: `${below}px` }" />
   </div>
 </template>
