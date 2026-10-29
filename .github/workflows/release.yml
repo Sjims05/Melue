@@ -1,25 +1,20 @@
-# A release, at the end of a phase: pushing its version tag (v0.6.0: a phase's versions end in .0; the steps' don't, and
-# make no release) builds Melue for Windows here (or Run workflow on GitHub, for a tag), signs its update with Melue's key
-# (the repository secret TAURI_SIGNING_PRIVATE_KEY), and makes a draft release with the installer, the update and
-# latest.json, its notes from CHANGELOG.md. Publishing the draft (on GitHub) makes it the latest release: installed
+# A release: pushing its version tag (since 1.0 every version is one, v1.0.2; before, only a phase's .0) builds Melue
+# for Windows here (or Run workflow on GitHub, for a tag), signs its update with Melue's key (the repository secret
+# TAURI_SIGNING_PRIVATE_KEY), and makes a draft release with the installer, the update and latest.json, its notes from
+# CHANGELOG.md. Publishing the draft (on GitHub) makes it the latest release: installed
 # copies then update to it (src/lib/updates.ts). Drafts and pre-releases never reach them.
 name: Release
-# A run by hand: named by `title` (its version commit's first line, as a tag push's run is named by GitHub itself;
-# none: GitHub's name, "Release").
-run-name: ${{ inputs.title || '' }}
 
 on:
   push:
-    tags: ['v*.*.0']
+    # (A tag push's run is named after its version commit, "v1.0.2: …"; a run by hand only "Release".)
+    tags: ['v*.*.*']
   # By hand (Actions → Release → Run workflow): the tag to build (an existing one, say v0.6.0).
   workflow_dispatch:
     inputs:
       tag:
         description: The version tag to build (v0.6.0)
         required: true
-      title:
-        description: The run's name (the version commit's first line, e.g. "v1.0.2: …")
-        required: false
 
 # The tag built: the pushed one, or the one asked for.
 env:
