@@ -426,6 +426,12 @@ pub fn library_playlist_entries(library: State<'_, Library>, id: i64) -> Result<
     library.playlist_entries(id)
 }
 
+/// A Spotify playlist's songs' links on Spotify, by their lines (the entries' `fileEntry`; the ones known).
+#[tauri::command(async)]
+pub fn library_spotify_links(library: State<'_, Library>, id: i64) -> Result<std::collections::HashMap<String, String>> {
+    Ok(library.spotify_tracks(id)?.into_iter().map(|(line, track)| (line, crate::library::spotify::track_link(&track))).collect())
+}
+
 #[tauri::command(async)]
 pub fn library_create_playlist(app: AppHandle, library: State<'_, Library>, name: String) -> Result<Playlist> {
     let playlist = library.create_playlist(&name)?;

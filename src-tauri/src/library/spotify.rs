@@ -13,7 +13,11 @@
 //!
 //! Its picture is Spotify's (640 px), downloaded by each device; your own cover goes over it, and it can show its
 //! songs' covers instead (`songs_cover`, synced too).
+//!
+//! Each song's id on Spotify is kept beside its line (spotify_tracks, synced in the reference too), for links to the
+//! songs you don't have: pasted into a playlist in Spotify on a computer, they add them.
 
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -44,6 +48,8 @@ pub struct SpotifySong {
     /// The artists, as Spotify lists them ("ABBA", "Artist A, Artist B").
     pub artist: String,
     pub duration_ms: Option<i64>,
+    /// Its id on Spotify (None: not known, e.g. a CSV without it).
+    pub track: Option<String>,
 }
 
 impl SpotifyList {
@@ -114,6 +120,8 @@ pub fn parse_embed(html: &str) -> Result<SpotifyList> {
         title: String,
         subtitle: String,
         duration: Option<i64>,
+        /// "spotify:track:<id>".
+        uri: Option<String>,
     }
     let start = html.find(r#"<script id="__NEXT_DATA__" type="application/json">"#).ok_or("Spotify didn’t show that playlist (is it public?)")?;
     let json = &html[start..];
@@ -131,7 +139,11 @@ pub fn parse_embed(html: &str) -> Result<SpotifyList> {
     let entity: Entity = serde_json::from_value(entity.clone()).map_err(|_| "Spotify’s page has changed".to_string())?;
     Ok(SpotifyList {
         name: entity.name,
-        songs: entity.track_list.into_iter().map(|t| SpotifySong { title: t.title, artist: t.subtitle, duration_ms: t.duration }).collect(),
+        songs: entity
+            .track_list
+            .into_iter()
+            .map(|t| SpotifySong { track: t.uri.as_deref().and_then(track_id), title: t.title, artist: t.subtitle, duration_ms: t.duration })
+            .collect(),
         total: None,
         cover,
     })
@@ -159,7 +171,25 @@ pub fn line(song: &SpotifySong) -> FileLine {
 /// The song a Spotify line stands for (None: not a Spotify line).
 pub fn from_line(entry: &str) -> Option<SpotifySong> {
     let (artist, title, duration_ms): (String, String, Option<i64>) = serde_json::from_str(entry.strip_prefix("spotify:")?).ok()?;
-    Some(SpotifySong { title, artist, duration_ms })
+    Some(SpotifySong { title, artist, duration_ms, track: None })
+}
+
+/// A song's id on Spotify, from its URI ("spotify:track:<id>"), its link (open.spotify.com/track/<id>) or the id
+/// itself (22 letters and digits).
+pub fn track_id(text: &str) -> Option<String> {
+    let text = text.trim();
+    let (id, said) = match (text.strip_prefix("spotify:track:"), text.find("/track/")) {
+        (Some(id), _) => (id, true),
+        (None, Some(at)) => (&text[at + 7..], true),
+        (None, None) => (text, false),
+    };
+    let id: String = id.chars().take_while(char::is_ascii_alphanumeric).collect();
+    (!id.is_empty() && (said || id.len() == 22)).then_some(id)
+}
+
+/// A song's link on Spotify.
+pub fn track_link(id: &str) -> String {
+    format!("https://open.spotify.com/track/{id}")
 }
 
 /// What changing means for a long playlist (the "!"): its first songs and its count, as one text.
@@ -177,6 +207,8 @@ pub fn parse_csv(text: &str) -> Result<Vec<SpotifySong>> {
     let title = find(&["track name", "song", "title", "name"]).ok_or("the file has no column for the songs’ titles")?;
     let artist = find(&["artist"]).ok_or("the file has no column for the artists")?;
     let duration = find(&["duration", "length", "time"]);
+    // The song's id: a URI, an id or a link column (the song's own before others').
+    let track = ["track uri", "track id", "spotify id", "track url", "spotify url", "uri", "url", "link"].iter().find_map(|n| header.iter().position(|h| h.contains(n)));
     let mut songs = Vec::new();
     for row in rows {
         let cell = |i: usize| row.get(i).map(|c| c.trim().to_string()).unwrap_or_default();
@@ -185,7 +217,7 @@ pub fn parse_csv(text: &str) -> Result<Vec<SpotifySong>> {
             continue;
         }
         let duration_ms = duration.map(cell).and_then(|d| parse_length(&d));
-        songs.push(SpotifySong { title, artist, duration_ms });
+        songs.push(SpotifySong { title, artist, duration_ms, track: track.map(cell).as_deref().and_then(track_id) });
     }
     if songs.is_empty() {
         return Err("the file has no songs".into());
@@ -215,6 +247,9 @@ pub struct SpotifyRef {
     /// Its songs' covers shown instead of Spotify's picture.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub songs_cover: bool,
+    /// Its songs' ids on Spotify, by their lines (not all known: from before 1.0.2, or a CSV without them).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tracks: BTreeMap<String, String>,
 }
 
 /// Playlist `id`'s Spotify reference (None: not a Spotify playlist).
@@ -232,7 +267,37 @@ pub(crate) fn spotify_ref(conn: &Connection, id: i64) -> Result<Option<SpotifyRe
     let Some((Some(spotify), total, seen, changed, read_at, cover, songs_cover)) = row else { return Ok(None) };
     let mut stmt = conn.prepare("SELECT file_entry FROM playlist_snapshots WHERE playlist_id = ?1 ORDER BY position").map_err(err)?;
     let lines = stmt.query_map([id], |r| r.get(0)).map_err(err)?.collect::<rusqlite::Result<_>>().map_err(err)?;
-    Ok(Some(SpotifyRef { id: spotify, lines, total, seen, changed, read_at, cover, songs_cover }))
+    let tracks = tracks_of(conn, id)?.into_iter().collect();
+    Ok(Some(SpotifyRef { id: spotify, lines, total, seen, changed, read_at, cover, songs_cover, tracks }))
+}
+
+/// Playlist `id`'s songs' ids on Spotify, by their lines.
+fn tracks_of(conn: &Connection, id: i64) -> Result<HashMap<String, String>> {
+    let mut stmt = conn.prepare("SELECT line, track FROM spotify_tracks WHERE playlist_id = ?1").map_err(err)?;
+    let rows = stmt.query_map([id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err)?;
+    rows.collect::<rusqlite::Result<_>>().map_err(err)
+}
+
+/// Keeps the ids of a read's songs (`whole`: the read has all of the playlist's songs, so the ids of songs no longer
+/// in it go).
+fn keep_tracks(tx: &Transaction, id: i64, songs: &[SpotifySong], whole: bool) -> Result<()> {
+    if whole {
+        let lines: HashSet<String> = songs.iter().map(|s| line(s).entry).collect();
+        for gone in tracks_of(tx, id)?.into_keys().filter(|l| !lines.contains(l)) {
+            tx.execute("DELETE FROM spotify_tracks WHERE playlist_id = ?1 AND line = ?2", params![id, gone]).map_err(err)?;
+        }
+    }
+    for song in songs {
+        if let Some(track) = &song.track {
+            tx.execute(
+                "INSERT INTO spotify_tracks (playlist_id, line, track) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (playlist_id, line) DO UPDATE SET track = excluded.track",
+                params![id, line(song).entry, track],
+            )
+            .map_err(err)?;
+        }
+    }
+    Ok(())
 }
 
 /// After reading Spotify: a reference that changed counts as read now (the share gets it at the next sync).
@@ -269,6 +334,13 @@ pub(crate) fn apply_synced(tx: &Transaction, id: i64, entries: &[SyncEntry], ref
     for (position, line) in reference.lines.iter().enumerate() {
         tx.execute("INSERT INTO playlist_snapshots (playlist_id, position, file_entry) VALUES (?1, ?2, ?3)", params![id, position as i64, line])
             .map_err(err)?;
+    }
+    // Its songs' ids (none: from a device before 1.0.2, so the ones here stay).
+    if !reference.tracks.is_empty() {
+        tx.execute("DELETE FROM spotify_tracks WHERE playlist_id = ?1", [id]).map_err(err)?;
+        for (line, track) in &reference.tracks {
+            tx.execute("INSERT INTO spotify_tracks (playlist_id, line, track) VALUES (?1, ?2, ?3)", params![id, line, track]).map_err(err)?;
+        }
     }
 
     /// A row of the playlist, and the reference's line it stands for.
@@ -340,6 +412,7 @@ impl Library {
         let playlist = tx.last_insert_rowid();
         let lines: Vec<FileLine> = list.songs.iter().map(line).collect();
         apply_file(&tx, playlist, "", &lines, index)?;
+        keep_tracks(&tx, playlist, &list.songs, list.complete())?;
         tx.commit().map_err(err)?;
         Ok(playlist)
     }
@@ -373,6 +446,7 @@ impl Library {
             let differs = seen.as_deref() != Some(signature(list).as_str());
             tx.execute("UPDATE playlists SET spotify_changed = ?2 WHERE id = ?1 AND spotify_changed != ?2", params![playlist, differs]).map_err(err)? > 0
         };
+        keep_tracks(&tx, playlist, &list.songs, list.complete())?;
         mark_read(&tx, playlist, &before)?;
         tx.commit().map_err(err)?;
         Ok(changed)
@@ -466,9 +540,19 @@ impl Library {
             params![playlist, total, seen],
         )
         .map_err(err)?;
+        // The file's ids (when it has them), and the first songs' from Spotify now.
+        keep_tracks(&tx, playlist, &songs, songs.iter().any(|s| s.track.is_some()))?;
+        if let Some(list) = &now {
+            keep_tracks(&tx, playlist, &list.songs, false)?;
+        }
         mark_read(&tx, playlist, &before)?;
         tx.commit().map_err(err)?;
         Ok(changed)
+    }
+
+    /// A Spotify playlist's songs' ids on Spotify, by their lines (the entries' `fileEntry`).
+    pub fn spotify_tracks(&self, playlist: i64) -> Result<HashMap<String, String>> {
+        tracks_of(&self.conn(), playlist)
     }
 }
 
@@ -559,10 +643,11 @@ mod tests {
 
     #[test]
     fn the_embeds_songs_and_the_pages_count() {
-        let embed = r#"<html><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"state":{"data":{"entity":{"name":"Mix","trackList":[{"title":"Song One","subtitle":"Band A, Band B","duration":215000}]}}}}}}</script></html>"#;
+        let embed = r#"<html><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"state":{"data":{"entity":{"name":"Mix","trackList":[{"title":"Song One","subtitle":"Band A, Band B","duration":215000,"uri":"spotify:track:5LxvwujISqiB8vpRYv887S"}]}}}}}}</script></html>"#;
         let list = parse_embed(embed).unwrap();
         assert_eq!(list.name, "Mix");
-        assert_eq!(list.songs, vec![SpotifySong { title: "Song One".into(), artist: "Band A, Band B".into(), duration_ms: Some(215000) }]);
+        let song = SpotifySong { title: "Song One".into(), artist: "Band A, Band B".into(), duration_ms: Some(215000), track: Some("5LxvwujISqiB8vpRYv887S".into()) };
+        assert_eq!(list.songs, vec![song]);
         assert_eq!(song_count(r#"<meta name="music:song_count" content="150"/>"#), Some(150));
     }
 
@@ -570,10 +655,25 @@ mod tests {
     fn a_websites_csv_with_its_own_columns() {
         // Exportify's columns (a quoted title with a comma, a length in ms).
         let exportify = "\"Track URI\",\"Track Name\",\"Artist Name(s)\",\"Duration (ms)\"\nspotify:track:1,\"Song, Two\",Band,215000\n";
-        assert_eq!(parse_csv(exportify).unwrap(), vec![SpotifySong { title: "Song, Two".into(), artist: "Band".into(), duration_ms: Some(215000) }]);
+        let song = SpotifySong { title: "Song, Two".into(), artist: "Band".into(), duration_ms: Some(215000), track: Some("1".into()) };
+        assert_eq!(parse_csv(exportify).unwrap(), vec![song]);
         // Another site's: "Song", "Artist", "Time" in m:ss.
         let other = "#,Song,Artist,Album,Time\n1,Song Three,Band,Album,3:35\n";
         assert_eq!(parse_csv(other).unwrap()[0].duration_ms, Some(215000));
+        assert_eq!(parse_csv(other).unwrap()[0].track, None);
+        // A link column, after an artist's URI.
+        let links = "Title,Artist,Artist URI,Spotify URL\nSong,Band,spotify:artist:0abc,https://open.spotify.com/track/5LxvwujISqiB8vpRYv887S?si=x\n";
+        assert_eq!(parse_csv(links).unwrap()[0].track.as_deref(), Some("5LxvwujISqiB8vpRYv887S"));
+    }
+
+    #[test]
+    fn a_songs_id_from_its_uri_link_or_itself() {
+        assert_eq!(track_id("spotify:track:5LxvwujISqiB8vpRYv887S").as_deref(), Some("5LxvwujISqiB8vpRYv887S"));
+        assert_eq!(track_id("https://open.spotify.com/track/5LxvwujISqiB8vpRYv887S?si=1").as_deref(), Some("5LxvwujISqiB8vpRYv887S"));
+        assert_eq!(track_id("5LxvwujISqiB8vpRYv887S").as_deref(), Some("5LxvwujISqiB8vpRYv887S"));
+        assert_eq!(track_id("spotify:artist:0abc"), None);
+        assert_eq!(track_id("Song Three"), None);
+        assert_eq!(track_link("5LxvwujISqiB8vpRYv887S"), "https://open.spotify.com/track/5LxvwujISqiB8vpRYv887S");
     }
 
     /// Spotify itself (run by hand: cargo test spotify_live -- --ignored).

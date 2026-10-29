@@ -6,7 +6,7 @@
  * an auto playlist hides. A song's card uses the
  * song's own menu (songMenu): Add to playlist is for songs only.
  */
-import { AudioLines, ClipboardList, Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, LayoutGrid, Link, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
+import { AudioLines, ClipboardList, Cloud, EyeOff, FileDown, ImageMinus, ImagePlus, Info, LayoutGrid, Link, Link2, ListEnd, Lock, Pencil, Shuffle, Trash2, Unlink, User } from '@lucide/vue'
 import { NextIcon, PlayIcon } from '@/components/player/icons'
 import type { Component } from 'vue'
 
@@ -21,6 +21,7 @@ export type CoverAction =
   | 'syncEverywhere'
   | 'unlink'
   | 'copyMissing'
+  | 'copyMissingLinks'
   | 'follow'
   | 'delete'
   | 'hide'
@@ -93,6 +94,7 @@ export function coverMenu(what: CoverKind, exportable = false): MenuItem<CoverAc
                         ? [{ action: 'syncEverywhere' as const, label: 'Sync to your other devices', icon: Cloud }]
                         : []),
                     { action: 'copyMissing', label: 'Copy the songs you don’t have', icon: ClipboardList },
+                    { action: 'copyMissingLinks', label: 'Copy their Spotify links', icon: Link2 },
                     { action: 'unlink', label: 'Stop following Spotify…', icon: Unlink },
                   ]
                 : []

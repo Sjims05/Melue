@@ -5,7 +5,7 @@ use super::testkit::{Tags, TestLibrary};
 use super::TrackSort;
 
 fn song(artist: &str, title: &str, seconds: i64) -> SpotifySong {
-    SpotifySong { title: title.into(), artist: artist.into(), duration_ms: Some(seconds * 1000) }
+    SpotifySong { title: title.into(), artist: artist.into(), duration_ms: Some(seconds * 1000), track: Some(format!("id{title}").replace(' ', "")) }
 }
 
 /// A library with "Song One" by Band (1 s long, as the test kit's songs are).
@@ -29,6 +29,21 @@ fn songs(t: &TestLibrary, id: i64) -> Vec<(String, bool)> {
             None => (e.sync_title.unwrap_or_default(), false),
         })
         .collect()
+}
+
+#[test]
+fn its_songs_ids_are_kept_for_links_and_go_with_them() {
+    let t = library("spotify-ids");
+    let index = t.library.track_index().unwrap();
+    let list = SpotifyList { name: "Mix".into(), songs: vec![song("Band", "Song One", 1), song("Other", "Not Here", 200)], total: Some(2), cover: None };
+    let id = t.library.add_spotify_list("abc", &list, &index).unwrap();
+    // By the entries' lines: the missing song's id, to link to it.
+    let missing = t.library.playlist_entries(id).unwrap().into_iter().find(|e| e.track.is_none()).unwrap();
+    assert_eq!(t.library.spotify_tracks(id).unwrap().get(&missing.file_entry.unwrap()).map(String::as_str), Some("idNotHere"));
+    // Gone from Spotify: its id goes too.
+    let now = SpotifyList { songs: vec![song("Band", "Song One", 1)], total: Some(1), ..list };
+    t.library.update_from_list(id, None, &now, &index).unwrap();
+    assert_eq!(t.library.spotify_tracks(id).unwrap().into_values().collect::<Vec<_>>(), ["idSongOne"]);
 }
 
 #[test]

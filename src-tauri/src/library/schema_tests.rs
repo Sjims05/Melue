@@ -53,7 +53,7 @@ fn every_table_is_there_and_foreign_keys_are_enforced() {
     let conn = t.library.conn();
     for table in [
         "settings", "folders", "covers", "artists", "albums", "tracks", "track_artists", "playlists",
-        "playlist_entries", "playlist_snapshots", "likes", "track_stats", "plays",
+        "playlist_entries", "playlist_snapshots", "spotify_tracks", "likes", "track_stats", "plays",
     ] {
         let n = count(&conn, &format!("SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = '{table}'"));
         assert_eq!(n, 1, "table {table}");

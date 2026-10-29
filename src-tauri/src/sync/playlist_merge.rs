@@ -72,6 +72,8 @@ pub enum Theirs {
 }
 
 /// What to do with a playlist.
+// (Use's playlist makes it the big one: one at a time, while a playlist syncs.)
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     Nothing,

@@ -439,6 +439,8 @@ export const library = {
   playlists: () => invoke<Playlist[]>('library_playlists'),
   playlist: (id: number) => invoke<Playlist>('library_playlist', { id }),
   playlistEntries: (id: number) => invoke<PlaylistEntry[]>('library_playlist_entries', { id }),
+  /** A Spotify playlist's songs' links on Spotify, by their entries' `fileEntry` (the ones known). */
+  spotifyLinks: (id: number) => invoke<Record<string, string>>('library_spotify_links', { id }),
   createPlaylist: (name: string) => invoke<Playlist>('library_create_playlist', { name }),
   renamePlaylist: (id: number, name: string) => invoke<Playlist>('library_rename_playlist', { id, name }),
   /** Deletes a playlist (its songs stay in the library). */

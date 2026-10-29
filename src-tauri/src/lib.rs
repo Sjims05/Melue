@@ -312,6 +312,7 @@ pub fn run() {
             library::library_playlists,
             library::library_playlist,
             library::library_playlist_entries,
+            library::library_spotify_links,
             library::library_create_playlist,
             library::library_rename_playlist,
             library::library_delete_playlist,

@@ -3,9 +3,9 @@
  * the playing items), rename it (its name turns into a text field: `renaming`), keep it only here (asked first: the
  * other devices keep theirs, or it's taken off them) or sync it, stop following its file or Spotify (asked first)
  * or follow it again, delete it (asked first), copy a Spotify playlist's songs you don't have ("Artist – Title"
- * lines), and the About items (`asking`, shown by PlaylistDialogs).
+ * lines, or their links on Spotify: pasted into a playlist in Spotify on a computer, they add them), and the About items (`asking`, shown by PlaylistDialogs).
  */
-import { ClipboardList } from '@lucide/vue'
+import { ClipboardList, Link2 } from '@lucide/vue'
 import { ref } from 'vue'
 import type { CoverAction } from '@/components/covers'
 import { library, type Playlist } from '@/library'
@@ -41,6 +41,8 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
       await exportList(`playlist:${p.id}`, p.name)
     } else if (action === 'copyMissing') {
       await copyMissing(p)
+    } else if (action === 'copyMissingLinks') {
+      await copyMissingLinks(p)
     } else if (action === 'follow') {
       await library.setPlaylistFollowing(p.id, true)
       await changed()
@@ -73,6 +75,22 @@ export function usePlaylistActions(changed: () => unknown, deleted?: () => unkno
     try {
       await navigator.clipboard.writeText(lines.join('\n'))
       toast(`Copied ${missing.length} ${missing.length === 1 ? 'song' : 'songs'} you don’t have`, ClipboardList)
+    } catch {
+      toast('Couldn’t copy')
+    }
+  }
+  async function copyMissingLinks(p: Playlist) {
+    const [entries, links] = await Promise.all([library.playlistEntries(p.id), library.spotifyLinks(p.id)])
+    const missing = entries.filter((e) => !e.track && e.syncTitle)
+    if (!missing.length) return toast('You have all its songs', Link2)
+    // Songs read before Melue kept their ids have none until the playlist's next update.
+    const found = missing.flatMap((e) => (e.fileEntry && links[e.fileEntry] ? [links[e.fileEntry]] : []))
+    if (!found.length) return toast('No Spotify links yet: they come with the playlist’s next update', Link2)
+    const without = missing.length - found.length
+    try {
+      await navigator.clipboard.writeText(found.join('\n'))
+      const count = `${found.length} ${found.length === 1 ? 'link' : 'links'}${without ? ` (${without} without one yet)` : ''}`
+      toast(`Copied ${count}. In Spotify on a computer, open a playlist and press Ctrl+V`, Link2)
     } catch {
       toast('Couldn’t copy')
     }

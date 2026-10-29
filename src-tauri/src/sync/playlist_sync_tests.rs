@@ -480,7 +480,7 @@ fn settings_go_across_devices_the_newest_change_winning_and_a_new_device_doesnt_
 // ---- Spotify playlists: synced like Melue's own, with Spotify's list as their reference.
 
 fn spotify(songs: &[&str]) -> crate::library::spotify::SpotifyList {
-    let songs = songs.iter().map(|s| crate::library::spotify::SpotifySong { title: s.to_string(), artist: "Band".into(), duration_ms: Some(1000) });
+    let songs = songs.iter().map(|s| crate::library::spotify::SpotifySong { title: s.to_string(), artist: "Band".into(), duration_ms: Some(1000), track: Some(format!("id{s}")) });
     crate::library::spotify::SpotifyList { name: "Mix".into(), songs: songs.collect(), total: None, cover: None }
 }
 
@@ -527,9 +527,12 @@ fn a_spotify_playlist_syncs_with_its_reference_and_your_changes() {
     desktop.add_spotify(&["A", "B", "Gone"]);
     desktop.sync(&share);
     phone.sync(&share);
-    // On the phone: following Spotify, matched to the phone's songs.
+    // On the phone: following Spotify, matched to the phone's songs (their ids on Spotify too, for links).
     assert!(phone.follows_spotify("Mix"));
     assert_eq!(phone.states("Mix"), ["A", "B", "(Gone)"]);
+    let mut ids: Vec<String> = phone.lib().spotify_tracks(phone.playlist_id("Mix")).unwrap().into_values().collect();
+    ids.sort();
+    assert_eq!(ids, ["idA", "idB", "idGone"]);
     // Removed on the phone: greyed on the desktop (Restore), still followed.
     phone.lib().remove_from_playlist(phone.playlist_id("Mix"), &[phone.lib().playlist_entries(phone.playlist_id("Mix")).unwrap()[0].id]).unwrap();
     phone.sync(&share);
