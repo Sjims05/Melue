@@ -14,6 +14,7 @@ Smoother resizing, and long playlists that scroll as short ones do.
   together; "Only in Melue" has its own icon (Spotify's, or a file's, slashed). The album and length columns slide in
   and out as the list gets wider or narrower, and songs without them give their room to the title.
 - A start-up error on phones is gone.
+- Security updates: the updater's zip library, and the build tools (Vite, source-map-js).
 
 ## 1.0.2 (2026-10-29)
 
