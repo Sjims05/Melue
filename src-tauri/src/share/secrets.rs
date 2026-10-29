@@ -184,9 +184,9 @@ mod tests {
 
     fn round_trip(secrets: &dyn Secrets) {
         assert_eq!(secrets.get("share").unwrap(), None);
-        secrets.set("share", "hunter2").unwrap();
+        secrets.set("share", "test-password").unwrap();
         secrets.set("other", "x").unwrap();
-        assert_eq!(secrets.get("share").unwrap().as_deref(), Some("hunter2"));
+        assert_eq!(secrets.get("share").unwrap().as_deref(), Some("test-password"));
         secrets.set("share", "changed").unwrap();
         assert_eq!(secrets.get("share").unwrap().as_deref(), Some("changed"));
         secrets.delete("share").unwrap();
@@ -213,8 +213,8 @@ mod tests {
         let key = format!("melue-test-{}", crate::library::testkit::unique());
         let secrets = SystemSecrets {};
         assert_eq!(secrets.get(&key).unwrap(), None);
-        secrets.set(&key, "hunter2").unwrap();
-        assert_eq!(secrets.get(&key).unwrap().as_deref(), Some("hunter2"));
+        secrets.set(&key, "test-password").unwrap();
+        assert_eq!(secrets.get(&key).unwrap().as_deref(), Some("test-password"));
         secrets.delete(&key).unwrap();
         assert_eq!(secrets.get(&key).unwrap(), None);
     }

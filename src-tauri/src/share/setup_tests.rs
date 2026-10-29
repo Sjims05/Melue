@@ -9,7 +9,8 @@ use crate::library::sync::SHARE_SETTING;
 use crate::library::testkit::{Tags, TestLibrary};
 use crate::library::FolderKind;
 
-const RIGHT: &str = "hunter2";
+/// The share's password in these tests (made up: the test kit's folder share stands in for the NAS).
+const RIGHT: &str = "test-password";
 
 /// A secure store that isn't there (a system without a keyring).
 struct NoKeyring;

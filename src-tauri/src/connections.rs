@@ -165,10 +165,10 @@ mod tests {
 
     #[test]
     fn a_sign_in_is_sealed_with_the_shares_password_and_only_that_opens_it() {
-        let (token, plain) = seal(Some("hunter2"), "gho_secret").unwrap();
+        let (token, plain) = seal(Some("test-password"), "gho_secret").unwrap();
         assert!(!plain && !token.contains("gho_secret"));
         let shared = Shared { login: Some("me".into()), token: Some(token), plain, changed_at: 5 };
-        assert_eq!(open(Some("hunter2"), &shared).unwrap(), "gho_secret");
+        assert_eq!(open(Some("test-password"), &shared).unwrap(), "gho_secret");
         assert!(open(Some("another"), &shared).is_err());
         assert!(open(None, &shared).is_err());
         // A share without a password: as it is.
