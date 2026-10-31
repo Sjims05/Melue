@@ -97,8 +97,8 @@ fn the_lists_in_order_with_their_settings() {
 
     let lists = t.library.auto_playlists().unwrap();
     let sources: Vec<&str> = lists.iter().map(|l| l.source.as_str()).collect();
-    // One folder: no folder lists (All songs is the same).
-    assert_eq!(sources, vec!["songs", "liked", "top:month", "top:half-year", "top:year", "top:all-time"]);
+    // One folder: its list too (the same songs as All songs, but there, so the folder doesn't seem left out).
+    assert_eq!(sources, vec!["songs", "liked", "top:month", "top:half-year", "top:year", "top:all-time", &format!("folder:{f}")]);
     assert_eq!((lists[0].songs, lists[1].songs, lists[2].songs), (2, 1, 0));
     assert_eq!((lists[2].kind, lists[2].size), (AutoKind::Top, Some(DEFAULT_SIZE)));
     assert_eq!(lists[0].size, None);

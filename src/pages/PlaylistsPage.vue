@@ -5,7 +5,7 @@
  * it, rename it (its name turns into a text field), keep it only here or sync it, stop following its file, delete it
  * (both asked first), and About how it lives (actions.ts, PlaylistDialogs).
  * A synced playlist changed on two devices that don't agree says it needs a choice. Then Made for you: All songs,
- * Liked songs, the Top songs lists and the music folders (with two or more), each can be hidden (Settings shows them
+ * Liked songs, the Top songs lists and the music folders, each can be hidden (Settings shows them
  * again). It follows the library and the sync.
  */
 import { AudioLines, CircleAlert, ListMusic, Plus } from '@lucide/vue'

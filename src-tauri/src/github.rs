@@ -72,6 +72,20 @@ static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
 /// Counts sign-ins started or cancelled: a wait that sees it change stops.
 static ATTEMPT: AtomicU64 = AtomicU64::new(0);
 
+/// A request that failed, said plainly: GitHub not reached (offline, or its name not found: a VPN's name lookup, say),
+/// or what else went wrong.
+fn unreached(e: ureq::Error) -> String {
+    if offline(&e) { UNREACHED.into() } else { e.to_string() }
+}
+
+const UNREACHED: &str = "Can’t reach GitHub: check the connection";
+
+/// GitHub not reached: no connection, or none for this app just now (a phone cuts an app's network while it's in the
+/// background, as while the code is entered in the browser: even looking up a name fails then).
+fn offline(e: &ureq::Error) -> bool {
+    matches!(e, ureq::Error::Io(_) | ureq::Error::Timeout(_) | ureq::Error::HostNotFound | ureq::Error::ConnectionFailed)
+}
+
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(20)))
@@ -89,7 +103,7 @@ pub fn github_sign_in_start() -> Result<SignInCode, String> {
         .post(DEVICE_CODE_URL)
         .header("Accept", "application/json")
         .send_form([("client_id", CLIENT_ID)])
-        .map_err(|e| e.to_string())?;
+        .map_err(unreached)?;
     if answer.status() != 200 {
         return Err(format!("GitHub answered {}", answer.status()));
     }
@@ -122,18 +136,19 @@ pub fn github_sign_in_wait(app: AppHandle) -> Result<String, String> {
         if Instant::now() > until {
             return Err("expired".into());
         }
-        let answer: TokenAnswer = agent()
-            .post(TOKEN_URL)
-            .header("Accept", "application/json")
-            .send_form([
-                ("client_id", CLIENT_ID),
-                ("device_code", device_code.as_str()),
-                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-            ])
-            .map_err(|e| e.to_string())?
-            .body_mut()
-            .read_json()
-            .map_err(|e| e.to_string())?;
+        let sent = agent().post(TOKEN_URL).header("Accept", "application/json").send_form([
+            ("client_id", CLIENT_ID),
+            ("device_code", device_code.as_str()),
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+        ]);
+        let mut answer = match sent {
+            Ok(answer) => answer,
+            // Not reached (on a phone, most likely Melue in the background while the code is entered): asked again
+            // next time, until the code runs out (back in Melue, it gets through).
+            Err(e) if offline(&e) => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        let answer: TokenAnswer = answer.body_mut().read_json().map_err(|e| e.to_string())?;
         if let Some(token) = answer.access_token {
             break token;
         }
@@ -145,7 +160,16 @@ pub fn github_sign_in_wait(app: AppHandle) -> Result<String, String> {
             other => return Err(format!("GitHub answered {}", other.unwrap_or("nothing"))),
         }
     };
-    let login = account(&token)?;
+    // The account's name: tried again for a while when GitHub isn't reached (Melue still in the background).
+    let tries_until = Instant::now() + Duration::from_secs(120);
+    let login = loop {
+        match account(&token) {
+            Err(e) if e == UNREACHED && Instant::now() < tries_until && ATTEMPT.load(Ordering::SeqCst) == attempt => {
+                std::thread::sleep(Duration::from_secs(2))
+            }
+            other => break other?,
+        }
+    };
     SystemSecrets::new(&app).set(TOKEN_KEY, &token)?;
     app.state::<Library>().set_setting(LOGIN_SETTING, &login).map_err(|e| e.to_string())?;
     // Your other devices too.
@@ -202,7 +226,7 @@ pub fn create_issue(app: &AppHandle, title: &str, body: &str) -> Result<String, 
         .header("Accept", "application/vnd.github+json")
         .header("Authorization", &format!("Bearer {token}"))
         .send_json(serde_json::json!({ "title": title, "body": body }))
-        .map_err(|e| e.to_string())?;
+        .map_err(unreached)?;
     match answer.status().as_u16() {
         201 => Ok(answer.body_mut().read_json::<Issue>().map_err(|e| e.to_string())?.html_url),
         401 => {
@@ -220,7 +244,7 @@ fn account(token: &str) -> Result<String, String> {
         .header("Accept", "application/vnd.github+json")
         .header("Authorization", &format!("Bearer {token}"))
         .call()
-        .map_err(|e| e.to_string())?;
+        .map_err(unreached)?;
     if answer.status() != 200 {
         return Err(format!("GitHub answered {}", answer.status()));
     }

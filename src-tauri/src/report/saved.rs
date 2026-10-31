@@ -1,7 +1,8 @@
 //! Reports kept until they're sent, and after (About lists them): `<app data>/reports/<id>.json`, with the screenshot
 //! as `<id>.png` when one was kept. With a share, each goes to `.melue/reports/` there at the library sync
-//! (sync/data.rs), and any device signed in to GitHub sends what's waiting there, then marks it sent there, so every
-//! device knows (and none sends it again). Without a share, this device sends its own when it can.
+//! (sync/data.rs), and is sent there: by its own device when signed in to GitHub (after reading the share's word on it,
+//! so a report another device sent isn't sent again), or, after a while, by any other device signed in; then marked
+//! sent there, so every device knows. Without a share, this device sends its own when it can.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -17,6 +18,9 @@ use crate::guard::Locked;
 const SHARE_DIR: &str = ".melue/reports";
 /// Waiting reports are tried this long after Melue starts (then at each library sync).
 const FIRST_TRY: Duration = Duration::from_secs(45);
+/// Another device's waiting report is sent from here only this long after it was made: its own device goes first (two
+/// devices sending the same report at once would make two issues).
+const OTHERS_AFTER_MS: i64 = 10 * 60_000;
 
 /// A report as made (its text already without personal things), and whether it's been sent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,8 +79,12 @@ fn valid_id(id: &str) -> Result<(), String> {
     }
 }
 
-/// Sends this device's waiting reports, when it's signed in (stops at the first that can't go: offline).
+/// Sends this device's waiting reports, when it's signed in (stops at the first that can't go: offline). With a share,
+/// at the library sync instead, soon (it knows what another device has sent already).
 pub fn send_waiting(app: &AppHandle) {
+    if app.state::<crate::library::Library>().sync_available().unwrap_or(false) {
+        return crate::sync::data::soon(app);
+    }
     let Ok(_one) = SENDING.try_lock() else { return };
     if !crate::github::signed_in(app) {
         return;
@@ -98,30 +106,41 @@ pub fn send_waiting(app: &AppHandle) {
     }
 }
 
-/// At the library sync (sync/data.rs): this device's reports to the share (and the share's word on them back), and
-/// the share's waiting reports sent from here when signed in.
+/// At the library sync (sync/data.rs): this device's reports with the share (the share's word on them first, then
+/// the waiting ones sent from here when signed in, then to the share), and other devices' reports still waiting after a
+/// while sent from here.
 pub fn sync(app: &AppHandle, share: &dyn Share) -> Result<(), String> {
-    send_waiting(app);
     let _one = SENDING.locked();
-    let local = read_all(app)?;
-    for mut report in local {
+    // Once one can't go (offline), the rest wait for the next sync.
+    let mut can_send = crate::github::signed_in(app);
+    for mut report in read_all(app)? {
         let path = format!("{SHARE_DIR}/{}.json", report.id);
         let there: Option<SavedReport> = match share.stat(&path)? {
             Some(_) => serde_json::from_slice(&share.read(&path)?).ok(),
             None => None,
         };
-        match there {
-            // Sent by another device: so it says here too.
-            Some(there) if there.sent_url.is_some() && report.sent_url.is_none() => {
-                report.sent_url = there.sent_url;
-                report.sent_ms = there.sent_ms;
-                write(app, &report)?;
+        // Sent by another device: so it says here too (and isn't sent again).
+        if let Some(sent) = there.as_ref().filter(|t| t.sent_url.is_some() && report.sent_url.is_none()) {
+            report.sent_url = sent.sent_url.clone();
+            report.sent_ms = sent.sent_ms;
+            write(app, &report)?;
+        }
+        if report.sent_url.is_none() && can_send {
+            match crate::github::create_issue(app, &report.title, &report.body) {
+                Ok(url) => {
+                    report.sent_url = Some(url);
+                    report.sent_ms = Some(now_ms());
+                    write(app, &report)?;
+                }
+                Err(e) => {
+                    eprintln!("melue: can't send a waiting report yet: {e}");
+                    can_send = false;
+                }
             }
-            Some(there) if there == report => {}
-            _ => {
-                share.create_dir_all(SHARE_DIR)?;
-                share.write(&path, &serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)?;
-            }
+        }
+        if there.as_ref() != Some(&report) {
+            share.create_dir_all(SHARE_DIR)?;
+            share.write(&path, &serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?)?;
         }
         // The screenshot: kept on the share, then not on the phone (it's only for looking at later).
         let png = dir(app)?.join(format!("{}.png", report.id));
@@ -133,8 +152,8 @@ pub fn sync(app: &AppHandle, share: &dyn Share) -> Result<(), String> {
             let _ = std::fs::remove_file(&png);
         }
     }
-    // The other devices' reports still waiting: sent from here, when signed in.
-    if !crate::github::signed_in(app) {
+    // Other devices' reports still waiting after a while (their own device goes first): sent from here, when signed in.
+    if !can_send {
         return Ok(());
     }
     let mine: Vec<String> = read_all(app)?.into_iter().map(|r| r.id).collect();
@@ -144,7 +163,7 @@ pub fn sync(app: &AppHandle, share: &dyn Share) -> Result<(), String> {
             continue;
         }
         let Ok(mut report) = serde_json::from_slice::<SavedReport>(&share.read(&entry.path)?) else { continue };
-        if report.sent_url.is_some() {
+        if report.sent_url.is_some() || now_ms() - report.made_ms < OTHERS_AFTER_MS {
             continue;
         }
         match crate::github::create_issue(app, &report.title, &report.body) {

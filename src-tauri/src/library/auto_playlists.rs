@@ -4,7 +4,8 @@
 //! - "liked": Liked songs;
 //! - "top:<period>": Top songs of the last month, half year, year (rolling: the last 30, 182, 365 days, from the
 //!   plays per day) and all time (from track_stats), with the other devices' plays (sync/data.rs), each with its own size (25, 50, 100 or 200; default 50);
-//! - "folder:<id>": one per music folder, by path (none when there's only one folder: All songs is the same).
+//! - "folder:<id>": one per music folder, by path (one folder too: the same songs as All songs, but there, so a
+//!   folder doesn't seem left out).
 //!
 //! Any of them can be hidden, and shown again in the settings.
 
@@ -204,11 +205,8 @@ impl Library {
             let songs = self.top_songs(period)?.len() as i64;
             lists.push(list(period.source(), period.name(), AutoKind::Top, songs, Some(settings.size(period))));
         }
-        let folders: Vec<_> = self.folders()?.into_iter().filter(|f| f.enabled).collect();
-        if folders.len() > 1 {
-            for folder in folders {
-                lists.push(list(format!("folder:{}", folder.id), &folder.name, AutoKind::Folder, folder.tracks, None));
-            }
+        for folder in self.folders()?.into_iter().filter(|f| f.enabled) {
+            lists.push(list(format!("folder:{}", folder.id), &folder.name, AutoKind::Folder, folder.tracks, None));
         }
         Ok(lists)
     }

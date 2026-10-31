@@ -264,7 +264,7 @@ export type Source =
 /** The Top songs lists: the last 30 days, 6 months, year (rolling), and all time. */
 export type TopPeriod = 'month' | 'half-year' | 'year' | 'all-time'
 
-/** An auto playlist: All songs, Liked songs, the Top songs lists, and one per music folder (when there are two or more). */
+/** An auto playlist: All songs, Liked songs, the Top songs lists, and one per music folder. */
 export interface AutoPlaylist {
   source: Source
   name: string

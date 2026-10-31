@@ -1,6 +1,6 @@
 # The website (GitHub Pages: the docs folder, as it is), published only when it changes: a push to main that changes
-# docs/, or Run workflow on GitHub (a change to this file alone publishes nothing: it applies from the next one). Pages' source is "GitHub Actions" (Settings → Pages), so pushes that
-# don't touch the site make no build and no deployment.
+# docs/, or Run workflow on GitHub (a change to this file alone publishes nothing: it applies from the next one). Pages'
+# source is "GitHub Actions" (Settings → Pages), so pushes that don't touch the site make no build and no deployment.
 name: Website
 
 on:

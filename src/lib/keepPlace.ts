@@ -1,9 +1,10 @@
 /**
  * `v-keep-place` on a page's scroller: when what's above the view changes height (the window resized: text wraps
  * differently, a cover gets smaller; or anything else above it grows or shrinks), what you were looking at stays where
- * it is. That's the first song row in view (the songs stay put, a header above them shrinks out of the way), else
- * whatever is at the top of the view. It scrolls by however far that moved, before the frame is drawn. At the very top
- * it stays at the top.
+ * it is. That's the first song row in view (the songs stay put, a header above them shrinks out of the way), else the
+ * first thing that starts in the view (going into a card across its top: in Settings, a sync line changing in a card
+ * above doesn't move the rows you're reading). It scrolls by however far that moved, before the frame is drawn. At the
+ * very top it stays at the top.
  *
  * The browser's own scroll anchoring doesn't do it here: it's off on the main pages' scroller (a page switch would
  * throw it off, lessons in the playbook), and long lists only draw the rows in view. A page switch takes its anchor
@@ -17,7 +18,8 @@ type Place = {
   picking: number
   sizes: ResizeObserver
   scrolled: () => void
-  watched: Element | null
+  /** The scroller's parts watched for size (each element in it: on a phone, pull to refresh's mark comes first). */
+  watched: Set<Element>
   /** The scroll this set itself (its own scroll event isn't you scrolling). */
   own: number | null
 }
@@ -35,13 +37,24 @@ function pick(el: HTMLElement, place: Place) {
     if (rows[mid].getBoundingClientRect().bottom > view.top + 1) high = mid
     else low = mid + 1
   }
-  let anchor: Element | null = rows[low] && rows[low].getBoundingClientRect().top < view.bottom ? rows[low] : null
-  if (!anchor) {
-    const hit = document.elementFromPoint(view.left + view.width / 2, view.top + 12)
-    anchor = hit && el.contains(hit) ? hit : null
-  }
+  const anchor: Element | null = rows[low] && rows[low].getBoundingClientRect().top < view.bottom ? rows[low] : firstInView(el, view)
   place.anchor = anchor
   place.top = anchor ? anchor.getBoundingClientRect().top - view.top : 0
+}
+
+/**
+ * The first thing that starts in the view (as the browser's own scroll anchoring picks): down the page's parts in order,
+ * the first whose top is in the view; one across the view's top is gone into, for a smaller part of it (else itself).
+ */
+function firstInView(parent: Element, view: DOMRect): Element | null {
+  for (const part of parent.children) {
+    const box = part.getBoundingClientRect()
+    if (box.height === 0 || box.bottom <= view.top) continue
+    if (box.top >= view.bottom) return null
+    if (box.top >= view.top) return part
+    return firstInView(part, view) ?? part
+  }
+  return null
 }
 
 /**
@@ -58,12 +71,16 @@ function hold(el: HTMLElement, place: Place) {
       place.own = el.scrollTop
     }
   }
-  // The page's content changed (another page): watch the new one.
-  const content = el.firstElementChild
-  if (content !== place.watched) {
-    if (place.watched) place.sizes.unobserve(place.watched)
-    if (content) place.sizes.observe(content)
-    place.watched = content
+  // Every part of the scroller watched (new ones too; gone ones let go).
+  for (const part of place.watched) {
+    if (part.parentElement === el) continue
+    place.sizes.unobserve(part)
+    place.watched.delete(part)
+  }
+  for (const part of el.children) {
+    if (place.watched.has(part)) continue
+    place.sizes.observe(part)
+    place.watched.add(part)
   }
   if (!held) pick(el, place)
 }
@@ -74,7 +91,7 @@ export const vKeepPlace: Directive<HTMLElement> = {
       anchor: null,
       top: 0,
       picking: 0,
-      watched: null,
+      watched: new Set(),
       own: null,
       // Once a frame at most, while scrolling (not after its own correction).
       scrolled: () => {

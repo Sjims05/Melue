@@ -1,7 +1,9 @@
 /**
  * Updating Melue itself (desktop; Tauri's updater: src-tauri tauri.conf.json `plugins.updater`): it looks at the newest
- * stable release on GitHub (its latest.json, signed: only an update signed with Melue's key installs) a minute after
- * start and every 6 hours. A newer one: Melue asks (UpdateDialog.vue: Don't ask again / Not now / Update), unless
+ * stable release on GitHub (its latest.json, signed: only an update signed with Melue's key installs) a few seconds
+ * after start, every 6 hours, and on coming back to Melue when it's been that long (or the last look failed: a phone
+ * cuts a background app's network). A newer one: Melue asks (UpdateDialog.vue: Don't ask again / Not now / Update) once
+ * nothing else is open and it's been left alone a moment (askWhenFree), unless
  * "Ask when an update is found" is off (then About's Updates row offers it). Update downloads it, installs it
  * (Windows' installer, without questions) and starts Melue again; the new version then says so (lib/updatedNote.ts).
  *
@@ -19,7 +21,7 @@ import { reactive } from 'vue'
 import { library } from '@/library'
 import { isMobile } from '@/platform'
 import { router } from '@/router'
-import { openMenu } from './menuDrawer'
+import { drawerMenu, openMenu } from './menuDrawer'
 import { toast } from './toast'
 
 type Update = NonNullable<Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>>>
@@ -56,7 +58,7 @@ const newer = (a: string, b: string) => {
   for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0)
   return false
 }
-const FIRST_MS = 60_000
+const FIRST_MS = 8_000
 const EVERY_MS = 6 * 3_600_000
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
@@ -98,7 +100,7 @@ export async function checkForUpdate(quiet = false) {
     if (version) {
       updates.state = 'available'
       updates.version = version
-      if (updates.ask) askNow()
+      if (updates.ask) askWhenFree()
     } else {
       updates.state = 'latest'
       if (!quiet) toast('Melue is up to date')
@@ -112,9 +114,37 @@ export async function checkForUpdate(quiet = false) {
   }
 }
 
+// ---- Asking: once nothing else is open (a drawer, a dialog) and Melue has been left alone a moment, so the question
+// isn't lost under another one or taken away by a page change. Closed without an answer that soon (a page change took
+// it, not you): asked again on coming back to Melue.
+const QUIET_MS = 1500
+let wanted = false
+let waiting = 0
+let shownAt = 0
+const busy = () => document.hidden || !!drawerMenu.value || !!document.querySelector('[role=dialog], [role=alertdialog]')
+function askWhenFree() {
+  wanted = true
+  clearTimeout(waiting)
+  let freeSince = 0
+  const look = () => {
+    if (!wanted || updates.state !== 'available' || !updates.ask) return
+    if (busy()) freeSince = 0
+    else if (!freeSince) freeSince = Date.now()
+    if (freeSince && Date.now() - freeSince >= QUIET_MS) return askNow()
+    waiting = window.setTimeout(look, 300)
+  }
+  look()
+}
+/** Answered (any of its choices, or the dialog closed): not asked again until the next look finds it. */
+const answered = () => (wanted = false)
+
 /** Asks about the update: the dialog (UpdateDialog.vue), or on a phone the menu drawer. */
 function askNow() {
-  if (!isMobile) return void (updates.asking = true)
+  shownAt = Date.now()
+  if (!isMobile) {
+    answered()
+    return void (updates.asking = true)
+  }
   const first = updates.notes.split('\n').find((l) => l.trim() && !l.startsWith('#'))
   openMenu({
     title: `Melue ${updates.version} is ready`,
@@ -124,8 +154,18 @@ function askNow() {
       { action: 'later', label: 'Not now', icon: Clock },
       { action: 'never', label: 'Don’t ask again', icon: CircleSlash, apart: true },
     ],
-    pick: (action) => (action === 'update' ? installUpdate() : action === 'never' ? setAskForUpdates(false) : notNow()),
+    pick: (action) => {
+      answered()
+      return action === 'update' ? installUpdate() : action === 'never' ? setAskForUpdates(false) : notNow()
+    },
   })
+  // Closed at once without an answer (a page change took it): asked again on coming back. Closed later: your Not now.
+  const shown = drawerMenu.value
+  const stop = setInterval(() => {
+    if (drawerMenu.value === shown) return
+    clearInterval(stop)
+    if (wanted && Date.now() - shownAt > QUIET_MS) answered()
+  }, 300)
 }
 
 /** Downloads and installs the newer release, then starts Melue again (a phone: Android's installer takes over). */
@@ -221,4 +261,11 @@ export async function followUpdates() {
     checkForUpdate(true)
     setInterval(() => checkForUpdate(true), EVERY_MS)
   }, FIRST_MS)
+  // Back in Melue: looked again when it's been a while or the last look failed (a phone in the background has no
+  // network), and an update not answered yet asked about.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return
+    if (updates.state === 'failed' || Date.now() - updates.checkedAt > EVERY_MS) checkForUpdate(true)
+    else if (wanted) askWhenFree()
+  })
 }

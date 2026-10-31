@@ -70,15 +70,15 @@ fn four_tabs_built_from_the_library() {
     assert_eq!(ids, expected);
     assert!(library.items.iter().all(|i| i.group.is_none()));
 
-    // Playlists: the auto playlists first (no plays yet: no Top songs), empty ones left out.
+    // Playlists: the auto playlists first (no plays yet: no Top songs; the one folder's too), empty ones left out.
     let playlists = folders(&library.root[1].children);
     assert_eq!(
         playlists.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
-        vec!["songs".to_string(), "liked".to_string(), format!("playlist:{mix}")]
+        vec!["songs".to_string(), "liked".to_string(), format!("folder:{f}"), format!("playlist:{mix}")]
     );
-    assert_eq!(items(&playlists[2].children), vec![two, waterloo]);
+    assert_eq!(items(&playlists[3].children), vec![two, waterloo]);
     assert!(playlists.iter().all(|p| p.playable && p.open_on_tap), "opened by a tap, played from a song");
-    assert_eq!(playlists[2].subtitle.as_deref().map(|s| s.starts_with("2 songs")), Some(true));
+    assert_eq!(playlists[3].subtitle.as_deref().map(|s| s.starts_with("2 songs")), Some(true));
 
     // Albums by title ("The" ignored), with covers and their songs in order.
     let albums = folders(&library.root[2].children);

@@ -3,6 +3,18 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 1.0.4 (2026-10-31)
+
+Fixes from the first bug reports sent from the app.
+
+- Signing in to GitHub on a phone works: it waits while you're in the browser entering the code (Android cuts a
+  background app's network), and says so plainly when GitHub can't be reached.
+- A bug report saved to send later is sent once, not again by its own device after another one sent it.
+- Melue looks for an update a few seconds after it starts (and again when you come back to it after a while, or after
+  a look that failed), and asks about one only when nothing else is open, so the question isn't lost.
+- Made for you has a playlist for your music folder even when you have only one.
+- Settings no longer bobs up and down on a phone while a sync or a scan changes what's above.
+
 ## 1.0.3 (2026-10-30)
 
 Smoother resizing, and long playlists that scroll as short ones do.
