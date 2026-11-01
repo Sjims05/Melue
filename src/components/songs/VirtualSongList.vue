@@ -4,6 +4,7 @@
  * so scrolling never shows them appear (@tanstack/vue-virtual). It scrolls with the page: the page's scroller is the
  * nearest `[data-scroller]` around it. Optional headings between the rows (A–Z: `headingOf` gives each song's, and
  * one shows where it changes). The rows are the usual SongRow: the playing song highlighted with its bars, ▶ ♥ ⋯.
+ * `slide`: a new order glides into place (a song moved up lifts over the others, as dragged, without growing).
  */
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -23,6 +24,8 @@ const props = defineProps<{
   place?: SongMenuPlace
   /** A number before each song, in the queue's place (its play count, the date it was added), and what it means. */
   numberOf?: (song: Song) => { text: string; title: string }
+  /** The next new order glides into place (Most played after a play), instead of jumping. */
+  slide?: boolean
 }>()
 // Its rows' device badges and notes: words or icons, all together (badgeFit.ts).
 provideBadgeLevels()
@@ -86,6 +89,22 @@ onActivated(settle)
 onBeforeUnmount(() => resizes.disconnect())
 watch(() => props.songs, () => requestAnimationFrame(locate))
 
+// A new order gliding into place: the songs that moved up (lifted over the others), for the slide's length.
+const SLIDE_MS = 260
+const lifted = ref<Set<string | number> | null>(null)
+let sliding: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => props.songs,
+  (now, before) => {
+    if (!props.slide || !before?.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const was = new Map(before.map((song, i) => [song.key ?? song.id, i]))
+    lifted.value = new Set(now.filter((song, i) => i < (was.get(song.key ?? song.id) ?? -1)).map((song) => song.key ?? song.id))
+    clearTimeout(sliding)
+    sliding = setTimeout(() => (lifted.value = null), SLIDE_MS + 40)
+  },
+  { flush: 'sync' },
+)
+
 const virtualizer = useVirtualizer(
   computed(() => ({
     count: items.value.length,
@@ -109,7 +128,12 @@ const firstSong = computed(() => items.value.findIndex((i) => 'song' in i))
       v-for="row in virtualizer.getVirtualItems()"
       :key="row.key as string | number"
       class="absolute inset-x-0 top-0 rounded-lg outline-none"
-      :style="{ height: `${row.size}px`, transform: `translateY(${row.start - margin}px)` }"
+      :class="lifted?.has(row.key as string | number) && 'z-10 bg-card shadow-lg'"
+      :style="{
+        height: `${row.size}px`,
+        transform: `translateY(${row.start - margin}px)`,
+        transition: lifted ? `transform ${SLIDE_MS}ms cubic-bezier(.2,.8,.2,1), box-shadow ${SLIDE_MS}ms ease-out` : undefined,
+      }"
       :role="'song' in items[row.index] ? 'listitem' : undefined"
       :tabindex="'song' in items[row.index] ? (row.index === (focused ?? firstSong) ? 0 : -1) : undefined"
       @focus="focused = row.index"

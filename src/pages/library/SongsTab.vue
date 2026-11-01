@@ -24,13 +24,18 @@ const tracks = ref<Track[] | null>(null)
 // Why the list couldn't be read (shown instead of an empty list).
 const problem = ref('')
 const router = useRouter()
-async function load() {
+// Sorted by plays, a play can move a song: it glides to its new place (not on other reloads).
+const slide = ref(false)
+async function load(gliding = false) {
+  slide.value = gliding
   problem.value = ''
   tracks.value = await library.tracks(0, 1_000_000, props.sort).catch((e) => ((problem.value = String(e)), []))
 }
-watch(() => props.sort, load, { immediate: true })
-// Likes show through the player's liked songs (at once, everywhere); anything else reloads the list.
-onLibraryChange(changesTheLibrary, load)
+watch(() => props.sort, () => load(), { immediate: true })
+// Likes show through the player's liked songs (at once, everywhere); anything else reloads the list (a play: sorted by
+// plays only).
+onLibraryChange(changesTheLibrary, () => load())
+onLibraryChange((change) => change.reason === 'plays' && props.sort === 'plays', () => load(true))
 
 const songs = computed(() => (tracks.value ?? []).map(trackSong))
 const headingOf = computed<((song: Song) => string) | undefined>(() => {
@@ -74,6 +79,7 @@ const place = { showInFolder: isDesktop }
         :current-id="current?.id"
         :playing="!!nowPlaying.state?.isPlaying"
         :place="place"
+        :slide="slide"
         @play="playSong"
         @pause="togglePlay"
         @like="(song, liked) => like(Number(song.id), liked)"
@@ -81,7 +87,7 @@ const place = { showInFolder: isDesktop }
       />
       <!-- Can't be read (Try again), or nothing yet (where to add music). -->
       <EmptyState v-else-if="problem" :icon="CircleAlert" title="Can’t read your library" :text="problem" problem>
-        <Button size="sm" variant="outline" @click="load">Try again</Button>
+        <Button size="sm" variant="outline" @click="load()">Try again</Button>
       </EmptyState>
       <EmptyState v-else-if="tracks" :icon="Music" title="No songs yet" text="Add a music folder, and its songs show up here.">
         <Button size="sm" @click="router.push('/settings')">Add a music folder</Button>

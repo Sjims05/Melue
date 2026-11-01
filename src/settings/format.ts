@@ -40,11 +40,18 @@ export function lastPart(path: string): string {
   return parts.length > 1 ? `…${sep}${parts[parts.length - 1]}` : path
 }
 
-/** A folder's place in words: an Android folder (a content:// address) as its path on the phone ("Music/Melue"). */
-export function readablePath(location: string): string {
+/**
+ * A folder's place in words: an Android folder (a content:// address) as its path on the phone ("Music/Melue"); `where`:
+ * with the storage it's on first ("Phone storage / Music / Melue", "SD card / Music").
+ */
+export function readablePath(location: string, where = false): string {
   if (!location.startsWith('content://')) return location
   const last = decodeURIComponent(location.split('/').pop() ?? '')
-  return last.includes(':') ? last.slice(last.indexOf(':') + 1) || last : last
+  if (!last.includes(':')) return last
+  const path = last.slice(last.indexOf(':') + 1)
+  if (!where) return path || last
+  const storage = last.startsWith('primary:') ? 'Phone storage' : 'SD card'
+  return [storage, ...path.split('/').filter(Boolean)].join(' / ')
 }
 
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -115,3 +122,7 @@ export const TRIGGER: Record<SyncTrigger, string> = {
   retry: 'Tried again',
   network: 'Network changed',
 }
+
+/** A day of the month in words: 1st, 2nd, 3rd, 11th, 21st. */
+export const ordinal = (n: number) =>
+  `${n}${[11, 12, 13].includes(n) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`

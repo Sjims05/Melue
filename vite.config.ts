@@ -57,6 +57,8 @@ export default defineConfig(() => ({
   // rest), beside Melue's own code: none of them one big file (pages are already loaded when opened: router.ts).
   build: {
     rolldownOptions: {
+      // No report of how long each plugin took (it's printed after every build; Tailwind's CSS takes most, as it should).
+      checks: { pluginTimings: false },
       output: {
         codeSplitting: {
           groups: [

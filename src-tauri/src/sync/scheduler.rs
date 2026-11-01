@@ -95,6 +95,33 @@ pub struct Syncing {
     /// came back, how long they were away: whether coming back syncs.
     left_at_ms: Mutex<Option<i64>>,
     away_ms: Mutex<Option<i64>>,
+    /// What the running sync is doing, since when (logged every half minute while it runs: where one hangs).
+    step: Mutex<Option<(&'static str, Instant)>>,
+}
+
+/// While a sync runs, how often the log says what it's doing.
+const STEP_LOG_EVERY: Duration = Duration::from_secs(30);
+
+/// The running sync is now doing `what` (for the log).
+fn step(app: &AppHandle, what: &'static str) {
+    *app.state::<Syncing>().step.locked() = Some((what, Instant::now()));
+}
+
+/// Logs what sync `me` is doing every half minute while it runs.
+fn log_steps(app: &AppHandle, me: u64) {
+    let app = app.clone();
+    let started = Instant::now();
+    let _ = std::thread::Builder::new().name("melue-sync-steps".into()).spawn(move || loop {
+        std::thread::sleep(STEP_LOG_EVERY);
+        let syncing = app.state::<Syncing>();
+        if syncing.runs.load(Ordering::SeqCst) != me || !syncing.running.load(Ordering::SeqCst) {
+            return;
+        }
+        let now = *syncing.step.locked();
+        if let Some((what, since)) = now {
+            eprintln!("melue: sync: still running after {} s: {what} (for {} s)", started.elapsed().as_secs(), since.elapsed().as_secs());
+        }
+    });
 }
 
 impl SyncFailure {
@@ -117,13 +144,17 @@ impl Library {
 /// The share, the synced folder, and the plan for them.
 pub fn plan_now(app: &AppHandle) -> std::result::Result<(Box<dyn Share>, Folder, SyncPlan), SetupError> {
     let (settings, share) = with_stores(app, |library, stores| setup::current(library, stores, &setup::open))??;
-    if matches!(settings.setup, ShareSetup::Drive { stream: true, .. }) {
-        return Err("played straight from the share: there's nothing to copy".to_string().into());
-    }
     let library = app.state::<Library>();
     let folder =
         library.folder(settings.sync_folder_id)?.ok_or_else(|| "the synced folder isn't in the library any more".to_string())?;
+    // Played straight from the share: no songs to copy (an empty plan), but the sync goes on as any other (likes,
+    // playlists, the layout), and isn't a failure.
+    if matches!(settings.setup, ShareSetup::Drive { stream: true, .. }) {
+        return Ok((share, folder, SyncPlan::default()));
+    }
+    step(app, "listing the share's songs");
     let on_share = share.walk("")?;
+    step(app, "listing this device's songs");
     let here = local::local_files(app, &folder)?;
     let plan = make_plan(on_share, here, library.sync_records()?, &library.sync_settings()?);
     Ok((share, folder, plan))
@@ -177,6 +208,8 @@ pub fn sync_once(
     syncing.cancel.store(false, Ordering::SeqCst);
     let me = syncing.runs.fetch_add(1, Ordering::SeqCst) + 1;
     *syncing.connecting.locked() = Some(me);
+    step(app, "reaching the share");
+    log_steps(app, me);
     set_status(app, |s| s.syncing = Some(Progress::default()));
     let planned = plan_now(app);
     // Cancelled while reaching the share: cancel() has let go of this sync already (another may be running).
@@ -195,6 +228,7 @@ pub fn sync_once(
         } else {
             (None, None)
         };
+        step(app, "copying");
         let options = RunOptions { free_space: local::free_space(&folder, target.as_ref()), confirmed_removal, copy_budget };
         let mut last = Instant::now() - Duration::from_secs(1);
         let mut current = None;
@@ -226,6 +260,7 @@ pub fn sync_once(
             let last = LastSync { at_ms: now_ms(), trigger, result: done.clone() };
             let _ = app.state::<Library>().save_last_sync(&last);
             *syncing.retry.locked() = None;
+            super::shared::reached(app);
             let note = share.note();
             set_status(app, |s| {
                 s.syncing = None;
@@ -488,6 +523,12 @@ pub fn start(app: &AppHandle) {
                     eprintln!("melue: sync ({next:?}): starting");
                     match sync_once(&app, next, false, false) {
                         Ok(r) => eprintln!("melue: sync ({next:?}): {} copied, {} moved, {} waiting for Wi-Fi", r.copied, r.moved, r.waiting_for_wifi),
+                        // A retry due while a sync runs: that sync decides whether another is needed (otherwise the
+                        // retry, due already, would fire again at once, over and over).
+                        Err(SyncFailure::Running) if next == Trigger::Retry => {
+                            *app.state::<Syncing>().retry.locked() = None;
+                            eprintln!("melue: sync (Retry): a sync is running already: it decides");
+                        }
                         Err(e) => eprintln!("melue: sync ({next:?}): didn't sync: {e:?}"),
                     }
                 } else if !matches!(next, Trigger::Periodic | Trigger::Network) {

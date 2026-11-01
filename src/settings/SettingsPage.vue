@@ -9,7 +9,7 @@ import { computed, nextTick, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PageHeader } from '@/components/page'
 import { SETTING_MENU, SettingsHeading, SettingsLabel } from '@/components/settings'
-import { isAndroid } from '@/platform'
+import { isAndroid, isDesktop } from '@/platform'
 import AboutSettings from './AboutSettings.vue'
 import AcrossDevices from './AcrossDevices.vue'
 import AndroidSource from './AndroidSource.vue'
@@ -20,6 +20,7 @@ import LibraryStatus from './LibraryStatus.vue'
 import MobileData from './MobileData.vue'
 import MusicFolders from './MusicFolders.vue'
 import OutputDevice from './OutputDevice.vue'
+import GlobalShortcuts from './GlobalShortcuts.vue'
 import PlaylistSettings from './PlaylistSettings.vue'
 import QueueSettings from './QueueSettings.vue'
 import ShareSetup from './ShareSetup.vue'
@@ -108,6 +109,7 @@ const toShare = () => shareSection.value?.scrollIntoView({ behavior: 'smooth', b
         <QueueSettings />
         <AudioSettings />
         <OutputDevice />
+        <GlobalShortcuts v-if="isDesktop" />
 
         <SettingsHeading title="Library" description="Your music folders, and the share" />
         <!-- The library's status first, under the heading (it has no label of its own: after a card it'd sit against it). -->

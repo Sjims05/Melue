@@ -2,6 +2,10 @@
 pub mod guard;
 #[cfg(desktop)]
 mod desktop;
+#[cfg(desktop)]
+mod shortcuts;
+#[cfg(desktop)]
+mod tray;
 mod dev;
 mod connections;
 mod discord;
@@ -62,6 +66,7 @@ pub fn run() {
     let builder = builder
         .plugin(desktop::single_instance())
         .plugin(desktop::autostart())
+        .plugin(shortcuts::plugin())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
@@ -103,6 +108,7 @@ pub fn run() {
             // Android Auto's library: sent now and after changes (Android only).
             app.manage(library::auto::AutoSender::default());
             library::auto::start(app.handle());
+            library::played::start(app.handle());
             // Lyrics for songs without their own, found online on Wi-Fi (online_lyrics.rs).
             app.manage(library::online_lyrics::LyricsLookup::default());
             library::online_lyrics::start(app.handle());
@@ -162,6 +168,9 @@ pub fn run() {
             // Desktop: the tray, starting with the system (desktop.rs).
             #[cfg(desktop)]
             desktop::setup(app.handle())?;
+            // Shortcuts that work anywhere (shortcuts.rs).
+            #[cfg(desktop)]
+            shortcuts::apply(app.handle());
             startup::mark("tray");
             // Discord: "Listening to Melue" (when switched on).
             #[cfg(desktop)]
@@ -173,6 +182,10 @@ pub fn run() {
         // Desktop: back into the window counts as coming back to the app (a sync if the last is a while ago).
         .on_window_event(|window, event| {
             use tauri::Manager;
+            // Only the main window (not the tray's player).
+            if window.label() != "main" {
+                return;
+            }
             match event {
                 // Leaving the window: coming back after a while syncs (Sync when coming back after…).
                 tauri::WindowEvent::Focused(false) => sync::scheduler::went_away(window.app_handle()),
@@ -191,12 +204,25 @@ pub fn run() {
                     sync::handoff::save_now(window.app_handle());
                     // The other devices hear at once that this one is gone.
                     remote::presence::leave(window.app_handle());
+                    // Quitting: the whole app (the tray's player window would keep it running).
+                    #[cfg(desktop)]
+                    window.app_handle().exit(0);
                 }
                 _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
             startup::window_ready,
+            #[cfg(desktop)]
+            shortcuts::shortcuts_get,
+            #[cfg(desktop)]
+            shortcuts::shortcuts_set,
+            #[cfg(desktop)]
+            tray::tray_open_main,
+            #[cfg(desktop)]
+            tray::tray_quit,
+            #[cfg(desktop)]
+            tray::tray_fit,
             phone_update::update_latest_release,
             phone_update::update_install_apk,
             phone_update::update_install_downloaded,
@@ -234,6 +260,8 @@ pub fn run() {
             report::saved::report_save,
             report::saved::report_discard,
             report::saved::reports_list,
+            report::saved::report_delete,
+            report::saved::reports_check,
             report::screenshot::report_screenshot,
             share::commands::share_info,
             share::commands::share_test,

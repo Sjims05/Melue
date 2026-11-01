@@ -39,8 +39,8 @@ async function load() {
   if (auto.value) setPageTitle(here, auto.value.name)
 }
 load()
-// Liked songs changes with every like; the others with the library.
-onLibraryChange((change) => change.reason !== 'likes' || source === 'liked', load)
+// Liked songs changes with every like, Top songs with every play; the others with the library.
+onLibraryChange((change) => (change.reason === 'likes' ? source === 'liked' : change.reason !== 'plays' || source.startsWith('top:')), load)
 
 const card = computed(() => (auto.value ? autoCard(auto.value) : null))
 // "Last month · 50 songs · 3 h 10 min" (a Top songs list's period first), "Playlist · 86 songs · 5 h 2 min".

@@ -78,12 +78,25 @@ pub struct Here {
 }
 
 impl Library {
+    /// Whether a song in the synced folder came through the share (by its path there): synced before (a record), or
+    /// any song when the share is played straight from a drive (the synced folder is the share itself, nothing is
+    /// copied, so there are no records).
+    pub(crate) fn came_from_share(&self, folder: &Folder) -> Result<impl Fn(&str) -> bool> {
+        let streamed = matches!(self.share_settings()?.map(|s| s.setup), Some(crate::share::setup::ShareSetup::Drive { stream: true, .. }));
+        let synced: HashSet<String> = if streamed {
+            HashSet::new()
+        } else {
+            self.conn().prepare("SELECT path FROM synced_files").and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect()).map_err(err)?
+        };
+        let folder = folder.clone();
+        Ok(move |path: &str| streamed || share_path(&folder, path).is_some_and(|p| synced.contains(&p)))
+    }
+
     /// This device's songs that aren't on the share: in a music folder, without a synced copy here; or in the synced
     /// folder without having come through the share (put there by hand). Hidden copies aren't.
     pub fn songs_not_on_share(&self, folder: &Folder, songs: &Songs) -> Result<Vec<Here>> {
+        let from_share = self.came_from_share(folder)?;
         let conn = self.conn();
-        let on_share: HashSet<String> =
-            conn.prepare("SELECT path FROM synced_files").and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect()).map_err(err)?;
         let mut stmt = conn
             .prepare(
                 "SELECT t.id, t.folder_id, t.path, t.title, t.artist_credit, t.duration_ms, t.bitrate_kbps, t.size
@@ -100,7 +113,7 @@ impl Library {
         for row in rows {
             let (id, folder_id, path, title, artist, duration_ms, bitrate, size) = row.map_err(err)?;
             let not_on_share =
-                if folder_id == folder.id { share_path(folder, &path).is_some_and(|p| !on_share.contains(&p)) } else { songs.synced_copy(id).is_none() };
+                if folder_id == folder.id { !from_share(&path) } else { songs.synced_copy(id).is_none() };
             if !not_on_share {
                 continue;
             }

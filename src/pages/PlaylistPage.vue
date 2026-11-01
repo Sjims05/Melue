@@ -60,7 +60,7 @@ async function load() {
 // A Spotify playlist: read again (unless it was a few minutes ago), so what's shown is as Spotify has it now.
 load().then(() => playlist.value?.spotify && readSpotify(id).catch(() => {}))
 // Its own changes (not other playlists'), and songs coming or going.
-onLibraryChange((change) => change.reason !== 'likes' && (change.reason !== 'playlists' || change.sources.includes(source)), load)
+onLibraryChange((change) => change.reason !== 'likes' && change.reason !== 'plays' && (change.reason !== 'playlists' || change.sources.includes(source)), load)
 const stops = [librarySync.onConflicts(() => load())]
 onUnmounted(() => stops.forEach((stop) => stop.then((unlisten) => unlisten())))
 

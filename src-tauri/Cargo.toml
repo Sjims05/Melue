@@ -1,6 +1,6 @@
 [package]
 name = "melue"
-version = "1.0.4"
+version = "1.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -78,6 +78,8 @@ notify = "8"
 discord-rich-presence = "1.1"
 # One Melue at a time: opening it again (it may be in the tray) shows the running one.
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+# Shortcuts that work anywhere: Melue's volume and player keys from any app (shortcuts.rs).
+tauri-plugin-global-shortcut = "2"
 
 # The share's password in the system's secure store (share/secrets.rs; Android uses Melue's Android plugin).
 [target.'cfg(windows)'.dependencies]

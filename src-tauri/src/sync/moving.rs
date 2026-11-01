@@ -170,10 +170,9 @@ impl Library {
     /// put in the synced folder by hand (they didn't come through the share).
     pub fn not_on_share(&self, folder: &Folder, songs: &Songs) -> Result<Vec<LocalSong>> {
         let names: HashMap<i64, (String, bool)> = self.folders()?.into_iter().map(|f| (f.id, (f.name, f.network))).collect();
-        let conn = self.conn();
         // The synced folder's songs that came through the share (a song put there by hand didn't: it's only here).
-        let on_share: std::collections::HashSet<String> =
-            conn.prepare("SELECT path FROM synced_files").and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0))?.collect()).map_err(err)?;
+        let from_share = self.came_from_share(folder)?;
+        let conn = self.conn();
         let mut stmt = conn
             .prepare(
                 "SELECT t.id, t.title, t.artist_credit, t.tag_album, f.id, t.size, t.path
@@ -195,7 +194,7 @@ impl Library {
             .into_iter()
             .filter(|(song, folder_id, path)| {
                 if *folder_id == folder.id {
-                    share_path(folder, path).is_some_and(|p| !on_share.contains(&p))
+                    !from_share(path)
                 } else {
                     songs.synced_copy(song.id).is_none()
                 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * The top bar's sync status (with a share): a dot and a few words ("Synced 12 min ago", "Syncing 3 of 12", "Can't sync:
- * see Settings"). A quick sync is held on screen a moment, like on the status card (shownSync.ts). It opens Settings,
+ * see Settings", or "Streamed" for a share played straight from). A quick sync is held on screen a moment, like on the status card (shownSync.ts). It opens Settings,
  * where the status card has the details and Sync now.
  */
 import { computed } from 'vue'
@@ -17,6 +17,8 @@ const state = computed(() => {
   const p = shown.value
   if (p) return { dot: 'busy' as const, words: p.filesTotal ? `Syncing ${p.filesDone} of ${p.filesTotal}` : 'Syncing…' }
   if (s?.problem) return { dot: 'bad' as const, words: 'Can’t sync: see Settings' }
+  // Played straight from the share: always there, nothing to have synced.
+  if (sync.streamed) return { dot: 'streamed' as const, words: 'Streamed' }
   if (s?.last) return { dot: 'ok' as const, words: `Synced ${ago(s.last.atMs)}` }
   return { dot: 'ok' as const, words: 'Not synced yet' }
 })

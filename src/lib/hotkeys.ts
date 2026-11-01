@@ -8,10 +8,12 @@
  * a page switch puts the focus back at the page's top. The arrows move around the pages and in them (arrowNav.ts),
  * Escape goes back (DesktopShell.vue), Ctrl+Space and / open Search (TopSearch.vue).
  */
+import { listen } from '@tauri-apps/api/event'
 import { reactive } from 'vue'
 import { router, MAIN_PAGES } from '@/router'
 import { current, cycleRepeat, like, next, nowPlaying, position, previous, seek, setVolume, toggleShuffle, togglePlay, volumeStep } from '@/player/nowPlaying'
 import { upNextOpen } from '@/player/upNext'
+import { firstStart } from '@/lib/firstStart'
 import { openReport } from '@/lib/report/report'
 import { goTo, pageArea, startArrowNav } from '@/lib/arrowNav'
 
@@ -226,10 +228,10 @@ function onKey(e: KeyboardEvent) {
 /**
  * Tab within the page: the top bar and the player bar are left out (the mouse has them; the shortcuts do what they
  * do), round from the page's end to its start, scrolling smoothly to what it reaches. Not while a dialog is open (it
- * keeps Tab in itself).
+ * keeps Tab in itself), nor in the first-start guide (over the page: Tab goes field to field as usual).
  */
 function tabKey(e: KeyboardEvent) {
-  if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || opened()) return
+  if (e.key !== 'Tab' || e.ctrlKey || e.altKey || e.metaKey || opened() || firstStart.open) return
   const page = pageArea()
   if (!page) return
   const focusable = [...page.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])')].filter(
@@ -278,6 +280,13 @@ export function startHotkeys() {
   started = true
   for (const listener of LISTENERS) window.addEventListener('keydown', listener)
   startArrowNav()
+  // Shortcuts that work anywhere (src-tauri shortcuts.rs): the volume ones come here, for its steps and to show it.
+  stopShortcuts = listen<string>('shortcut', ({ payload }) => {
+    const state = nowPlaying.state
+    if (!state || (payload !== 'volumeUp' && payload !== 'volumeDown')) return
+    setVolume((state.volume ?? 1) + (payload === 'volumeUp' ? volumeStep() : -volumeStep()))
+    volumeFlash.at = Date.now()
+  }).catch(() => undefined)
   // A page switch: the focus back at the page's top (the next Tab starts there; nothing on the old page keeps it).
   stopAfterEach = router.afterEach((to, from) => {
     if (to.path === from.path) return
@@ -288,6 +297,7 @@ export function startHotkeys() {
 
 const LISTENERS = [tabKey, listKey, onKey]
 let stopAfterEach: (() => void) | undefined
+let stopShortcuts: Promise<(() => void) | undefined> | undefined
 
 // Development: a changed file reloads this module (or one it uses); the keys move to the new one. Left alone, the old
 // listeners would stay, acting on the old modules (Ctrl+Shift+B opening a report no dialog shows).
@@ -297,5 +307,6 @@ if (import.meta.hot) {
     data.started = started
     for (const listener of LISTENERS) window.removeEventListener('keydown', listener)
     stopAfterEach?.()
+    stopShortcuts?.then((stop) => stop?.())
   })
 }

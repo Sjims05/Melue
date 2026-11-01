@@ -26,6 +26,7 @@ pub mod linked;
 pub mod lyrics;
 pub mod network;
 pub mod online_lyrics;
+pub mod played;
 #[cfg(test)]
 mod linked_tests;
 pub mod m3u;

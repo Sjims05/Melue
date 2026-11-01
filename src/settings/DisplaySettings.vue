@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { DropValue, resetTo, Reveal, Segmented, SettingsCard, SettingsHeading, SettingsLabel, SettingsRow, SettingsTip } from '@/components/settings'
 import { library } from '@/library'
 import { APPEARANCE_DEFAULTS, appearance } from '@/lib/appearance'
-import { THEME_TIMES_DEFAULT, themeMode, themeTimes, type ThemeMode } from '@/lib/theme'
+import { THEME_TIME_OPTIONS as TIMES, THEME_TIMES_DEFAULT, themeMode, themeTimes, type ThemeMode } from '@/lib/theme'
 import { isDesktop, isMobile } from '@/platform'
 import { onPageLoad } from '@/components/page/pageLoading'
 
@@ -23,11 +23,6 @@ const themeLine = (mode: ThemeMode) =>
     light: 'Always light',
     adaptive: `Dark from ${themeTimes.dark}, light from ${themeTimes.light}`,
   })[mode]
-// Adaptive's times: every half hour.
-const TIMES = Array.from({ length: 48 }, (_, i) => {
-  const time = `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`
-  return [time, time] as const
-})
 const STARTS = [['home', 'Home'], ['library', 'Library'], ['last', 'Where I left off']] as const
 const PRIMARY = [['primary', 'Primary'], ['card', 'Like the cards']] as const
 // Up next and Home's cards: in the primary colour (white in dark mode, black in light) or like the other cards.

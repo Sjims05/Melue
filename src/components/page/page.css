@@ -91,3 +91,24 @@
     }
   }
 }
+
+/* Guided steps (the first-start guide, New in Melue): a step slides in from the side it comes from (on: from the
+   right; back: from the left). */
+.guide-on-enter-active,
+.guide-on-leave-active,
+.guide-back-enter-active,
+.guide-back-leave-active {
+  transition:
+    opacity 180ms ease,
+    translate 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.guide-on-enter-from,
+.guide-back-leave-to {
+  opacity: 0;
+  translate: 24px 0;
+}
+.guide-on-leave-to,
+.guide-back-enter-from {
+  opacity: 0;
+  translate: -24px 0;
+}

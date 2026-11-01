@@ -7,6 +7,8 @@ import { getVersion } from '@tauri-apps/api/app'
 import { invoke } from '@tauri-apps/api/core'
 import { Sparkles } from '@lucide/vue'
 import { computed, ref } from 'vue'
+import { showFirstStart } from '@/lib/firstStart'
+import { showWhatsNew } from '@/components/whatsNew/whatsNew'
 import { PageHeader } from '@/components/page'
 import { onPageLoad } from '@/components/page/pageLoading'
 import { SettingsCard, SettingsHeading, SettingsRow, SettingsTip } from '@/components/settings'
@@ -80,6 +82,12 @@ async function tool(name: string, run: () => Promise<unknown> | unknown) {
 }
 
 const TOOLS: { title: string; description: string; run: () => Promise<unknown> | unknown; android?: boolean }[] = [
+  { title: 'The first-start guide', description: 'As on a new device: nothing set up, nothing saved (FirstStartGuide.vue)', run: () => showFirstStart(true) },
+  {
+    title: 'New in Melue',
+    description: 'As after an update that skipped a version: every feature with its live demo, a made-up one from the skipped version, then a made-up question (whatsNew.ts)',
+    run: () => showWhatsNew(version.value, '0.0.0', true, version.value),
+  },
   { title: 'Sync now', description: 'The music and the library data, with the share', run: () => syncing.now().then((r) => `Synced: ${JSON.stringify(r)}`) },
   { title: 'Sync the library data now', description: 'Likes, plays, playlists, settings, bug reports', run: () => librarySync.now() },
   { title: 'Look at the other devices’ playback', description: 'Offers what another device played, as Across devices says', run: () => playbackSync.check() },
@@ -91,7 +99,7 @@ const TOOLS: { title: string; description: string; run: () => Promise<unknown> |
   { title: 'The sync’s notification', description: 'A slow pretend sync, to see the "Syncing music" notification', run: () => invoke('sync_simulate_notification'), android: true },
   { title: 'A song onto the share', description: 'A short test song in “Melue test” on the share: a change there', run: () => invoke<string>('dev_share_sample', { put: true }) },
   { title: 'The song off the share', description: 'Takes it away again: a song gone from the share', run: () => invoke<string>('dev_share_sample', { put: false }) },
-  { title: 'Look for an update', description: 'Pretends: a made-up next version, then the question', run: () => checkForUpdate(false) },
+  { title: 'Look for an update', description: 'Pretends: a made-up next version, the question, the download, then what the new version shows (New in Melue, or the note)', run: () => checkForUpdate(false) },
   {
     title: 'The note after an update',
     description: 'As a new version shows it',

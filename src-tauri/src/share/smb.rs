@@ -27,6 +27,11 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// Without any answer for this long, an operation gives up.
 pub const OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The longest a call waits for the share's runtime: its own limits (connecting, twice, and the operation, twice) and
+/// a little more. Past it the runtime itself is stuck (something in it blocks, and its timers can't fire): the call
+/// gives up as unreachable, so a sync never waits for ever.
+const RUNTIME_DEADLINE: Duration = Duration::from_secs(2 * (2 * 2 + 2 * 15 + 30) + 10);
+
 /// How long the home address gets to answer before the main one is used.
 const HOME_TIMEOUT: Duration = Duration::from_secs(2);
 /// How long looking up a home address given by name may take (away from home it may not answer at all).
@@ -232,16 +237,24 @@ impl SmbShare {
     {
         let (conn, config) = (self.conn.clone(), self.config.clone());
         let (answer, wait) = std::sync::mpsc::channel();
+        // Where the call is (for the log, should the runtime get stuck): 0 waiting for the connection, 1 connecting,
+        // 2 the operation.
+        let stage = Arc::new(std::sync::atomic::AtomicU8::new(0));
+        let at = stage.clone();
+        let what = path.clone();
         let Some(runtime) = self.runtime.as_ref() else {
             return Err(ShareError::Other { detail: "the share is closed".into() });
         };
         runtime.spawn(async move {
             let result = async {
                 for attempt in 0..2 {
+                    at.store(0, Ordering::SeqCst);
                     let mut guard = conn.lock().await;
                     if guard.is_none() {
+                        at.store(1, Ordering::SeqCst);
                         *guard = Some(connect(&config).await?);
                     }
+                    at.store(2, Ordering::SeqCst);
                     let connection = guard.as_mut().expect("connected");
                     match tokio::time::timeout(OPERATION_TIMEOUT, op(connection)).await {
                         Ok(Ok(value)) => return Ok(value),
@@ -267,7 +280,15 @@ impl SmbShare {
             .await;
             let _ = answer.send(result);
         });
-        wait.recv().unwrap_or_else(|_| Err(ShareError::Other { detail: "the share's runtime stopped".into() }))
+        match wait.recv_timeout(RUNTIME_DEADLINE) {
+            Ok(result) => result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                let stuck = ["waiting for the connection", "connecting", "the operation"][usize::from(stage.load(Ordering::SeqCst).min(2))];
+                eprintln!("melue: share: no answer for {what} in {} s, stuck {stuck}: given up", RUNTIME_DEADLINE.as_secs());
+                Err(ShareError::Unreachable { detail: format!("no answer from the share for {what}") })
+            }
+            Err(_) => Err(ShareError::Other { detail: "the share's runtime stopped".into() }),
+        }
     }
 
     fn quick<T, F>(&self, path: String, op: F) -> ShareResult<T>

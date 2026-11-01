@@ -51,7 +51,7 @@ const stops = [
   librarySync.onConflicts((list) => (conflicts.value = list)),
 ]
 onUnmounted(() => stops.forEach((stop) => stop.then((unlisten) => unlisten())))
-onLibraryChange((change) => change.reason !== 'likes', load)
+onLibraryChange((change) => change.reason !== 'likes' && change.reason !== 'plays', load)
 
 const shown = computed(() => autos.value.filter((a) => !a.hidden))
 const subtitle = computed(() => [count(playlists.value.length, 'playlist'), `${shown.value.length} made for you`].join(' · '))

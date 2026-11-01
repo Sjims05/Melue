@@ -79,6 +79,7 @@
   --color-ok: var(--ok);
   --color-off: var(--off);
   --color-warn: var(--warn);
+  --color-streamed: var(--streamed);
   --color-new: var(--new);
   --color-new-foreground: var(--new-foreground);
   /* Things on a card (Melue's design, 2026-10-17): in light mode white with a line, like the chips; in dark mode
@@ -131,6 +132,7 @@
   --ok: #16a34a;
   --off: #2563eb;
   --warn: #d97706;
+  --streamed: #9333ea;
   --new: #dcfce7;
   --new-foreground: #14532d;
 }
@@ -159,6 +161,7 @@
   --ok: #22c55e;
   --off: #2563eb;
   --warn: #f59e0b;
+  --streamed: #a855f7;
   --new: #052e16;
   --new-foreground: #fafafa;
 }
@@ -254,6 +257,7 @@ input[type='search']::-webkit-search-cancel-button {
   --ok: #22c55e;
   --off: #2563eb;
   --warn: #f59e0b;
+  --streamed: #a855f7;
   --new: #052e16;
   --new-foreground: #fafafa;
   --well: var(--badge);

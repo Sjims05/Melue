@@ -14,6 +14,11 @@ const KEY = 'melue-theme'
 const TIMES_KEY = 'melue-theme-times'
 /** Adaptive's times, "HH:MM" (24 hours). */
 export const THEME_TIMES_DEFAULT = { dark: '21:00', light: '07:00' }
+/** Adaptive's times to choose from: every half hour. */
+export const THEME_TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const time = `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`
+  return [time, time] as const
+})
 
 const system = window.matchMedia('(prefers-color-scheme: dark)')
 

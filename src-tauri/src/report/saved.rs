@@ -1,5 +1,6 @@
 //! Reports kept until they're sent, and after (About lists them): `<app data>/reports/<id>.json`, with the screenshot
-//! as `<id>.png` when one was kept. With a share, each goes to `.melue/reports/` there at the library sync
+//! as `<id>.png` when one was kept. A report can be deleted (and goes from the share too); a sent one whose issue was
+//! closed on GitHub goes by itself a week after Melue saw it closed. With a share, each goes to `.melue/reports/` there at the library sync
 //! (sync/data.rs), and is sent there: by its own device when signed in to GitHub (after reading the share's word on it,
 //! so a report another device sent isn't sent again), or, after a while, by any other device signed in; then marked
 //! sent there, so every device knows. Without a share, this device sends its own when it can.
@@ -18,6 +19,10 @@ use crate::guard::Locked;
 const SHARE_DIR: &str = ".melue/reports";
 /// Waiting reports are tried this long after Melue starts (then at each library sync).
 const FIRST_TRY: Duration = Duration::from_secs(45);
+/// A sent report whose issue was closed on GitHub: deleted this long after Melue saw it closed.
+const CLOSED_KEPT_MS: i64 = 7 * 24 * 3_600_000;
+/// Reports deleted here, to go from the share at the next library sync (one id a line).
+const DELETED_FILE: &str = "deleted.txt";
 /// Another device's waiting report is sent from here only this long after it was made: its own device goes first (two
 /// devices sending the same report at once would make two issues).
 const OTHERS_AFTER_MS: i64 = 10 * 60_000;
@@ -38,6 +43,9 @@ pub struct SavedReport {
     /// A screenshot was kept with it (`<id>.png`).
     #[serde(default)]
     pub screenshot: bool,
+    /// Sent, and its issue closed on GitHub: when Melue saw that (it goes a week after).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed_ms: Option<i64>,
 }
 
 /// Only one round of sending at a time (a sync and Send later may both start one).
@@ -106,11 +114,44 @@ pub fn send_waiting(app: &AppHandle) {
     }
 }
 
+/// The reports deleted here that still have to go from the share.
+fn deleted(app: &AppHandle) -> Vec<String> {
+    let Ok(dir) = dir(app) else { return Vec::new() };
+    std::fs::read_to_string(dir.join(DELETED_FILE)).unwrap_or_default().lines().filter(|id| valid_id(id).is_ok()).map(String::from).collect()
+}
+
+/// Report `id` deleted here (its screenshot too); with a share, noted to go from there at the next library sync.
+fn delete_here(app: &AppHandle, id: &str) -> Result<(), String> {
+    let dir = dir(app)?;
+    let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
+    let _ = std::fs::remove_file(dir.join(format!("{id}.png")));
+    if app.state::<crate::library::Library>().sync_available().unwrap_or(false) {
+        let mut gone = deleted(app);
+        if !gone.iter().any(|g| g == id) {
+            gone.push(id.to_string());
+        }
+        std::fs::write(dir.join(DELETED_FILE), gone.join("\n")).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// At the library sync (sync/data.rs): this device's reports with the share (the share's word on them first, then
 /// the waiting ones sent from here when signed in, then to the share), and other devices' reports still waiting after a
 /// while sent from here.
 pub fn sync(app: &AppHandle, share: &dyn Share) -> Result<(), String> {
     let _one = SENDING.locked();
+    // Deleted here: gone from the share too (so no other device sends it).
+    let gone = deleted(app);
+    if !gone.is_empty() {
+        for id in &gone {
+            for path in [format!("{SHARE_DIR}/{id}.json"), format!("{SHARE_DIR}/{id}.png")] {
+                if share.stat(&path)?.is_some() {
+                    share.delete(&path)?;
+                }
+            }
+        }
+        let _ = std::fs::remove_file(dir(app)?.join(DELETED_FILE));
+    }
     // Once one can't go (offline), the rest wait for the next sync.
     let mut can_send = crate::github::signed_in(app);
     for mut report in read_all(app)? {
@@ -227,9 +268,58 @@ pub fn reports_list(app: AppHandle) -> Result<Vec<SavedReport>, String> {
     Ok(read_all(&app)?.into_iter().map(|r| SavedReport { body: String::new(), ..r }).collect())
 }
 
+/// Deletes report `id` here, and from the share (at the library sync, started now): it isn't sent (if it was, its issue
+/// on GitHub stays).
+#[tauri::command(async)]
+pub fn report_delete(app: AppHandle, id: String) -> Result<(), String> {
+    valid_id(&id)?;
+    delete_here(&app, &id)?;
+    if app.state::<crate::library::Library>().sync_available().unwrap_or(false) {
+        crate::sync::data::soon(&app);
+    }
+    Ok(())
+}
+
+/// The sent reports' issues looked at on GitHub (About, as it shows them): which are closed; one seen closed a week
+/// ago goes. Then the list again. Offline: as they were.
+#[tauri::command(async)]
+pub fn reports_check(app: AppHandle) -> Result<Vec<SavedReport>, String> {
+    let now = now_ms();
+    for mut report in read_all(&app)? {
+        let Some(number) = report.sent_url.as_deref().and_then(issue_number) else { continue };
+        let closed = match crate::github::issue_closed(&app, number) {
+            Ok(closed) => closed,
+            Err(e) => {
+                eprintln!("melue: can't look at a report's issue: {e}");
+                break;
+            }
+        };
+        let closed_ms = if closed { Some(report.closed_ms.unwrap_or(now)) } else { None };
+        if closed_ms.is_some_and(|at| now - at >= CLOSED_KEPT_MS) {
+            delete_here(&app, &report.id)?;
+        } else if closed_ms != report.closed_ms {
+            report.closed_ms = closed_ms;
+            write(&app, &report)?;
+        }
+    }
+    reports_list(app)
+}
+
+/// An issue's number, from its address (".../issues/12").
+fn issue_number(url: &str) -> Option<u64> {
+    url.trim_end_matches('/').rsplit('/').next()?.parse().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_issues_number_from_its_address() {
+        assert_eq!(issue_number("https://github.com/Sjims05/Melue/issues/12"), Some(12));
+        assert_eq!(issue_number("https://github.com/Sjims05/Melue/issues/3/"), Some(3));
+        assert_eq!(issue_number("https://github.com/Sjims05/Melue"), None);
+    }
 
     #[test]
     fn ids_are_plain() {

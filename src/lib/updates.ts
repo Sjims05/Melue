@@ -16,13 +16,15 @@
  */
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { CircleSlash, Clock, Download, Sparkles } from '@lucide/vue'
+import { CircleSlash, Clock, Download } from '@lucide/vue'
 import { reactive } from 'vue'
 import { library } from '@/library'
+import { firstStart } from '@/lib/firstStart'
+import { afterUpdate, whatsNew } from '@/components/whatsNew/whatsNew'
 import { isMobile } from '@/platform'
-import { router } from '@/router'
 import { drawerMenu, openMenu } from './menuDrawer'
 import { toast } from './toast'
+import { newer } from './version'
 
 type Update = NonNullable<Awaited<ReturnType<typeof import('@tauri-apps/plugin-updater').check>>>
 
@@ -52,12 +54,6 @@ let found: Update | null = null
 let apk: { url: string; size: number } | null = null
 let downloaded = false
 
-/** Whether version `a` ("0.6.0") is newer than `b`. */
-const newer = (a: string, b: string) => {
-  const [x, y] = [a, b].map((v) => v.split('.').map(Number))
-  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0)
-  return false
-}
 const FIRST_MS = 8_000
 const EVERY_MS = 6 * 3_600_000
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
@@ -114,14 +110,14 @@ export async function checkForUpdate(quiet = false) {
   }
 }
 
-// ---- Asking: once nothing else is open (a drawer, a dialog) and Melue has been left alone a moment, so the question
+// ---- Asking: once nothing else is open (a drawer, a dialog, the first-start guide) and Melue has been left alone a moment, so the question
 // isn't lost under another one or taken away by a page change. Closed without an answer that soon (a page change took
 // it, not you): asked again on coming back to Melue.
 const QUIET_MS = 1500
 let wanted = false
 let waiting = 0
 let shownAt = 0
-const busy = () => document.hidden || !!drawerMenu.value || !!document.querySelector('[role=dialog], [role=alertdialog]')
+const busy = () => firstStart.open || whatsNew.open || document.hidden || !!drawerMenu.value || !!document.querySelector('[role=dialog], [role=alertdialog]')
 function askWhenFree() {
   wanted = true
   clearTimeout(waiting)
@@ -183,9 +179,11 @@ export async function installUpdate() {
       }
       updates.state = 'installing'
       await wait(1500)
-      // As the new version would, once started again.
+      // As the new version would, once started again (every feature and question in the lists as new in it, and a
+      // made-up question).
       updates.state = 'latest'
-      toast(`Updated to Melue ${updates.version}`, Sparkles, { label: "What's new", run: () => router.push({ path: '/settings', query: { whatsNew: '1' } }) })
+      const { getVersion } = await import('@tauri-apps/api/app')
+      afterUpdate(updates.version, '0.0.0', true, await getVersion())
       return
     }
     let total = 0

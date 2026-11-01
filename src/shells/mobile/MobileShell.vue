@@ -30,6 +30,8 @@ import { usePullToClose } from './pullToClose'
 import { READY, usePullToRefresh } from './pullToRefresh'
 import MenuDrawer from './MenuDrawer.vue'
 import ReportDialog from '@/components/report/ReportDialog.vue'
+import FirstStartGuide from '@/components/firstStart/FirstStartGuide.vue'
+import WhatsNew from '@/components/whatsNew/WhatsNew.vue'
 import RemoteAsk from '@/components/player/RemoteAsk.vue'
 import { vKeepPlace } from '@/lib/keepPlace'
 
@@ -146,6 +148,8 @@ const refresh = usePullToRefresh(scroller)
     <MenuDrawer />
     <!-- Report a bug (About). -->
     <ReportDialog />
+    <FirstStartGuide />
+    <WhatsNew />
     <!-- Another device asking to play here (Let other devices play here: Ask first). -->
     <RemoteAsk />
     <ConfirmHost />

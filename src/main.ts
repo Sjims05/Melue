@@ -2,9 +2,8 @@ import { keyRightClicks } from "@/lib/hotkeys";
 import { createApp } from "vue";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { Sparkles } from "@lucide/vue";
-import { toast } from "./lib/toast";
-import { updatedSinceLastRun } from "./lib/updatedNote";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { updatedFrom } from "./lib/updatedNote";
 import "./style.css";
 // Light or dark (follows the system unless set).
 import "./lib/theme";
@@ -66,12 +65,11 @@ async function start(shell = isMobile ? MobileShell : DesktopShell) {
     .then(() => syncNowPlaying());
   // Links to Melue from outside it (melue://settings/<id>).
   if (isTauri()) import("./lib/links").then(({ followLinks }) => followLinks(router)).catch(() => {});
-  // Updated since it last ran: a note, with What's new at hand (lib/updatedNote.ts).
+  // Updated since it last ran: New in Melue with what's new since, or a note with What's new at hand (lib/updatedNote.ts).
   if (isTauri()) {
-    getVersion().then((version) => {
-      if (updatedSinceLastRun(version)) {
-        toast(`Updated to Melue ${version}`, Sparkles, { label: "What's new", run: () => router.push({ path: "/settings", query: { whatsNew: "1" } }) });
-      }
+    getVersion().then(async (version) => {
+      const from = updatedFrom(version);
+      if (from) (await import("./components/whatsNew/whatsNew")).afterUpdate(version, from);
     }).catch(() => {});
   }
   // Updating itself from the newest published release (lib/updates.ts).
@@ -82,10 +80,23 @@ async function start(shell = isMobile ? MobileShell : DesktopShell) {
   if (isTauri()) import("./player/remotePlayback").then(({ startRemotePlayback }) => startRemotePlayback()).catch(() => {});
   // Whether a share is set up (sync buttons show only then), kept live.
   startSync().catch((e) => console.error("melue: sync status failed", e));
+  // A device's first start: the guide (lib/firstStart.ts).
+  if (isTauri()) import("./lib/firstStart").then(({ showFirstStartOnce }) => showFirstStartOnce()).catch(() => {});
+}
+
+/** The tray's player (desktop: src-tauri tray.rs): its own small page in its own window, following the player. */
+async function startTray() {
+  const { default: TrayPlayer } = await import("./shells/tray/TrayPlayer.vue");
+  createApp(TrayPlayer).mount("#app");
+  const { startNowPlaying } = await import("./player/nowPlaying");
+  await startNowPlaying();
+  await syncNowPlaying();
 }
 
 // In a dev browser (no Melue behind it), sample answers first: see dev/browserPreview.ts. Left out of the build.
-if (import.meta.env.DEV && !isTauri()) {
+if (isTauri() && !isMobile && getCurrentWindow().label === "tray") {
+  startTray().catch((e) => console.error("melue: tray player", e));
+} else if (import.meta.env.DEV && !isTauri()) {
   import("./dev/browserPreview").then(({ installBrowserPreview }) => {
     installBrowserPreview();
     // ?phone: the phone's frame, to look at it in the browser.

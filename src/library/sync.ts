@@ -16,6 +16,8 @@ export const sync = reactive({
   available: false,
   /** Whether a sync is running (and how far), the last sync, the last problem. Live. */
   status: null as SyncStatus | null,
+  /** The share is played straight from (a network drive, nothing copied): its dot is purple, not green. */
+  streamed: false,
 })
 
 let started = false
@@ -52,6 +54,8 @@ function followUse() {
 
 async function refresh() {
   sync.available = await invoke<boolean>('library_sync_available')
+  const settings = sync.available ? (await share.info().catch(() => null))?.settings : null
+  sync.streamed = settings?.kind === 'drive' && !!settings.stream
 }
 
 // ---- setting up the share (src-tauri/src/share/setup.rs)

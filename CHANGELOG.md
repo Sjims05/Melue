@@ -3,6 +3,30 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 1.1.0 (2026-11-01)
+
+The mini player in the tray, a welcome guide for new devices, and New in Melue.
+
+- The mini player: right-click Melue's icon in the tray for what plays, the controls and the volume, without opening
+  Melue. It's ready at once (unless Melue neither starts with Windows nor stays in the tray when closed).
+- Global shortcuts on a computer: the volume and the player from any app (Ctrl+Alt+arrows and more), held to repeat,
+  each changeable, with a right-click reset.
+- A welcome guide on a new device: your share and your music folders on one page, a few settings that come down to
+  taste (the look, with Adaptive; mobile data, with its limits), and this device's name. Connecting the share starts
+  the first sync.
+- New in Melue: after an update with something new, its big features show themselves, live, and new settings are
+  asked like the guide asks them. Also in About, next to What's new.
+- A share played straight from a drive (streamed) works with everything: playback across devices, likes and plays,
+  playlists, playing on another device. It shows as Streamed, in purple, and its button syncs likes and playlists.
+- Disconnecting from another device takes over what it plays, paused, while it keeps playing.
+- A play counts as soon as the song has played long enough, and Most played updates at once, the song gliding to its
+  new place.
+- Bug reports: delete one (from your other devices too); a sent one goes by itself a week after its issue is closed.
+- About is in three parts: Melue, Help and Troubleshooting. Folders on a phone read as "Phone storage / Music / ...".
+- A sync that stops getting answers from the share gives up and tries again, instead of waiting for ever; a successful
+  sync lets playback across devices look again at once.
+- A reinstalled phone app starts clean (Android's backup doesn't bring old data back).
+
 ## 1.0.4 (2026-10-31)
 
 Fixes from the first bug reports sent from the app.

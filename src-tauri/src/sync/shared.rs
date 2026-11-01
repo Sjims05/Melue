@@ -51,6 +51,11 @@ pub fn with_share<T>(app: &AppHandle, work: impl FnOnce(&dyn Share) -> Result<T>
     result
 }
 
+/// The share was just reached (a sync): no more rest, so what follows (the other devices' playback, the data) goes now.
+pub fn reached(app: &AppHandle) {
+    *app.state::<OpenShare>().failed_at.locked() = None;
+}
+
 /// The network changed (or the share was set up anew): opened again next time, right away.
 pub fn reset(app: &AppHandle) {
     let open = app.state::<OpenShare>();

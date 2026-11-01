@@ -89,8 +89,10 @@ const description = computed(() => {
       return unreachable.value ? `Check that it’s on and that this device can reach it.${retry}` : `${describeSyncFailure(s?.problem)}.${retry}`
     }
     default: {
+      // Played straight from the share: nothing to have copied (the last sync of likes and playlists: in the details).
+      if (streamed.value) return 'Streamed: songs play straight from the share'
       if (!s?.last) return 'Not synced yet'
-      return `${streamed.value ? 'Likes and playlists synced' : 'Synced'} ${ago(s.last.atMs)} · ${didWords(s.last.result)}`
+      return `Synced ${ago(s.last.atMs)} · ${didWords(s.last.result)}`
     }
   }
 })
@@ -98,7 +100,7 @@ const description = computed(() => {
 /** Songs gone from the share that wait for a yes (more than Ask first allows). */
 const removalsWaiting = computed(() => status.value?.last?.result.removalsWaiting ?? 0)
 
-const dot = computed(() => ({ none: 'off', password: 'bad', syncing: 'busy', problem: 'bad', synced: 'ok' } as const)[state.value])
+const dot = computed(() => ({ none: 'off', password: 'bad', syncing: 'busy', problem: 'bad', synced: streamed.value ? 'streamed' : 'ok' } as const)[state.value])
 const canOpen = computed(() => ['syncing', 'problem', 'synced'].includes(state.value))
 // The address at home: only for a share Melue signs in to, and only while there isn't one.
 const canAddHome = computed(() => settings.value?.kind === 'smb' && !settings.value.homeHost)
@@ -155,7 +157,7 @@ async function save(value: string) {
       <Button v-if="state === 'none'" size="sm" @click="emit('setUp')">Set up</Button>
       <Button v-else-if="state === 'password' && !editing" size="sm" @click="editing = 'password'">Give password</Button>
       <Button v-else-if="state === 'syncing'" variant="outline" size="sm" @click="syncing.cancel()">Cancel</Button>
-      <Button v-else-if="state !== 'password'" variant="outline" size="sm" @click="syncNow()">{{ state === 'problem' ? 'Try now' : 'Sync now' }}</Button>
+      <Button v-else-if="state !== 'password'" variant="outline" size="sm" @click="syncNow()">{{ state === 'problem' ? 'Try now' : streamed ? 'Sync likes & playlists' : 'Sync now' }}</Button>
       <template v-if="canOpen" #end>
         <Chevron :open="open" />
       </template>

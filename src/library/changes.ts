@@ -24,5 +24,5 @@ export function onLibraryChange(wanted: (change: LibraryChange) => boolean, relo
   onUnmounted(() => void stop.then((unlisten) => unlisten()))
 }
 
-/** What a list of the whole library (songs, albums, artists, folders) shows: not likes, not playlists. */
-export const changesTheLibrary = (change: LibraryChange) => change.reason !== 'likes' && change.reason !== 'playlists'
+/** What a list of the whole library (songs, albums, artists, folders) shows: not likes, playlists or plays. */
+export const changesTheLibrary = (change: LibraryChange) => change.reason !== 'likes' && change.reason !== 'playlists' && change.reason !== 'plays'

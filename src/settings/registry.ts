@@ -195,6 +195,43 @@ export const SETTINGS: Record<string, SettingInfo> = {
     perDevice: true,
   },
 
+  'shortcuts.on': {
+    title: 'Shortcuts anywhere',
+    default: 'On',
+    help: 'Melue’s volume, play / pause, next and previous from any app, also with Melue in the tray: Ctrl+Alt with ↑ ↓ (volume), Space (play / pause) and ← → (previous, next). Click a shortcut’s keys to choose others. Keys another app already uses don’t work for Melue: choose others for them.',
+    perDevice: true,
+  },
+  'shortcuts.volumeUp': {
+    title: 'Volume up',
+    default: 'Ctrl+Alt+↑',
+    help: 'Melue’s volume up, from any app; held, it keeps going up. Click the keys to choose others (with Ctrl, Alt or the Windows key); Backspace takes them away. Right-click to go back to the default.',
+    perDevice: true,
+  },
+  'shortcuts.volumeDown': {
+    title: 'Volume down',
+    default: 'Ctrl+Alt+↓',
+    help: 'Melue’s volume down, from any app; held, it keeps going down. Click the keys to choose others (with Ctrl, Alt or the Windows key); Backspace takes them away. Right-click to go back to the default.',
+    perDevice: true,
+  },
+  'shortcuts.playPause': {
+    title: 'Play / pause',
+    default: 'Ctrl+Alt+Space',
+    help: 'Play or pause Melue, from any app. Click the keys to choose others (with Ctrl, Alt or the Windows key); Backspace takes them away. Right-click to go back to the default.',
+    perDevice: true,
+  },
+  'shortcuts.next': {
+    title: 'Next song',
+    default: 'Ctrl+Alt+→',
+    help: 'The next song, from any app. Click the keys to choose others (with Ctrl, Alt or the Windows key); Backspace takes them away. Right-click to go back to the default.',
+    perDevice: true,
+  },
+  'shortcuts.previous': {
+    title: 'Previous song',
+    default: 'Ctrl+Alt+←',
+    help: 'The previous song, from any app. Click the keys to choose others (with Ctrl, Alt or the Windows key); Backspace takes them away. Right-click to go back to the default.',
+    perDevice: true,
+  },
+
   // ---- Library
   'playlists.topSize': {
     title: 'Top songs lists hold',

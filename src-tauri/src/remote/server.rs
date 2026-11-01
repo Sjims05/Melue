@@ -171,7 +171,10 @@ impl Host for AppHost {
             super::link::give_way(&self.0, &name);
             handoff::connection_began()
         } else {
-            handoff::connection_ended()
+            handoff::connection_ended();
+            // What plays here now goes on the share at once (it rested meanwhile): the other devices see it.
+            let app = self.0.clone();
+            tauri::async_runtime::spawn_blocking(move || handoff::save_now(&app));
         }
         // The app shows who plays here (Connect device: Disconnect it).
         let _ = self.0.emit(CONTROLLED_EVENT, controlled_by(&self.0));

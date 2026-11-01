@@ -68,7 +68,58 @@ pub fn outcome(position_ms: i64, duration_ms: Option<i64>) -> Outcome {
     }
 }
 
+/// The latest play of `track` started by `at_ms` and not left yet: its id, and whether it was counted already.
+fn open_play(tx: &rusqlite::Transaction, track: i64, at_ms: i64) -> Result<Option<(i64, bool)>> {
+    tx.query_row(
+        "SELECT id, counted FROM plays WHERE track_id = ?1 AND position_ms IS NULL AND started_at <= ?2
+         ORDER BY started_at DESC, id DESC LIMIT 1",
+        params![track, at_ms],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .optional()
+    .map_err(err)
+}
+
+/// Adds `plays` and `skips` to a song's counts (a play: on its day too, and its last played time).
+fn add_counts(tx: &rusqlite::Transaction, track: i64, plays: i64, skips: i64, at_ms: i64) -> Result<()> {
+    if plays > 0 {
+        tx.execute(
+            "INSERT INTO play_days (track_id, day, plays) VALUES (?1, ?2, ?3)
+             ON CONFLICT (track_id, day) DO UPDATE SET plays = plays + ?3",
+            params![track, at_ms.div_euclid(DAY_MS), plays],
+        )
+        .map_err(err)?;
+    }
+    tx.execute(
+        "INSERT INTO track_stats (track_id, play_count, skip_count, last_played_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT (track_id) DO UPDATE SET play_count = play_count + ?2, skip_count = skip_count + ?3,
+             last_played_at = CASE WHEN ?2 > 0 THEN max(coalesce(last_played_at, 0), ?4) ELSE last_played_at END",
+        params![track, plays, skips, if plays > 0 { Some(at_ms) } else { None }],
+    )
+    .map_err(err)?;
+    Ok(())
+}
+
 impl Library {
+    /// The song playing (`track`, `position_ms` into it) has played long enough to be a play: counted now, once
+    /// (leaving it later doesn't count it again; whatever's done after, it was a play). Whether it was counted now.
+    pub fn count_play_now(&self, track: i64, position_ms: i64) -> Result<bool> {
+        let at_ms = now_ms();
+        let mut conn = self.conn();
+        let tx = conn.transaction().map_err(err)?;
+        let duration: Option<Option<i64>> =
+            tx.query_row("SELECT duration_ms FROM tracks WHERE id = ?1", [track], |r| r.get(0)).optional().map_err(err)?;
+        let Some(duration) = duration else { return Ok(false) };
+        if outcome(position_ms, duration) != Outcome::Play {
+            return Ok(false);
+        }
+        let Some((id, false)) = open_play(&tx, track, at_ms)? else { return Ok(false) };
+        tx.execute("UPDATE plays SET counted = 1 WHERE id = ?1", [id]).map_err(err)?;
+        add_counts(&tx, track, 1, 0, at_ms)?;
+        tx.commit().map_err(err)?;
+        Ok(true)
+    }
+
     /// The queue for a list, ready to play: its songs that can be played, in its order. Errors for a list
     /// that isn't there (a deleted playlist).
     /// - "songs": all songs by title; "songs:<sort>" in the Songs tab's order ("songs:plays", see TrackSort)
@@ -192,43 +243,25 @@ impl Library {
             "complete" | "skip" => {
                 let completed = event.kind == "complete";
                 let counted = if completed { Outcome::Play } else { outcome(event.position_ms, duration) };
-                // Its start in the history (or, if that was missed, a new entry).
-                let updated = tx
-                    .execute(
-                        "UPDATE plays SET completed = ?2, position_ms = ?3 WHERE id = (
-                             SELECT id FROM plays WHERE track_id = ?1 AND position_ms IS NULL AND started_at <= ?4
-                             ORDER BY started_at DESC, id DESC LIMIT 1)",
-                        params![track, completed, event.position_ms, event.at_ms],
-                    )
-                    .map_err(err)?;
-                if updated == 0 {
-                    tx.execute(
-                        "INSERT INTO plays (track_id, started_at, completed, position_ms) VALUES (?1, ?2, ?3, ?4)",
-                        params![track, event.at_ms - event.position_ms, completed, event.position_ms],
-                    )
-                    .map_err(err)?;
-                }
-                let (plays, skips) = match counted {
-                    Outcome::Play => (1, 0),
-                    Outcome::Skip => (0, 1),
-                    Outcome::Neither => (0, 0),
+                // Its start in the history (or, if that was missed, a new entry); counted already while it played?
+                let open = open_play(&tx, track, event.at_ms)?;
+                match open {
+                    Some((id, _)) => tx
+                        .execute("UPDATE plays SET completed = ?2, position_ms = ?3 WHERE id = ?1", params![id, completed, event.position_ms])
+                        .map_err(err)?,
+                    None => tx
+                        .execute(
+                            "INSERT INTO plays (track_id, started_at, completed, position_ms) VALUES (?1, ?2, ?3, ?4)",
+                            params![track, event.at_ms - event.position_ms, completed, event.position_ms],
+                        )
+                        .map_err(err)?,
                 };
-                if plays > 0 {
-                    tx.execute(
-                        "INSERT INTO play_days (track_id, day, plays) VALUES (?1, ?2, 1)
-                         ON CONFLICT (track_id, day) DO UPDATE SET plays = plays + 1",
-                        params![track, event.at_ms.div_euclid(DAY_MS)],
-                    )
-                    .map_err(err)?;
-                }
-                if plays + skips > 0 {
-                    tx.execute(
-                        "INSERT INTO track_stats (track_id, play_count, skip_count, last_played_at) VALUES (?1, ?2, ?3, ?4)
-                         ON CONFLICT (track_id) DO UPDATE SET play_count = play_count + ?2, skip_count = skip_count + ?3,
-                             last_played_at = CASE WHEN ?2 > 0 THEN max(coalesce(last_played_at, 0), ?4) ELSE last_played_at END",
-                        params![track, plays, skips, if plays > 0 { Some(event.at_ms) } else { None }],
-                    )
-                    .map_err(err)?;
+                if !open.is_some_and(|(_, early)| early) {
+                    match counted {
+                        Outcome::Play => add_counts(&tx, track, 1, 0, event.at_ms)?,
+                        Outcome::Skip => add_counts(&tx, track, 0, 1, event.at_ms)?,
+                        Outcome::Neither => {}
+                    }
                 }
                 Some(counted)
             }

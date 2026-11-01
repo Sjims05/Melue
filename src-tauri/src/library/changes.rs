@@ -28,6 +28,8 @@ pub enum ChangeReason {
     Likes,
     /// Whether sync is available changed (a share set up or removed, see sync.rs).
     Sync,
+    /// A song was played (counted): the lists by plays (Most played, Top songs, Home).
+    Plays,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -59,6 +61,11 @@ impl LibraryChange {
     /// A song liked or unliked.
     pub fn liked(track: i64) -> Self {
         Self { reason: ChangeReason::Likes, tracks: vec![track], sources: vec!["liked".into()] }
+    }
+
+    /// A song's play counted.
+    pub fn played(track: i64) -> Self {
+        Self { reason: ChangeReason::Plays, tracks: vec![track], sources: Vec::new() }
     }
 
     pub fn playlist(id: i64, tracks: Vec<i64>) -> Self {

@@ -67,7 +67,7 @@ export function startLibraryState(): Promise<void> {
       }
     })
     await library.onChange((change) => {
-      if (change.reason !== 'likes') refreshLibrary()
+      if (change.reason !== 'likes' && change.reason !== 'plays') refreshLibrary()
     })
     await moving.onCopies((copies) => (libraryState.copies = copies))
     await syncing.onToShare((songs) => (libraryState.offered = songs))

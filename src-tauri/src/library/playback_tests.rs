@@ -148,6 +148,33 @@ fn playback_events_count_plays_and_skips_once() {
 }
 
 #[test]
+fn a_play_counts_once_it_has_played_long_enough() {
+    let (t, m, f) = setup("play-early");
+    m.add("a.wav", &song("A", "X", "Y", 1)); // a quarter of a second long: past half is a play
+    t.scan(f, &m);
+    let a = track(&t, "a.wav");
+    let record = |e: PlaybackEvent| t.library.record_playback(&e).unwrap();
+
+    // Not started (no play to count), then not far enough in.
+    assert!(!t.library.count_play_now(a, 200).unwrap());
+    record(event("1", "start", a, 0, 100));
+    assert!(!t.library.count_play_now(a, 50).unwrap());
+    assert_eq!(stats(&t, a), (0, 0));
+    // Far enough: counted now, once.
+    assert!(t.library.count_play_now(a, 200).unwrap());
+    assert!(!t.library.count_play_now(a, 240).unwrap());
+    assert_eq!(stats(&t, a), (1, 0));
+    // Left after (skipped, or played to the end): not counted again.
+    assert_eq!(record(event("2", "skip", a, 0, 101)), Some(Outcome::Skip));
+    assert_eq!(stats(&t, a), (1, 0));
+    // Played again: a new play.
+    record(event("3", "start", a, 0, 200));
+    assert!(t.library.count_play_now(a, 200).unwrap());
+    record(event("4", "complete", a, 0, 201));
+    assert_eq!(stats(&t, a), (2, 0));
+}
+
+#[test]
 fn the_history_is_trimmed_and_the_counts_stay() {
     let (t, m, f) = setup("play-trim");
     m.add("a.wav", &song("A", "X", "Y", 1));

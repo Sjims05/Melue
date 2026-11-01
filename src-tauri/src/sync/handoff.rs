@@ -327,12 +327,43 @@ fn resting() -> bool {
 }
 
 /// A device whose playback isn't offered or followed here, until a time (this device's clock): the one this device
-/// plays on (Connect device, remote/link.rs), and a minute after, so the move itself isn't offered back.
+/// plays on (Connect device, remote/link.rs).
 static IGNORED: Mutex<Option<(String, i64)>> = Mutex::new(None);
 
 /// Ignores device `id`'s playback until `until_ms` (`i64::MAX`: until said otherwise).
 pub fn ignore(id: &str, until_ms: i64) {
     *IGNORED.locked() = Some((id.to_string(), until_ms));
+}
+
+/// No device's playback is ignored any more (the connection ended).
+pub fn ignore_none() {
+    *IGNORED.locked() = None;
+}
+
+/// What a device plays, taken over here (Disconnect: it waits here, paused): not offered back while that device
+/// plays the same (its saves as it goes on); a pause there, or another song, is something new.
+static TAKEN: Mutex<Option<(String, Playback)>> = Mutex::new(None);
+
+/// Device `there`'s playback was just taken over here (`playing` there): not something new to tell the others, nor
+/// to offer back while it goes on the same.
+pub fn taken_over(app: &AppHandle, there: &str, playing: bool) {
+    let library = app.state::<Library>();
+    let Ok(Some(folder)) = library.synced_folder() else { return };
+    let Ok(Some((playback, _))) = playing_here(app, &library, &folder) else { return };
+    *TAKEN.locked() = Some((there.to_string(), Playback { playing, ..playback.clone() }));
+    *app.state::<Handoff>().last.locked() = Some((playback, now_ms()));
+}
+
+/// Whether `other`'s playback is still what was taken over from it (forgotten once it isn't).
+fn still_taken(other: &PlaybackFile) -> bool {
+    let mut taken = TAKEN.locked();
+    let same = taken.as_ref().is_some_and(|(there, was)| {
+        *there == other.device_id && was.queue == other.state.queue && was.index == other.state.index && was.playing == other.state.playing
+    });
+    if !same && taken.as_ref().is_some_and(|(there, _)| *there == other.device_id) {
+        *taken = None;
+    }
+    same
 }
 
 fn ignored() -> Option<String> {
@@ -465,17 +496,14 @@ pub fn set_settings(app: &AppHandle, settings: &PlaybackSettings) -> Result<()> 
 impl Library {
     /// The synced folder's songs that are on the share (a sync brought them, or they were moved there): (track id,
     /// path on the share). A song put in the synced folder by hand, and not on the share, isn't one: the other
-    /// devices haven't got it.
+    /// devices haven't got it. Streamed: the synced folder is the share, so all of them.
     pub(crate) fn synced_songs(&self, folder: &Folder) -> Result<Vec<(i64, String)>> {
+        let from_share = self.came_from_share(folder)?;
         let conn = self.conn();
-        let on_share: std::collections::HashSet<String> = conn
-            .prepare("SELECT path FROM synced_files")
-            .and_then(|mut stmt| stmt.query_map([], |r| r.get::<_, String>(0))?.collect())
-            .map_err(err)?;
         let mut stmt = conn.prepare("SELECT id, path FROM tracks WHERE folder_id = ?1 AND missing_since IS NULL").map_err(err)?;
         let rows = stmt.query_map([folder.id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
         let rows: Vec<(i64, String)> = rows.collect::<rusqlite::Result<_>>().map_err(err)?;
-        Ok(rows.into_iter().filter_map(|(id, path)| share_path(folder, &path).filter(|p| on_share.contains(p)).map(|p| (id, p))).collect())
+        Ok(rows.into_iter().filter(|(_, path)| from_share(path)).filter_map(|(id, path)| share_path(folder, &path).map(|p| (id, p))).collect())
     }
 
     /// The synced folder (None: no share set up).
@@ -611,6 +639,9 @@ fn look(app: &AppHandle) -> Result<()> {
         files.retain(|f| f.device_id != ignored);
     }
     let Some(other) = newest_other(files, &me, answered_ms(&library)) else { return Ok(()) };
+    if still_taken(&other) {
+        return mark_answered(&library, &other);
+    }
     // Never interrupt: playing here wins (and soon saves, which makes it the newest).
     let before = app.native_audio().get_state()?;
     if before.is_playing {

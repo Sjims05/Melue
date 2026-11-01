@@ -237,6 +237,24 @@ pub fn create_issue(app: &AppHandle, title: &str, body: &str) -> Result<String, 
     }
 }
 
+/// Whether issue `number` on Melue's GitHub is closed (asked with the account signed in here, else without one).
+pub fn issue_closed(app: &AppHandle, number: u64) -> Result<bool, String> {
+    #[derive(Deserialize)]
+    struct State {
+        state: String,
+    }
+    let request = agent().get(&format!("{ISSUES_URL}/{number}")).header("Accept", "application/vnd.github+json");
+    let request = match SystemSecrets::new(app).get(TOKEN_KEY).ok().flatten() {
+        Some(token) => request.header("Authorization", &format!("Bearer {token}")),
+        None => request,
+    };
+    let mut answer = request.call().map_err(unreached)?;
+    if answer.status() != 200 {
+        return Err(format!("GitHub answered {}", answer.status()));
+    }
+    Ok(answer.body_mut().read_json::<State>().map_err(|e| e.to_string())?.state == "closed")
+}
+
 /// The token's account name (GitHub's /user).
 fn account(token: &str) -> Result<String, String> {
     let mut answer = agent()

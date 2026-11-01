@@ -30,7 +30,13 @@ pub const RECONNECTING_EVENT: &str = "remote-reconnecting";
 /// The connection (to which device, its name), the other device's state as it last said, and the queue this device
 /// had when it sent it there (brought back as it was, songs only here included, when its song is in it).
 #[derive(Default)]
-pub struct Remote(Mutex<Option<Current>>, Mutex<Option<(Connected, RemoteState)>>, Mutex<Option<Vec<tauri_plugin_native_audio::QueueItem>>>);
+pub struct Remote(
+    Mutex<Option<Current>>,
+    Mutex<Option<(Connected, RemoteState)>>,
+    Mutex<Option<Vec<tauri_plugin_native_audio::QueueItem>>>,
+    /// When the last state came (its position was then).
+    Mutex<Option<std::time::Instant>>,
+);
 
 /// The connection there is: to which device, which connection it is (its serial: one replaced, or closed here,
 /// doesn't end the next), and its link (None while reconnecting).
@@ -104,6 +110,7 @@ async fn open(app: &AppHandle, id: &str, serial: u64) -> Result<(Connected, Link
             let _ = match message {
                 Outgoing::State(state) => {
                     *to_app.state::<Remote>().1.locked() = Some((keep.clone(), state.clone()));
+                    *to_app.state::<Remote>().3.locked() = Some(std::time::Instant::now());
                     // The phone's lock screen, notification and volume buttons follow it (Android).
                     media::show(&to_app, &keep, &state);
                     to_app.emit(STATE_EVENT, state)
@@ -153,17 +160,9 @@ fn closed(app: &AppHandle, serial: u64, how: Closed) {
     }
 }
 
-/// The connection's over: Continue is back (not offering what that device saves as it stops, for a minute), and the
-/// app's told (`remote-closed`, with why).
+/// The connection's over (ended there): Continue is back, and the app's told (`remote-closed`, with why).
 fn end(app: &AppHandle, why: Option<String>) {
-    let remote = app.state::<Remote>();
-    if let Some(Current { id, .. }) = remote.0.locked().take() {
-        handoff::connection_ended();
-        handoff::ignore(&id, crate::library::now_ms() + 60_000);
-    }
-    remote.1.locked().take();
-    remote.2.locked().take();
-    media::hide(app);
+    disconnect(app);
     let _ = app.emit(CLOSED_EVENT, why);
 }
 
@@ -251,10 +250,23 @@ pub async fn remote_play_on(app: AppHandle, id: String) -> Result<Connected, Str
 /// it pauses there, and the connection closes.
 #[tauri::command(async)]
 pub fn remote_bring_back(app: AppHandle) -> Result<(), String> {
+    take_over(&app, true)?;
+    disconnect(&app);
+    Ok(())
+}
+
+/// What plays there comes here: its queue, the song, where in it. `move_here`: it pauses there and plays here if it
+/// was playing (else: it goes on there, and waits here, paused).
+fn take_over(app: &AppHandle, move_here: bool) -> Result<(), String> {
     let remote = app.state::<Remote>();
     let last = remote.1.locked().clone();
     let sent = remote.2.locked().take();
-    if let Some((_, state)) = last.filter(|(_, s)| s.index >= 0) {
+    if let Some((_, mut state)) = last.filter(|(_, s)| s.index >= 0) {
+        // Where it is now: the state said where it was when it came, and it's played on since.
+        if state.playing {
+            let since = remote.3.locked().map_or(0.0, |at| at.elapsed().as_secs_f64());
+            state.position = if state.duration > 0.0 { (state.position + since).min(state.duration) } else { state.position + since };
+        }
         let library = app.state::<Library>();
         let folder = library.synced_folder()?.ok_or("no share is set up")?;
         let playing_path = state.queue.get(state.index as usize).and_then(|song| song.path.clone());
@@ -278,12 +290,17 @@ pub fn remote_bring_back(app: AppHandle) -> Result<(), String> {
         player.set_queue(items, index, state.position, None)?;
         player.set_shuffle(state.shuffle)?;
         player.set_repeat_mode(&state.repeat)?;
-        let _ = remote_command(app.clone(), Command::Pause);
-        if state.playing {
-            player.play()?;
+        if move_here {
+            let _ = remote_command(app.clone(), Command::Pause);
+            if state.playing {
+                player.play()?;
+            }
+        } else {
+            // Not something new to tell the others (it's what that device plays), nor to offer back from it.
+            let there = remote.0.locked().as_ref().map(|c| c.id.clone()).unwrap_or_default();
+            handoff::taken_over(app, &there, state.playing);
         }
     }
-    remote_disconnect(app);
     Ok(())
 }
 
@@ -408,22 +425,30 @@ pub fn remote_send_playing(app: AppHandle) -> Result<(), String> {
 /// why (`remote-closed`).
 pub fn give_way(app: &AppHandle, to: &str) {
     if app.state::<Remote>().0.locked().is_some() {
-        remote_disconnect(app.clone());
+        disconnect(app);
         let _ = app.emit(CLOSED_EVENT, format!("{to} plays here now"));
     }
 }
 
-/// Closes the connection (the other device goes on as it is).
-#[tauri::command]
+/// Disconnect: the other device goes on as it is, and what it plays waits here, paused (its queue, the song, where in
+/// it), so this device carries on from there.
+#[tauri::command(async)]
 pub fn remote_disconnect(app: AppHandle) {
-    // Dropping the link closes it.
+    if let Err(e) = take_over(&app, false) {
+        eprintln!("melue: remote: what played there can't wait here: {e}");
+    }
+    disconnect(&app);
+}
+
+/// Closes the connection (dropping the link closes it): synced playback is back, that device's playback too.
+fn disconnect(app: &AppHandle) {
     let remote = app.state::<Remote>();
-    if let Some(Current { id, .. }) = remote.0.locked().take() {
+    if remote.0.locked().take().is_some() {
         handoff::connection_ended();
-        // A minute more: what that device saves as it stops isn't offered back here.
-        handoff::ignore(&id, crate::library::now_ms() + 60_000);
+        handoff::ignore_none();
     }
     remote.1.locked().take();
     remote.2.locked().take();
-    media::hide(&app);
+    remote.3.locked().take();
+    media::hide(app);
 }

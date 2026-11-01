@@ -147,9 +147,23 @@ export async function openReport() {
 }
 
 /** A report kept (sent: `sentUrl`; else it's sent when it can, from here or another device signed in). */
-export type SavedReport = { id: string; madeMs: number; title: string; body: string; sentUrl?: string | null; sentMs?: number | null; screenshot?: boolean }
+export type SavedReport = {
+  id: string
+  madeMs: number
+  title: string
+  body: string
+  sentUrl?: string | null
+  sentMs?: number | null
+  screenshot?: boolean
+  /** Sent, and its issue closed on GitHub: when Melue saw that (the report goes a week after). */
+  closedMs?: number | null
+}
 
 export const saveReport = (report: SavedReport) => invoke('report_save', { report })
 /** Given up (closed before it was kept): its screenshot goes. */
 export const discardReport = (id: string) => invoke('report_discard', { id }).catch(() => {})
 export const listReports = () => invoke<SavedReport[]>('reports_list').catch(() => [] as SavedReport[])
+/** The sent reports' issues looked at on GitHub (closed ones go a week after): the list again. */
+export const checkReports = () => invoke<SavedReport[]>('reports_check')
+/** Deleted here and from the share (not sent; a sent one's issue stays on GitHub). */
+export const deleteReport = (id: string) => invoke<void>('report_delete', { id })

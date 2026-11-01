@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * What syncing does with songs (removing those gone from the share, asking first above a number; moving new songs to
+ * What syncing does with songs (removing those gone from the share, asking first above a number: not when streamed; moving new songs to
  * the share), and how the share's folders are laid out. Changing the layout offers to put the share's songs into it
  * (they move on the share, for every device), with an example of what moves.
  */
@@ -74,10 +74,11 @@ const MORE_DEVICES_LINE = {
   <template v-if="syncSettings.value">
     <SettingsLabel>Songs</SettingsLabel>
     <SettingsCard>
-      <SettingsRow title="Remove songs gone from the share" description="Songs deleted from the share are removed here too" v-bind="resetSync('removeGone')">
+      <!-- Streamed: there's no copy here to remove (a song gone from the share is gone here too). -->
+      <SettingsRow v-if="!sync.streamed" title="Remove songs gone from the share" description="Songs deleted from the share are removed here too" v-bind="resetSync('removeGone')">
         <Switch :model-value="syncSettings.value.removeGone" @update:model-value="(removeGone) => saveSyncSettings({ removeGone })" />
       </SettingsRow>
-      <Reveal :show="syncSettings.value.removeGone">
+      <Reveal :show="!sync.streamed && syncSettings.value.removeGone">
         <SettingsRow title="Ask first when it’s more than" description="A whole album gone at once is usually a mistake" detail v-bind="resetSync('askBeforeRemoving')">
           <Stepper
             :model-value="syncSettings.value.askBeforeRemoving"

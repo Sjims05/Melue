@@ -20,7 +20,7 @@ export function followOnlyHere() {
   started = true
   watch(() => sync.available, read, { immediate: true })
   library.onChange((change) => {
-    if (change.reason === 'likes') return
+    if (change.reason === 'likes' || change.reason === 'plays') return
     clearTimeout(waiting)
     waiting = setTimeout(read, 1000)
   })

@@ -153,10 +153,27 @@ fn linked_playlists_follow_their_songs_to_the_synced_copy() {
 #[test]
 fn a_song_put_in_the_synced_folder_by_hand_is_only_on_this_device() {
     let (t, synced, _, _) = setup("moving-by-hand");
+    // Copied from the share (not played straight from it: then the synced folder is the share).
+    let setting = format!(r#"{{"kind":"drive","path":"Z:\\","stream":false,"syncFolderId":{}}}"#, synced.id);
+    t.library.set_setting(SHARE_SETTING, &setting).unwrap();
     let synced_music = crate::library::testkit::MusicFolder { root: std::path::PathBuf::from(&synced.location) };
     synced_music.add("By hand.wav", &Tags::song("By hand", "Band", "", 9));
     t.scan(synced.id, &synced_music);
     let songs = t.library.songs_here(&synced, "me").unwrap();
     let only_here: Vec<String> = t.library.not_on_share(&synced, &songs).unwrap().into_iter().map(|s| s.title).collect();
     assert!(only_here.contains(&"By hand".to_string()), "{only_here:?}");
+}
+
+#[test]
+fn songs_played_straight_from_the_share_are_on_the_share() {
+    let (t, synced, _, _) = setup("moving-streamed");
+    let synced_music = crate::library::testkit::MusicFolder { root: std::path::PathBuf::from(&synced.location) };
+    synced_music.add("On the NAS.wav", &Tags::song("On the NAS", "Band", "", 9));
+    t.scan(synced.id, &synced_music);
+    let songs = t.library.songs_here(&synced, "me").unwrap();
+    let only_here: Vec<String> = t.library.not_on_share(&synced, &songs).unwrap().into_iter().map(|s| s.title).collect();
+    assert!(!only_here.contains(&"On the NAS".to_string()), "{only_here:?}");
+    // And another device can play it (Connect to a device: by its path on the share).
+    let on_share: Vec<String> = t.library.synced_songs(&synced).unwrap().into_iter().map(|(_, p)| p).collect();
+    assert!(on_share.iter().any(|p| p.ends_with("On the NAS.wav")), "{on_share:?}");
 }

@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window, on every platform",
+  "description": "Capability for the main window, on every platform, and the tray's player (desktop: tray.rs)",
   "windows": [
-    "main"
+    "main",
+    "tray"
   ],
   "permissions": [
     "core:default",

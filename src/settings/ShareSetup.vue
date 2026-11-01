@@ -42,6 +42,10 @@ const STORE_LINE: Record<PasswordStore, string> = {
   file: 'In a plain file in Melue’s folder: anyone using this device can read it',
 }
 
+// `pretend` (the first-start guide as a new device, Melue Dev): the form as if no share were set up; Connect checks the
+// fields, then only says it connected (pretendConnected), saving nothing.
+const props = defineProps<{ pretend?: boolean }>()
+const emit = defineEmits<{ pretendConnected: [] }>()
 const info = ref<ShareInfo | null>(null)
 const form = reactive({ address: '', user: '', password: '', homeHost: '', store: 'secure' as PasswordStore })
 const more = ref(false)
@@ -80,8 +84,9 @@ async function chooseFolder() {
   if (location) chosenFolder.value = { kind: isAndroid ? 'android_tree' : 'path', location }
 }
 
-// Songs already in the chosen folder (src-tauri library/songs_there.rs): the share's songs go in beside them, at other
-// places, so songs in both would be there twice (a folder holding an earlier synced folder, say). Said, with where most
+// Songs already in the chosen folder (src-tauri library/songs_there.rs): those at the share's own places are matched
+// up by the first sync (plan.rs: adopt); others stay, so a song also on the share elsewhere would be there twice (a
+// folder holding an earlier synced folder, say). Said, with where most
 // of them are; on a computer that folder can be taken instead.
 const there = ref<{ songs: number; mostIn: string | null; most: number } | null>(null)
 watch(
@@ -96,9 +101,9 @@ watch(
 const thereLine = computed(() => {
   const t = there.value
   if (!t?.songs) return ''
-  const where = t.mostIn ? `, ${t.most} of them in “${t.mostIn}”` : ''
-  const instead = t.mostIn && isAndroid ? ` If “${t.mostIn}” is synced music from before, choose it instead.` : ''
-  return `This folder has ${count(t.songs, 'song')} already${where}. The share’s songs go in beside them, so songs in both would be here twice.${instead}`
+  const where = t.mostIn ? ` (${t.most} of them in “${t.mostIn}”)` : ''
+  const instead = t.mostIn && isAndroid ? ` If “${t.mostIn}” is music copied from the share before, choose that folder instead.` : ''
+  return `This folder already has ${count(t.songs, 'song')}${where}. Any that are also on the share in the same place are matched up, not copied again. Songs in other places here stay as they are, so a song that’s also on the share somewhere else would show up twice.${instead}`
 })
 function useMostIn() {
   const folder = syncFolder.value
@@ -129,6 +134,7 @@ async function connect() {
   const { host, share: name, folder } = parsed.value
   if (!host || !name) return (errors.address = 'Type the NAS and the share, like nas/music.')
   if (!syncFolder.value) return showError({ kind: 'other', detail: 'Choose where the synced music goes.' })
+  if (props.pretend) return emit('pretendConnected')
   connecting.value = true
   try {
     const setup = { kind: 'smb' as const, host, share: name, folder, user: form.user.trim(), passwordStore: form.store, homeHost: form.homeHost.trim() || undefined }
@@ -176,12 +182,14 @@ const settings = computed(() => info.value?.settings ?? null)
 function toggleDetails(event: Event) {
   if (!(event.target as HTMLElement).closest('button')) details.value = !details.value
 }
+// A piece of the address read (the host, the share, the folder): shrinks to fit the card.
+const CHIP = 'inline-flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-[7px] bg-well px-2.5 text-[13px] text-foreground shadow-[inset_0_0_0_1px_var(--well-line)]'
 </script>
 
 <template>
   <template v-if="info">
     <!-- Not set up: the form. -->
-    <template v-if="!settings">
+    <template v-if="!settings || pretend">
       <Transition name="drop">
         <SettingsTip v-if="isDesktop" class="mb-3">
           Have your NAS as a drive in Windows (like Z:)? Add it as a music folder to stream straight from it, or set it up below to sync it.
@@ -189,21 +197,16 @@ function toggleDetails(event: Event) {
       </Transition>
       <SettingsLabel mark="This device">Your share</SettingsLabel>
       <SettingsCard>
-        <div class="settings-row grid gap-3" data-row>
+        <!-- One column that can't grow past the card (a long address shortens its pieces instead). -->
+        <div class="settings-row grid grid-cols-1 gap-3" data-row>
           <Field v-model="form.address" label="Address" placeholder="\\nas\music or nas/music" :error="errors.address" />
-          <!-- How the address was read. -->
-          <div v-if="!errors.address" class="flex flex-wrap items-center gap-1.5 text-muted-foreground">
-            <span class="inline-flex h-7 items-center gap-1.5 rounded-[7px] bg-well px-2.5 text-[13px] text-foreground shadow-[inset_0_0_0_1px_var(--well-line)]">
-              <Monitor class="size-[13px]" />{{ parsed.host || '…' }}
-            </span>
-            <ChevronRight class="size-[13px]" />
-            <span class="inline-flex h-7 items-center gap-1.5 rounded-[7px] bg-well px-2.5 text-[13px] text-foreground shadow-[inset_0_0_0_1px_var(--well-line)]">
-              <Folder class="size-[13px]" />{{ parsed.share || 'share?' }}
-            </span>
-            <ChevronRight class="size-[13px]" />
-            <span class="inline-flex h-7 items-center rounded-[7px] bg-well px-2.5 text-[13px] text-foreground shadow-[inset_0_0_0_1px_var(--well-line)]">
-              {{ parsed.folder || 'whole share' }}
-            </span>
+          <!-- How the address was read: a piece too long for the card is shortened (all of it on hover). -->
+          <div v-if="!errors.address" class="flex min-w-0 flex-wrap items-center gap-1.5 text-muted-foreground">
+            <span :class="CHIP"><Monitor class="size-[13px] flex-none" /><span class="truncate">{{ parsed.host || '…' }}</span></span>
+            <ChevronRight class="size-[13px] flex-none" />
+            <span :class="CHIP"><Folder class="size-[13px] flex-none" /><span class="truncate">{{ parsed.share || 'share?' }}</span></span>
+            <ChevronRight class="size-[13px] flex-none" />
+            <span :class="CHIP"><span class="truncate" :title="parsed.folder">{{ parsed.folder || 'whole share' }}</span></span>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <Field v-model="form.user" label="User" :error="errors.user" />
@@ -286,7 +289,7 @@ function toggleDetails(event: Event) {
             <span class="break-all text-muted-foreground">{{ shareName(settings) }}</span>
             <template v-if="info.syncFolder">
               <span class="font-medium">Synced to</span>
-              <span class="break-all text-muted-foreground">{{ info.syncFolder.location }}</span>
+              <span class="break-all text-muted-foreground">{{ readablePath(info.syncFolder.location, true) }}</span>
             </template>
           </div>
         </Reveal>

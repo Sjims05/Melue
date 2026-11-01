@@ -5,7 +5,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::plugin::TauriPlugin;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, CloseRequestApi, Manager, Window, Wry};
@@ -63,34 +62,28 @@ pub fn ui_ready(app: &AppHandle) {
 
 /// At start, after the rest: the tray, and starting with the system the first time.
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Show Melue", true, None::<&str>)?;
-    // The player, without opening the window.
-    let play = MenuItem::with_id(app, "play", "Play / pause", true, None::<&str>)?;
-    let next = MenuItem::with_id(app, "next", "Next song", true, None::<&str>)?;
-    let previous = MenuItem::with_id(app, "previous", "Previous song", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit Melue", true, None::<&str>)?;
-    let line = || PredefinedMenuItem::separator(app);
-    let menu = Menu::with_items(app, &[&show, &line()?, &play, &next, &previous, &line()?, &quit_item])?;
-    let mut tray = TrayIconBuilder::with_id("main")
-        .tooltip("Melue")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => show_window(app),
-            "play" | "next" | "previous" => player(app, event.id.as_ref()),
-            "quit" => quit(app),
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-                show_window(tray.app_handle());
+    // Left-click: the window; right-click: the tray's player (tray.rs: the player's buttons, Open Melue and Quit, in
+    // place of a menu).
+    let mut tray = TrayIconBuilder::with_id("main").tooltip("Melue").on_tray_icon_event(|tray, event| {
+        if let TrayIconEvent::Click { button, button_state: MouseButtonState::Up, rect, .. } = event {
+            match button {
+                MouseButton::Left => show_window(tray.app_handle()),
+                MouseButton::Right => crate::tray::toggle(tray.app_handle(), rect),
+                _ => {}
             }
-        });
+        }
+    });
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
     tray.build(app)?;
     first_autostart(app);
+    // The tray's player, ready for the first right-click: unless Melue neither starts with Windows nor stays in the tray
+    // when closed (then it's most likely not used from the tray).
+    let quits = app.state::<Library>().setting(CLOSE_SETTING).ok().flatten().as_deref() == Some("quit");
+    if !quits || app.autolaunch().is_enabled().unwrap_or(false) {
+        crate::tray::preload(app);
+    }
     // Started by the system, set to start with its window: shown now (show_at_start couldn't read the setting yet).
     let with_window = app.state::<Library>().setting(AUTOSTART_WINDOW_SETTING).ok().flatten();
     if std::env::args().any(|a| a == HIDDEN) && with_window.as_deref() == Some("window") {
@@ -110,16 +103,18 @@ pub fn on_close(window: &Window, api: &CloseRequestApi) -> bool {
     true
 }
 
-fn show_window(app: &AppHandle) {
+pub(crate) fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        for (what, done) in [("unminimize", window.unminimize()), ("show", window.show()), ("focus", window.set_focus())] {
+            if let Err(e) = done {
+                eprintln!("melue: window: can't {what}: {e}");
+            }
+        }
     }
 }
 
 /// The tray's player items (the window follows: the player tells it, as with media keys).
-fn player(app: &AppHandle, action: &str) {
+pub(crate) fn player(app: &AppHandle, action: &str) {
     use tauri_plugin_native_audio::NativeAudioExt;
     let audio = app.native_audio();
     let done = match action {
@@ -134,7 +129,7 @@ fn player(app: &AppHandle, action: &str) {
 }
 
 /// Quit from the tray: where the song is now goes to the share first (like closing the window).
-fn quit(app: &AppHandle) {
+pub(crate) fn quit(app: &AppHandle) {
     crate::sync::handoff::save_now(app);
     // The other devices hear at once that this one is gone.
     crate::remote::presence::leave(app);
