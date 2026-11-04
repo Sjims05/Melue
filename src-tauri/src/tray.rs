@@ -181,7 +181,13 @@ fn place(window: &WebviewWindow) {
     } else {
         (icon_top.min(bottom) - h - gap).max(top + margin)
     };
-    let _ = window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
+    // Moved, then sized in this screen's pixels, then moved again: Windows rescales a window that comes to a screen of
+    // another scaling (or when the scaling changes, as after sleep or a display change), and the page's height alone
+    // wouldn't size it again, so it grew taller than aimed for (its bottom on the icon).
+    let at = PhysicalPosition::new(x.round() as i32, y.round() as i32);
+    let _ = window.set_position(at);
+    let _ = window.set_size(PhysicalSize::new(w.round() as u32, h.round() as u32));
+    let _ = window.set_position(at);
 }
 
 /// The player's page, as tall as it is (logical pixels): the window takes its height, in its place.

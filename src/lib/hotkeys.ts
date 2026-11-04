@@ -84,13 +84,6 @@ function closeLayer() {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }))
 }
 
-/** What Ctrl+↑ / ↓ scroll: the open dialog's scrolling part, else the page in view. */
-function scrollable(): HTMLElement | null {
-  const dialog = document.querySelector<HTMLElement>('[role=dialog]')
-  if (!dialog) return pageArea()
-  return [...dialog.querySelectorAll<HTMLElement>('*')].find((el) => el.scrollHeight > el.clientHeight + 2 && /(auto|scroll)/.test(getComputedStyle(el).overflowY)) ?? null
-}
-
 // ---- Q: Up next, from anywhere, and back where you were.
 let upNextFrom: { path: string; el: HTMLElement | null } | null = null
 function toggleUpNext() {
@@ -154,13 +147,6 @@ function onKey(e: KeyboardEvent) {
     run()
   }
 
-  // Ctrl+↑ / ↓: scroll, smoothly (a dialog's list too).
-  if (ctrl && (key === 'ArrowUp' || key === 'ArrowDown')) {
-    e.preventDefault()
-    const area = scrollable()
-    area?.scrollBy({ top: (key === 'ArrowDown' ? 1 : -1) * area.clientHeight * 0.6, behavior: 'smooth' })
-    return
-  }
   // Ctrl+1–5: the main pages.
   if (ctrl && /^[1-9]$/.test(key)) {
     const page = MAIN_PAGES[Number(key) - 1]

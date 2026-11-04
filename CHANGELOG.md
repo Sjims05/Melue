@@ -3,6 +3,21 @@
 Each version: what changed, newest first. Shown in the app (About: What's new), and used as each release's notes.
 A new version adds its section at the top (the version commit's message).
 
+## 1.1.1 (2026-11-04)
+
+The mini player in its place, and moving around with the keyboard made smooth.
+
+- The mini player sits just above the tray icon again, also after sleep or a change of display scaling (it grew taller
+  and covered the icon).
+- Holding an arrow in a list scrolls smoothly and keeps up; the page keeps a little room around what's selected, so the
+  title comes into view bit by bit.
+- Ctrl+↑ / ↓ always scroll, whatever is selected (a selected dropdown opened instead), and the arrows then go on from
+  what's on screen.
+- Settings: ← and → stay within a setting's row (← from its first control goes out to the pages), and moving onto
+  buttons like Now / Next no longer jumps the page.
+- A button that turns itself off (Back at the first step) hands the selection to what's above it.
+- The arrows work in the welcome guide and New in Melue.
+
 ## 1.1.0 (2026-11-01)
 
 The mini player in the tray, a welcome guide for new devices, and New in Melue.

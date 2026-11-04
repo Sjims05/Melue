@@ -113,9 +113,9 @@ const title = computed(() => TITLES[step.value])
 
 <template>
   <Transition name="fade">
-    <div v-if="firstStart.open" class="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-background">
+    <div v-if="firstStart.open" class="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-background" data-arrows-page>
       <!-- A computer: the window dragged by the top (nothing shows), and its buttons. -->
-      <div v-if="isDesktop" class="fixed inset-x-0 top-0 z-10 flex h-10 justify-end" data-tauri-drag-region>
+      <div v-if="isDesktop" class="fixed inset-x-0 top-0 z-10 flex h-10 justify-end" data-tauri-drag-region data-arrows-skip>
         <WindowButtons />
       </div>
       <div class="mx-auto flex w-full max-w-[560px] flex-col px-5 pt-[max(env(safe-area-inset-top),2.5rem)] pb-10">
